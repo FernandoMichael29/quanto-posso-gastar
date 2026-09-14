@@ -144,6 +144,30 @@ const DIAS_SEMANA = [
   'domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'
 ];
 
+// Marcas de que a frase declara uma REGRA, não registra um FATO.
+//
+// "mercado 120"          -> saiu dinheiro hoje                 (fato)
+// "meu aluguel é 1800"   -> passa a valer 1800 por mês         (regra)
+// "esse mês foi 1850"    -> vale só neste mês                  (regra pontual)
+//
+// Registrar uma regra como gasto é o erro mais caro que este app pode cometer:
+// vira uma despesa que nunca aconteceu. Na dúvida, mando para a IA decidir —
+// custa menos de um centavo e ela tem o contexto dos compromissos já cadastrados.
+const MARCAS_DE_REGRA = [
+  'mensal', 'mensalmente', 'por mes', 'ao mes', 'todo mes', 'todos os meses',
+  'cada mes', 'todo dia', 'sempre',
+  'agora e', 'agora sao', 'passou a ser', 'passou a custar', 'passa a ser',
+  'reajuste', 'reajustou', 'reajustado', 'aumentou para', 'subiu para',
+  'mudou para', 'fica em', 'sera de', 'vai ser',
+  'esse mes', 'este mes', 'nesse mes', 'neste mes',
+  'assinei', 'cancelei', 'nao pago mais', 'terminei de pagar', 'quitei'
+];
+
+/** A frase declara uma regra sobre um gasto fixo? */
+export function pareceRegra(texto) {
+  return MARCAS_DE_REGRA.find((m) => contemPalavra(texto, m)) || null;
+}
+
 /**
  * Procura a palavra inteira, não pedaço de outra.
  * Sem isso, "gas" (de Moradia) casaria com "gastei" e "oi" com "coisa".
@@ -243,6 +267,17 @@ export function interpretar(fala, opcoes = {}) {
   }
 
   const texto = extensoParaDigitos(original);
+
+  // --- regra ou fato? Uma regra mal classificada vira um gasto inventado,
+  //     então qualquer sinal de recorrência vai para a IA decidir.
+  const marca = pareceRegra(texto);
+  if (marca) {
+    return {
+      confianca: 'ia',
+      motivo: `"${marca}" parece falar de um gasto fixo, não de um gasto de hoje`,
+      lancamento: null
+    };
+  }
 
   // --- data primeiro, para o "5" de "dia 5" não passar por dinheiro
   const { data, certeza, trecho } = acharData(texto, hoje);

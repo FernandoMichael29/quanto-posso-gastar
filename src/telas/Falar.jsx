@@ -303,7 +303,8 @@ const MOTIVO_TELA = {
   sem_configuracao: 'Configure o endereço e o token nos Ajustes para eu conseguir enviar.',
   api_fora: 'A IA está fora do ar. Tento de novo sozinho.',
   limite_taxa: 'Muitas chamadas seguidas. Tento de novo daqui a pouco.',
-  nada_entendido: 'Não achei um valor na frase. Dá uma olhada na fila e corrija se quiser.'
+  nada_entendido: 'Não achei um valor na frase. Dá uma olhada na fila e corrija se quiser.',
+  teto_diario: 'Bateu o teto diário de interpretações por IA. Sua frase está guardada e é interpretada amanhã sozinha.'
 };
 
 function formatarData(iso) {

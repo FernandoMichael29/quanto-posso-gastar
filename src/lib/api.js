@@ -60,6 +60,9 @@ export const api = {
     uuid: item.uuid, texto: item.texto, lancamento: item.lancamento
   }),
   resumo: (mes) => chamar('resumo', { mes }),
+  // A análise lê vários meses e chama o modelo grande: precisa de mais fôlego.
+  perguntar: (pergunta) => chamar('perguntar', { pergunta }, { prazo: 90000 }),
+  panorama: () => chamar('panorama'),
   pendencias: () => chamar('pendencias'),
   categorias: () => chamar('categorias')
 };

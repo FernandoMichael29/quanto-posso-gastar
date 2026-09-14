@@ -27,6 +27,7 @@ export const MOTIVO = {
   sem_chave: 'A chave da API ainda não foi configurada',
   sem_rede: 'Sem internet',
   limite_taxa: 'Muitas chamadas seguidas',
+  teto_diario: 'Teto diário de interpretações atingido',
   api_fora: 'A IA está fora do ar',
   nada_entendido: 'A IA não achou valor na frase',
   resposta_estranha: 'A IA respondeu fora do formato',
