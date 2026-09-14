@@ -60,6 +60,18 @@ export const api = {
     uuid: item.uuid, texto: item.texto, lancamento: item.lancamento
   }),
   resumo: (mes) => chamar('resumo', { mes }),
+
+  // Cadastros: contas, categorias, fontes e pessoas
+  cadastros: () => chamar('cadastros'),
+  salvarCadastro: (tipo, item, nomeAntigo) =>
+    chamar('salvar_cadastro', { tipo, item, nome_antigo: nomeAntigo }),
+  excluirCadastro: (tipo, nome) => chamar('excluir_cadastro', { tipo, nome }),
+
+  // Lançamentos de um mês, edição e exclusão
+  lancamentos: (mes) => chamar('lancamentos', { mes }),
+  editarLancamento: (uuid, campos) => chamar('editar_lancamento', { uuid, campos }),
+  excluirLancamento: (uuid) => chamar('excluir_lancamento', { uuid }),
+  painel: (mes) => chamar('painel', { mes }, { prazo: 40000 }),
   // A análise lê vários meses e chama o modelo grande: precisa de mais fôlego.
   perguntar: (pergunta) => chamar('perguntar', { pergunta }, { prazo: 90000 }),
   panorama: () => chamar('panorama'),

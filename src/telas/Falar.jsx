@@ -4,6 +4,7 @@ import { escutar, ERRO_VOZ, temReconhecimento } from '../lib/voz.js';
 import { enfileirar, ESTADO, novoId } from '../lib/db.js';
 import { api, configurado } from '../lib/api.js';
 import { sincronizar } from '../lib/sync.js';
+import CartaoLancamento from '../componentes/CartaoLancamento.jsx';
 
 const IconeMic = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
@@ -13,7 +14,8 @@ const IconeMic = () => (
   </svg>
 );
 
-export default function Falar({ categorias, contas, resumo, aoMudarFila }) {
+export default function Falar({ cadastros, resumo, aoMudarFila }) {
+  const categorias = cadastros.categorias || [];
   const [ouvindo, setOuvindo] = useState(false);
   const [texto, setTexto] = useState('');
   const [rascunho, setRascunho] = useState(null);
@@ -181,13 +183,13 @@ export default function Falar({ categorias, contas, resumo, aoMudarFila }) {
       )}
 
       {rascunho && (
-        <CartaoConfirmar
-          rascunho={rascunho}
-          setRascunho={setRascunho}
-          categorias={categorias}
-          contas={contas}
-          onConfirmar={confirmar}
-          onCancelar={() => { setRascunho(null); setTexto(''); }}
+        <CartaoLancamento
+          valor={rascunho}
+          aoMudar={setRascunho}
+          cadastros={cadastros}
+          modo="confirmar"
+          aoConfirmar={confirmar}
+          aoCancelar={() => { setRascunho(null); setTexto(''); }}
         />
       )}
 
@@ -221,77 +223,6 @@ export default function Falar({ categorias, contas, resumo, aoMudarFila }) {
         </>
       )}
     </>
-  );
-}
-
-function CartaoConfirmar({ rascunho, setRascunho, categorias, contas, onConfirmar, onCancelar }) {
-  const mudar = (campo) => (e) => setRascunho({ ...rascunho, [campo]: e.target.value });
-  const daTipo = categorias.filter((c) => !c.tipo || c.tipo === rascunho.tipo);
-
-  return (
-    <div className="cartao destaque">
-      <div className="valor-linha">
-        <span className={`valor ${rascunho.tipo}`}>{formatarBRL(rascunho.valor)}</span>
-        <span className={`etiqueta ${rascunho.tipo}`}>{rascunho.tipo === 'receita' ? 'entrada' : 'saída'}</span>
-        {rascunho.parcelas_total > 1 && (
-          <span className="etiqueta">{rascunho.parcelas_total}× de {formatarBRL(rascunho.valor / rascunho.parcelas_total)}</span>
-        )}
-      </div>
-
-      <p className="ajuda">{rascunho.motivo}{rascunho.confianca === 'ia' ? '' : ' · regras locais'}</p>
-
-      <div className="campo">
-        <label htmlFor="descricao">Descrição</label>
-        <input id="descricao" value={rascunho.descricao || ''} onChange={mudar('descricao')} />
-      </div>
-
-      <div className="linha">
-        <div className="campo">
-          <label htmlFor="categoria">Categoria</label>
-          <select id="categoria" value={rascunho.categoria} onChange={mudar('categoria')}>
-            {daTipo.map((c) => <option key={c.categoria} value={c.categoria}>{c.categoria}</option>)}
-          </select>
-        </div>
-        <div className="campo">
-          <label htmlFor="valorcampo">Valor</label>
-          <input
-            id="valorcampo"
-            type="number"
-            inputMode="decimal"
-            step="0.01"
-            value={rascunho.valor}
-            onChange={(e) => setRascunho({ ...rascunho, valor: Number(e.target.value) })}
-          />
-        </div>
-      </div>
-
-      <div className="linha">
-        <div className="campo">
-          <label htmlFor="data">Data</label>
-          <input id="data" type="date" value={rascunho.data} onChange={mudar('data')} />
-        </div>
-        <div className="campo">
-          <label htmlFor="conta">Conta</label>
-          <select id="conta" value={rascunho.conta} onChange={mudar('conta')}>
-            {contas.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </div>
-      </div>
-
-      {rascunho.extras?.length > 0 && (
-        <div className="aviso bom">
-          <strong>+{rascunho.extras.length} lançamento{rascunho.extras.length > 1 ? 's' : ''} na mesma frase</strong>
-          <span className="detalhe">
-            {rascunho.extras.map((e) => `${e.categoria} ${formatarBRL(e.valor)}`).join(' · ')}
-          </span>
-        </div>
-      )}
-
-      <div className="botoes">
-        <button className="btn discreto" onClick={onCancelar}>Descartar</button>
-        <button className="btn principal" onClick={onConfirmar}>Confirmar</button>
-      </div>
-    </div>
   );
 }
 

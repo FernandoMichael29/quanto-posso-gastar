@@ -516,6 +516,190 @@ button.item.sugestao:last-child { border-bottom: none; }
 .gr-tabela td.ruim { color: var(--crit); font-weight: 600; }
 .gr-nota { font-size: 12.5px; color: var(--muted); margin: 0; }
 
+/* ---------- seletor de mês ---------- */
+
+.seletor-mes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--raio);
+  padding: 8px;
+}
+
+.seletor-mes > button {
+  width: 40px; height: 40px; flex: none;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 20px; line-height: 1;
+}
+
+.seletor-mes > button:disabled { opacity: .35; }
+.seletor-centro { flex: 1; text-align: center; display: flex; flex-direction: column; gap: 1px; }
+.seletor-centro strong { font-size: 15.5px; font-weight: 600; }
+
+/* ---------- abas internas ---------- */
+
+.abas {
+  display: flex;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  overflow: hidden;
+}
+
+.abas button {
+  flex: 1;
+  border: none;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13.5px;
+  font-weight: 500;
+  padding: 9px 6px;
+  white-space: nowrap;
+}
+
+.abas button.ativa { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+.secao-cabecalho { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 4px; }
+
+.filtro {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 5px 9px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.divisor { border: none; border-top: 1px solid var(--line); margin: 8px 0 0; }
+.btn.voltar { align-self: flex-start; flex: none; padding-left: 0; }
+
+/* ---------- barras horizontais ---------- */
+
+.barras {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--raio);
+  overflow: hidden;
+}
+
+.barra {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 15px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--surface);
+  border-left: none; border-right: none; border-top: none;
+  text-align: left;
+  width: 100%;
+  color: inherit;
+}
+
+.barra:last-child { border-bottom: none; }
+.barra-topo { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.barra-nome { font-size: 14.5px; font-weight: 500; color: var(--ink); overflow-wrap: anywhere; }
+.barra-valor { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--ink); }
+
+.barra-trilho {
+  position: relative;
+  height: 8px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  overflow: visible;
+}
+
+.barra-preenche {
+  height: 100%;
+  border-radius: 999px;
+  background: #00A08C;
+  min-width: 4px;
+}
+
+.barra-preenche.estourou { background: #A2382C; }
+
+.barra-teto {
+  position: absolute;
+  top: -3px; bottom: -3px;
+  width: 2px;
+  background: var(--ink-2);
+  border-radius: 1px;
+}
+
+.barra-rodape {
+  display: flex; justify-content: space-between; gap: 10px;
+  font-size: 11.5px; color: var(--muted);
+}
+
+.barra-rodape .estourou { color: var(--crit); font-weight: 600; }
+
+@media (prefers-color-scheme: dark) {
+  .barra-preenche { background: #1AA890; }
+  .barra-preenche.estourou { background: #CC6554; }
+}
+
+.gr-legenda i.neg { background: #A2382C; }
+@media (prefers-color-scheme: dark) { .gr-legenda i.neg { background: #CC6554; } }
+
+/* ---------- item clicável e estados ---------- */
+
+button.item.clicavel {
+  background: var(--surface);
+  border: none;
+  border-bottom: 1px solid var(--line-soft);
+  width: 100%;
+  text-align: left;
+  color: var(--ink);
+  align-items: center;
+}
+
+button.item.clicavel:last-child { border-bottom: none; }
+.item.inativo { opacity: .5; }
+.item.inativo .titulo { text-decoration: line-through; }
+
+.pastilha.alerta { border-color: var(--warn); color: var(--warn); }
+
+.etiqueta.alternavel { cursor: pointer; border-style: dashed; }
+
+.btn.perigo { color: var(--crit); border-color: color-mix(in srgb, var(--crit) 40%, transparent); background: var(--crit-soft); }
+
+/* ---------- modal ---------- */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.modal-fundo { position: absolute; inset: 0; background: rgba(0, 0, 0, .45); }
+
+.modal-corpo {
+  position: relative;
+  width: 100%;
+  max-width: 560px;
+  max-height: 92vh;
+  overflow-y: auto;
+  padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+  animation: subir .18s ease-out;
+}
+
+@keyframes subir { from { transform: translateY(16px); opacity: 0; } }
+
+@media (min-width: 620px) {
+  .modal { align-items: center; }
+  .modal-corpo { padding: 16px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::after { animation: none !important; transition: none !important; }
 }

@@ -30,11 +30,15 @@ var MAX_ANALISE_DIA = 30;      // perguntas de análise por dia — cada uma cus
 var ABAS = {
   lancamentos: [
     'uuid', 'data', 'hora_registro', 'tipo', 'valor', 'categoria', 'descricao',
-    'conta', 'metodo', 'parcela_atual', 'parcelas_total', 'texto_falado',
-    'origem', 'confianca', 'status', 'revisar', 'erro'
+    'conta', 'metodo', 'fonte', 'pessoa', 'parcela_atual', 'parcelas_total',
+    'texto_falado', 'origem', 'confianca', 'status', 'revisar', 'erro'
   ],
-  contas: ['nome', 'tipo', 'saldo_inicial', 'ativo'],
-  categorias: ['categoria', 'grupo', 'tipo', 'palavras_chave', 'orcamento_mes'],
+  // As carteiras de onde o dinheiro sai: bancos, cartões, benefícios, espécie.
+  contas: ['nome', 'tipo', 'pessoa', 'saldo_inicial', 'ativo'],
+  // De onde a renda vem. Só se aplica a receitas.
+  fontes: ['nome', 'pessoa', 'tipo', 'ativo'],
+  pessoas: ['nome', 'ativo'],
+  categorias: ['categoria', 'grupo', 'tipo', 'palavras_chave', 'orcamento_mes', 'ativo'],
   // Uma linha por VIGÊNCIA, não por conta. "Meu aluguel é 1800" cria uma linha
   // válida de agora em diante; "agora é 1900" fecha essa e abre outra. O
   // histórico fica inteiro, então o mês passado continua contando 1800.
@@ -53,7 +57,8 @@ var ABAS = {
 var STATUS = {
   OK: 'ok',                       // interpretado e confirmado
   AGUARDANDO_IA: 'aguardando_ia', // texto salvo, esperando a IA conseguir interpretar
-  ERRO: 'erro'                    // a IA falhou de um jeito que precisa de você
+  ERRO: 'erro',                   // a IA falhou de um jeito que precisa de você
+  EXCLUIDO: 'excluido'            // você apagou pelo app: sai de tudo, mas a linha fica
 };
 
 // ---------------------------------------------------------------------------
@@ -69,20 +74,15 @@ function configurar() {
 
   migrarRecorrentes_(ss);
 
-  Object.keys(ABAS).forEach(function (nome) {
-    var aba = ss.getSheetByName(nome);
-    if (!aba) aba = ss.insertSheet(nome);
-    var cabecalho = ABAS[nome];
-    aba.getRange(1, 1, 1, cabecalho.length).setValues([cabecalho])
-       .setFontWeight('bold').setBackground('#e8efed');
-    aba.setFrozenRows(1);
-  });
+  Object.keys(ABAS).forEach(function (nome) { prepararAba_(ss, nome); });
 
   var padrao = ss.getSheetByName('Página1') || ss.getSheetByName('Sheet1');
   if (padrao && ss.getSheets().length > 1) ss.deleteSheet(padrao);
 
   semearCategorias_();
   semearContas_();
+  semearPessoas_();
+  semearFontes_();
 
   var token = PROP.getProperty('TOKEN');
   if (!token) {
@@ -101,6 +101,50 @@ function configurar() {
   Logger.log('Pronto.\n\nSeu TOKEN do app é:\n\n    ' + token +
              '\n\nGuarde: você vai colar isso nos Ajustes do app.');
   return token;
+}
+
+/**
+ * Cria a aba se não existir e ajusta o cabeçalho ao formato atual.
+ *
+ * Quando colunas novas entram no meio (como `fonte` e `pessoa` entraram em
+ * lancamentos), reescrever só a primeira linha desalinharia tudo que já está
+ * lá. Então aqui os dados são remapeados COLUNA POR NOME: cada valor vai para
+ * onde a coluna dele está agora, e as novas nascem vazias.
+ */
+function prepararAba_(ss, nome) {
+  var alvo = ABAS[nome];
+  var aba = ss.getSheetByName(nome);
+
+  if (!aba) {
+    aba = ss.insertSheet(nome);
+    aba.getRange(1, 1, 1, alvo.length).setValues([alvo])
+       .setFontWeight('bold').setBackground('#e8efed');
+    aba.setFrozenRows(1);
+    return;
+  }
+
+  var largura = Math.max(aba.getLastColumn(), 1);
+  var atual = aba.getRange(1, 1, 1, largura).getValues()[0]
+                 .map(function (c) { return String(c || '').trim(); });
+
+  var igual = atual.length === alvo.length && alvo.every(function (c, i) { return atual[i] === c; });
+  if (igual) { aba.setFrozenRows(1); return; }
+
+  var linhas = aba.getLastRow() - 1;
+  var dados = linhas > 0 ? aba.getRange(2, 1, linhas, largura).getValues() : [];
+
+  var deOnde = alvo.map(function (coluna) { return atual.indexOf(coluna); });
+  var remapeadas = dados.map(function (linha) {
+    return deOnde.map(function (i) { return i >= 0 ? linha[i] : ''; });
+  });
+
+  aba.clear();
+  aba.getRange(1, 1, 1, alvo.length).setValues([alvo])
+     .setFontWeight('bold').setBackground('#e8efed');
+  if (remapeadas.length) {
+    aba.getRange(2, 1, remapeadas.length, alvo.length).setValues(remapeadas);
+  }
+  aba.setFrozenRows(1);
 }
 
 /**
@@ -147,42 +191,78 @@ function salvarChaveAnthropic() {
 }
 
 function semearCategorias_() {
-  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('categorias');
-  if (aba.getLastRow() > 1) return; // já tem conteúdo, não mexe
-
   var linhas = [
-    ['Mercado', 'Essencial', 'despesa', 'mercado,supermercado,feira,hortifruti,açougue,padaria,compras do mes,atacadao,assai,carrefour', ''],
-    ['Alimentação', 'Essencial', 'despesa', 'almoço,almocei,janta,jantar,lanche,ifood,rappi,restaurante,pizza,hamburguer,cafe,padoca,marmita', ''],
-    ['Transporte', 'Essencial', 'despesa', 'uber,99,taxi,onibus,metro,passagem,gasolina,posto,combustivel,alcool,etanol,estacionamento,pedagio,ipva', ''],
-    ['Moradia', 'Essencial', 'despesa', 'aluguel,condominio,luz,energia,agua,gas,iptu,internet,wifi,faxina', ''],
-    ['Saúde', 'Essencial', 'despesa', 'farmacia,remedio,medico,consulta,exame,dentista,plano de saude,oculos,academia', ''],
-    ['Telefone', 'Essencial', 'despesa', 'celular,recarga,plano,vivo,claro,tim,oi', ''],
-    ['Assinaturas', 'Fixo', 'despesa', 'netflix,spotify,youtube premium,disney,prime,hbo,max,assinatura,mensalidade,icloud,google one', ''],
-    ['Educação', 'Fixo', 'despesa', 'faculdade,curso,livro,apostila,material escolar,udemy,alura', ''],
-    ['Lazer', 'Variável', 'despesa', 'cinema,bar,cerveja,balada,show,jogo,steam,viagem,passeio,role', ''],
-    ['Compras', 'Variável', 'despesa', 'roupa,tenis,camisa,calca,eletronico,celular novo,fone,shopping,shopee,mercado livre,amazon', ''],
-    ['Casa', 'Variável', 'despesa', 'movel,decoracao,utensilio,ferramenta,reforma,conserto', ''],
-    ['Pet', 'Variável', 'despesa', 'racao,veterinario,petshop,pet', ''],
-    ['Presentes', 'Variável', 'despesa', 'presente,aniversario,natal', ''],
-    ['Taxas', 'Fixo', 'despesa', 'tarifa,juros,multa,anuidade,imposto', ''],
-    ['Outros', 'Variável', 'despesa', '', ''],
-    ['Salário', 'Renda', 'receita', 'salario,salário,pagamento,holerite,contracheque', ''],
-    ['Freela', 'Renda', 'receita', 'freela,freelance,bico,servico,job', ''],
-    ['Reembolso', 'Renda', 'receita', 'reembolso,devolucao,estorno,me pagou,pagou de volta', ''],
-    ['Rendimento', 'Renda', 'receita', 'rendimento,juros recebidos,dividendo,investimento rendeu,cdb,tesouro', ''],
-    ['Outras Entradas', 'Renda', 'receita', 'entrou,recebi,ganhei,vendi,presente recebido', '']
+    ['Mercado', 'Essencial', 'despesa', 'mercado,supermercado,feira,hortifruti,açougue,padaria,compras do mes,atacadao,assai,carrefour', '', 'sim'],
+    ['Alimentação', 'Essencial', 'despesa', 'almoço,almocei,janta,jantar,lanche,ifood,rappi,restaurante,pizza,hamburguer,cafe,padoca,marmita', '', 'sim'],
+    ['Transporte', 'Essencial', 'despesa', 'uber,99,taxi,onibus,metro,passagem,gasolina,posto,combustivel,alcool,etanol,estacionamento,pedagio,ipva', '', 'sim'],
+    ['Moradia', 'Essencial', 'despesa', 'aluguel,condominio,luz,energia,agua,gas,iptu,internet,wifi,faxina', '', 'sim'],
+    ['Saúde', 'Essencial', 'despesa', 'farmacia,remedio,medico,consulta,exame,dentista,plano de saude,oculos,academia', '', 'sim'],
+    ['Telefone', 'Essencial', 'despesa', 'celular,recarga,plano,vivo,claro,tim,oi', '', 'sim'],
+    ['Assinaturas', 'Fixo', 'despesa', 'netflix,spotify,youtube premium,disney,prime,hbo,max,assinatura,mensalidade,icloud,google one', '', 'sim'],
+    ['Educação', 'Fixo', 'despesa', 'faculdade,curso,livro,apostila,material escolar,udemy,alura', '', 'sim'],
+    ['Lazer', 'Variável', 'despesa', 'cinema,bar,cerveja,balada,show,jogo,steam,viagem,passeio,role', '', 'sim'],
+    ['Compras', 'Variável', 'despesa', 'roupa,tenis,camisa,calca,eletronico,celular novo,fone,shopping,shopee,mercado livre,amazon', '', 'sim'],
+    ['Casa', 'Variável', 'despesa', 'movel,decoracao,utensilio,ferramenta,reforma,conserto', '', 'sim'],
+    ['Pet', 'Variável', 'despesa', 'racao,veterinario,petshop,pet', '', 'sim'],
+    ['Presentes', 'Variável', 'despesa', 'presente,aniversario,natal', '', 'sim'],
+    ['Taxas', 'Fixo', 'despesa', 'tarifa,juros,multa,anuidade,imposto', '', 'sim'],
+    ['Outros', 'Variável', 'despesa', '', '', 'sim'],
+    ['Salário', 'Renda', 'receita', 'salario,salário,pagamento,holerite,contracheque', '', 'sim'],
+    ['Freela', 'Renda', 'receita', 'freela,freelance,bico,servico,job', '', 'sim'],
+    ['Reembolso', 'Renda', 'receita', 'reembolso,devolucao,estorno,me pagou,pagou de volta', '', 'sim'],
+    ['Rendimento', 'Renda', 'receita', 'rendimento,juros recebidos,dividendo,investimento rendeu,cdb,tesouro', '', 'sim'],
+    ['Outras Entradas', 'Renda', 'receita', 'entrou,recebi,ganhei,vendi,presente recebido', '', 'sim']
   ];
-  aba.getRange(2, 1, linhas.length, linhas[0].length).setValues(linhas);
+  acrescentarSeFaltar_('categorias', linhas);
 }
 
+/**
+ * As contas que você me passou. São adicionadas às que já existirem — nenhuma
+ * conta antiga é apagada, porque lançamentos antigos podem apontar para elas.
+ * As que não usa mais, desative pelo app (Ajustes → Cadastros).
+ */
 function semearContas_() {
-  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('contas');
-  if (aba.getLastRow() > 1) return;
-  aba.getRange(2, 1, 3, 4).setValues([
-    ['Principal', 'conta corrente', 0, 'sim'],
-    ['Carteira', 'dinheiro', 0, 'sim'],
-    ['Cartão', 'credito', 0, 'sim']
+  var padrao = [
+    ['Dinheiro', 'dinheiro', 'Fernando', 0, 'sim'],
+    ['Itaú', 'conta corrente', 'Fernando', 0, 'sim'],
+    ['Santander', 'conta corrente', 'Fernando', 0, 'sim'],
+    ['Nubank May', 'credito', 'Mayara', 0, 'sim'],
+    ['Caju', 'beneficio', 'Fernando', 0, 'sim'],
+    ['Alimentação', 'beneficio', 'Fernando', 0, 'sim'],
+    ['Amazon', 'credito', 'Fernando', 0, 'sim']
+  ];
+  acrescentarSeFaltar_('contas', padrao);
+}
+
+function semearPessoas_() {
+  acrescentarSeFaltar_('pessoas', [['Fernando', 'sim'], ['Mayara', 'sim']]);
+}
+
+function semearFontes_() {
+  acrescentarSeFaltar_('fontes', [
+    ['Fernando Empresa 1', 'Fernando', 'salario', 'sim'],
+    ['Fernando Empresa 2', 'Fernando', 'salario', 'sim'],
+    ['Emprego Mayara', 'Mayara', 'salario', 'sim']
   ]);
+}
+
+/** Acrescenta só as linhas cujo nome ainda não está na aba. */
+function acrescentarSeFaltar_(nomeAba, linhas) {
+  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(nomeAba);
+  if (!aba) return;
+
+  var existentes = {};
+  var n = aba.getLastRow() - 1;
+  if (n > 0) {
+    aba.getRange(2, 1, n, 1).getValues().forEach(function (r) {
+      if (r[0]) existentes[chaveNome_(r[0])] = true;
+    });
+  }
+
+  var novas = linhas.filter(function (l) { return !existentes[chaveNome_(l[0])]; });
+  if (novas.length) {
+    aba.getRange(aba.getLastRow() + 1, 1, novas.length, novas[0].length).setValues(novas);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -227,7 +307,14 @@ function doPost(e) {
       case 'pendencias':  return json_(pendencias_());
       case 'perguntar':   return json_(perguntar_(pedido));
       case 'panorama':    return json_(panorama_(pedido));
-      case 'categorias':  return json_({ ok: true, categorias: lerCategorias_(), contas: lerContas_() });
+      case 'categorias':  return json_(cadastros_());
+      case 'cadastros':   return json_(cadastros_());
+      case 'salvar_cadastro':  return json_(salvarCadastro_(pedido));
+      case 'excluir_cadastro': return json_(excluirCadastro_(pedido));
+      case 'lancamentos':      return json_(lancamentosDoMes_(pedido));
+      case 'editar_lancamento':  return json_(editarLancamento_(pedido));
+      case 'excluir_lancamento': return json_(excluirLancamento_(pedido));
+      case 'painel':      return json_(painel_(pedido));
       default:            return json_({ ok: false, erro: 'acao_desconhecida' });
     }
   } catch (err) {
@@ -335,8 +422,10 @@ function linhaDe_(l) {
     Number(l.valor) || 0,
     l.categoria || '',
     l.descricao || '',
-    l.conta || 'Principal',
+    l.conta || contaPadrao_(),
     l.metodo || '',
+    l.fonte || '',
+    l.pessoa || pessoaDaConta_(l.conta),
     l.parcela_atual || '',
     l.parcelas_total || '',
     l.texto_falado || '',
@@ -346,6 +435,21 @@ function linhaDe_(l) {
     l.revisar ? 'sim' : '',
     l.erro || ''
   ];
+}
+
+function contaPadrao_() {
+  var contas = lerContas_();
+  return contas[0] || 'Dinheiro';
+}
+
+/** Se a conta pertence a alguém, o lançamento herda essa pessoa. */
+function pessoaDaConta_(nomeConta) {
+  if (!nomeConta) return '';
+  var alvo = chaveNome_(nomeConta);
+  var conta = lerCadastro_('contas').filter(function (c) {
+    return chaveNome_(c.nome) === alvo;
+  })[0];
+  return conta ? (conta.pessoa || '') : '';
 }
 
 function uuidsExistentes_(aba) {
@@ -423,6 +527,25 @@ function capturar_(pedido) {
       }
     });
 
+    // Mudanças de cadastro ditas por voz: nova conta, categoria, fonte, pessoa.
+    (r.cadastros || []).forEach(function (c) {
+      try {
+        if (c.acao === 'excluir') {
+          efeitos.push(excluirCadastro_({ tipo: c.tipo, nome: c.nome }));
+        } else {
+          var item = { ativo: true };
+          var chave = (CADASTROS[c.tipo] || {}).campos;
+          if (chave) item[chave[0]] = c.nome;
+          if (c.pessoa) item.pessoa = c.pessoa;
+          if (c.tipo_item) item.tipo = c.tipo_item;
+          if (c.grupo) item.grupo = c.grupo;
+          efeitos.push(salvarCadastro_({ tipo: c.tipo, item: item, nome_antigo: c.nome_antigo }));
+        }
+      } catch (err) {
+        efeitos.push({ ok: false, nome: c.nome, erro: String(err && err.message || err) });
+      }
+    });
+
     // Fatos que você contou e que a IA deve lembrar nas análises.
     (r.memoria || []).forEach(function (fato) {
       try { gravarMemoria_(fato, texto); } catch (err) {}
@@ -494,11 +617,18 @@ function chamarClaude_(texto) {
     return r.nome + ' ' + r.valor.toFixed(2) + (r.dia ? ' (dia ' + r.dia + ')' : '');
   }).join('; ') || 'nenhum ainda';
 
+  var fontes = lerCadastro_('fontes').filter(function (f) { return f.ativo; })
+    .map(function (f) { return f.nome + (f.pessoa ? ' [' + f.pessoa + ']' : ''); }).join(', ') || 'nenhuma';
+  var pessoas = lerCadastro_('pessoas').filter(function (p) { return p.ativo; })
+    .map(function (p) { return p.nome; }).join(', ') || 'nenhuma';
+
   var instrucao =
     'Você interpreta frases faladas em português do Brasil sobre as finanças pessoais de uma pessoa.\n' +
     'Hoje é ' + hojeISO_() + ', mês ' + mes + ' (fuso ' + fuso_() + ').\n' +
     'Categorias permitidas: ' + nomes + '.\n' +
     'Contas permitidas: ' + contas + '.\n' +
+    'Fontes de renda permitidas: ' + fontes + '.\n' +
+    'Pessoas: ' + pessoas + '.\n' +
     'Compromissos fixos já cadastrados: ' + vigentes + '.\n\n' +
 
     'Primeiro CLASSIFIQUE a frase. A distinção mais importante é entre um FATO\n' +
@@ -507,6 +637,9 @@ function chamarClaude_(texto) {
     'lancamento — dinheiro que se moveu. "mercado 120", "recebi 3000", "paguei o aluguel"\n' +
     'recorrente — uma regra sobre algo que se repete todo mês\n' +
     'memoria    — um fato sobre a pessoa, sem valor a movimentar. "recebo sempre dia 5"\n' +
+    'cadastro   — criar, renomear ou desativar uma conta, categoria, fonte de renda\n' +
+    '             ou pessoa. "adiciona o cartão Inter", "cria a categoria Viagem",\n' +
+    '             "não uso mais o Santander", "renomeia Caju para Caju Alimentação"\n' +
     'nenhuma    — não dá para extrair nada\n\n' +
 
     'Dentro de "recorrente", a ação muda tudo:\n' +
@@ -530,11 +663,14 @@ function chamarClaude_(texto) {
     '{"intencao":"lancamento|recorrente|memoria|nenhuma",\n' +
     ' "lancamentos":[{"tipo":"despesa|receita","valor":number,"categoria":string,' +
     '"descricao":string,"data":"YYYY-MM-DD","conta":string,' +
-    '"metodo":"pix|credito|debito|dinheiro|boleto|",' +
+    '"metodo":"pix|credito|debito|dinheiro|boleto|","fonte":string,"pessoa":string,' +
     '"parcela_atual":number|null,"parcelas_total":number|null}],\n' +
     ' "recorrentes":[{"nome":string,"acao":"definir|excecao|encerrar","valor":number,' +
     '"tipo":"despesa|receita","categoria":string,"dia":number|null,"mes":"YYYY-MM"}],\n' +
     ' "memoria":[string],\n' +
+    ' "cadastros":[{"tipo":"contas|categorias|fontes|pessoas","acao":"salvar|excluir",' +
+    '"nome":string,"nome_antigo":string|null,"pessoa":string|null,' +
+    '"tipo_item":string|null,"grupo":string|null}],\n' +
     ' "resumo":string}\n\n' +
 
     'Regras:\n' +
@@ -545,6 +681,13 @@ function chamarClaude_(texto) {
     '- Em parcelamento, "valor" é o valor TOTAL da compra e parcelas_total o número de parcelas.\n' +
     '- Se a categoria não se encaixar em nenhuma da lista, use "Outros" (despesa) ou "Outras Entradas" (receita).\n' +
     '- Datas relativas ("ontem", "sexta passada") devem virar data absoluta.\n' +
+    '- "conta" é de onde o dinheiro saiu ou entrou. Case pelo nome falado, mesmo abreviado\n' +
+    '  ("nubank da May" -> "Nubank May", "vale" ou "alimentação" -> o cartão de benefício).\n' +
+    '- "fonte" só vale em receitas, e é de onde a renda vem. Deixe "" em despesas.\n' +
+    '- "pessoa" é de quem é o gasto ou a renda. Se a frase não disser, deixe "" que eu\n' +
+    '  deduzo pela conta.\n' +
+    '- Em "cadastros", "tipo_item" é o subtipo (credito, conta corrente, beneficio,\n' +
+    '  dinheiro para contas; salario, freela para fontes).\n' +
     '- Listas sem conteúdo vão como [].';
 
   var corpo = {
@@ -586,17 +729,19 @@ function chamarClaude_(texto) {
     var lancamentos = obj.lancamentos || [];
     var recorrentes = obj.recorrentes || [];
     var memoria = obj.memoria || [];
+    var cadastros = obj.cadastros || [];
 
-    if (!lancamentos.length && !recorrentes.length && !memoria.length) {
+    if (!lancamentos.length && !recorrentes.length && !memoria.length && !cadastros.length) {
       return { ok: false, codigo: 'nada_entendido', detalhe: 'A IA não achou nada acionável na frase.' };
     }
 
     return {
       ok: true,
-      intencao: obj.intencao || (recorrentes.length ? 'recorrente' : 'lancamento'),
+      intencao: obj.intencao || (recorrentes.length ? 'recorrente' : (cadastros.length ? 'cadastro' : 'lancamento')),
       lancamentos: lancamentos,
       recorrentes: recorrentes,
       memoria: memoria,
+      cadastros: cadastros,
       resumo: obj.resumo || ''
     };
   } catch (err) {
@@ -686,13 +831,13 @@ function panorama_(pedido) {
 }
 
 function lerContasCompletas_() {
-  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('contas');
-  var n = aba.getLastRow() - 1;
-  if (n <= 0) return [];
-  return aba.getRange(2, 1, n, 4).getValues()
-    .filter(function (r) { return r[0] && r[3] !== 'não'; })
-    .map(function (r) {
-      return { nome: r[0], tipo: r[1], saldo_inicial: Number(r[2]) || 0 };
+  return lerCadastro_('contas')
+    .filter(function (c) { return c.ativo; })
+    .map(function (c) {
+      return {
+        nome: c.nome, tipo: c.tipo, pessoa: c.pessoa,
+        saldo_inicial: Number(c.saldo_inicial) || 0
+      };
     });
 }
 
@@ -1055,24 +1200,390 @@ function lerCategorias_() {
   var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('categorias');
   var n = aba.getLastRow() - 1;
   if (n <= 0) return [];
-  return aba.getRange(2, 1, n, 5).getValues()
-    .filter(function (r) { return r[0]; })
+  return aba.getRange(2, 1, n, 6).getValues()
+    .filter(function (r) { return r[0] && r[5] !== 'não'; })
     .map(function (r) {
       return {
         categoria: r[0], grupo: r[1], tipo: r[2],
         palavras: String(r[3] || '').split(',').map(function (p) { return p.trim(); }).filter(Boolean),
-        orcamento: Number(r[4]) || 0
+        orcamento: Number(r[4]) || 0,
+        ativo: true
       };
     });
 }
 
-function lerContas_() {
-  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('contas');
+// ---------------------------------------------------------------------------
+// Painel do mês
+// ---------------------------------------------------------------------------
+
+/**
+ * Tudo que a tela do mês precisa, numa chamada só: os totais, os cortes por
+ * categoria, conta, pessoa e fonte, a evolução dos últimos seis meses e o que
+ * ainda está previsto para cair até o fim do mês.
+ */
+function painel_(pedido) {
+  var mes = (pedido.mes || mesAtual_()).slice(0, 7);
+
+  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('lancamentos');
   var n = aba.getLastRow() - 1;
-  if (n <= 0) return ['Principal'];
-  return aba.getRange(2, 1, n, 4).getValues()
-    .filter(function (r) { return r[0] && r[3] !== 'não'; })
-    .map(function (r) { return r[0]; });
+  var col = indiceColunas_();
+
+  // Seis meses terminando no mês pedido, para a evolução.
+  var meses = [];
+  var m = mes;
+  for (var i = 0; i < 6; i++) { meses.unshift(m); m = mesAnterior_(m); }
+  var serie = {};
+  meses.forEach(function (k) { serie[k] = { mes: k, receitas: 0, despesas: 0 }; });
+
+  var totais = { receitas: 0, despesas: 0, lancamentos: 0 };
+  var porCategoria = {}, porConta = {}, porPessoa = {}, porFonte = {}, porGrupo = {};
+  var porDia = {};
+
+  var grupoDe = {};
+  lerCategorias_().forEach(function (c) { grupoDe[chaveNome_(c.categoria)] = c.grupo || 'Outros'; });
+
+  if (n > 0) {
+    aba.getRange(2, 1, n, ABAS.lancamentos.length).getValues().forEach(function (r) {
+      if (r[col.status] !== STATUS.OK) return;
+
+      var data = normalizarData_(r[col.data]);
+      var mesLinha = data.slice(0, 7);
+      var valor = Number(r[col.valor]) || 0;
+      var receita = r[col.tipo] === 'receita';
+
+      if (serie[mesLinha]) {
+        if (receita) serie[mesLinha].receitas += valor;
+        else serie[mesLinha].despesas += valor;
+      }
+
+      if (mesLinha !== mes) return;
+
+      totais.lancamentos++;
+      var pessoa = r[col.pessoa] || 'Sem dono';
+
+      if (receita) {
+        totais.receitas += valor;
+        somar_(porFonte, r[col.fonte] || 'Sem fonte', valor);
+      } else {
+        totais.despesas += valor;
+        var cat = r[col.categoria] || 'Outros';
+        somar_(porCategoria, cat, valor);
+        somar_(porGrupo, grupoDe[chaveNome_(cat)] || 'Outros', valor);
+        somar_(porConta, r[col.conta] || 'Sem conta', valor);
+        somar_(porDia, data, valor);
+      }
+      somar_(porPessoa, pessoa, receita ? 0 : valor);
+    });
+  }
+
+  // O que ainda está previsto e não apareceu como lançamento neste mês.
+  var compromissos = recorrentesDoMes_(mes);
+  var jaLancado = {};
+  Object.keys(porCategoria).forEach(function (c) { jaLancado[chaveNome_(c)] = true; });
+  var previsto = compromissos.filter(function (c) {
+    return c.tipo !== 'receita' && !jaLancado[chaveNome_(c.nome)];
+  });
+
+  var orcamentos = {};
+  lerCategorias_().forEach(function (c) {
+    if (c.orcamento > 0) orcamentos[c.categoria] = c.orcamento;
+  });
+
+  return {
+    ok: true,
+    mes: mes,
+    receitas: arred_(totais.receitas),
+    despesas: arred_(totais.despesas),
+    saldo: arred_(totais.receitas - totais.despesas),
+    lancamentos: totais.lancamentos,
+    por_categoria: emLista_(porCategoria),
+    por_grupo: emLista_(porGrupo),
+    por_conta: emLista_(porConta),
+    por_pessoa: emLista_(porPessoa),
+    por_fonte: emLista_(porFonte),
+    por_dia: Object.keys(porDia).sort().map(function (d) {
+      return { dia: d, total: arred_(porDia[d]) };
+    }),
+    evolucao: meses.map(function (k) {
+      return {
+        mes: k,
+        receitas: arred_(serie[k].receitas),
+        despesas: arred_(serie[k].despesas),
+        saldo: arred_(serie[k].receitas - serie[k].despesas)
+      };
+    }),
+    previsto: previsto.map(function (c) {
+      return { nome: c.nome, valor: arred_(c.valor), dia: c.dia, categoria: c.categoria };
+    }),
+    previsto_total: arred_(previsto.reduce(function (a, c) { return a + c.valor; }, 0)),
+    orcamentos: orcamentos
+  };
+}
+
+function somar_(mapa, chave, valor) {
+  if (!chave) return;
+  mapa[chave] = (mapa[chave] || 0) + valor;
+}
+
+function emLista_(mapa) {
+  return Object.keys(mapa)
+    .map(function (k) { return { nome: k, total: arred_(mapa[k]) }; })
+    .filter(function (i) { return i.total > 0; })
+    .sort(function (a, b) { return b.total - a.total; });
+}
+
+function arred_(v) {
+  return Math.round((Number(v) || 0) * 100) / 100;
+}
+
+// ---------------------------------------------------------------------------
+// Editar e excluir lançamentos
+// ---------------------------------------------------------------------------
+
+var CAMPOS_EDITAVEIS = [
+  'data', 'tipo', 'valor', 'categoria', 'descricao',
+  'conta', 'metodo', 'fonte', 'pessoa', 'parcela_atual', 'parcelas_total'
+];
+
+/** Todos os lançamentos de um mês, do mais recente para o mais antigo. */
+function lancamentosDoMes_(pedido) {
+  var mes = (pedido.mes || mesAtual_()).slice(0, 7);
+  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('lancamentos');
+  var n = aba.getLastRow() - 1;
+  if (n <= 0) return { ok: true, mes: mes, lancamentos: [] };
+
+  var col = indiceColunas_();
+  var lista = [];
+
+  aba.getRange(2, 1, n, ABAS.lancamentos.length).getValues().forEach(function (r) {
+    if (r[col.status] === STATUS.EXCLUIDO) return;
+    var data = normalizarData_(r[col.data]);
+    if (data.indexOf(mes) !== 0) return;
+    lista.push(lancamentoDe_(r, col, data));
+  });
+
+  lista.sort(function (a, b) { return a.data < b.data ? 1 : (a.data > b.data ? -1 : 0); });
+  return { ok: true, mes: mes, lancamentos: lista };
+}
+
+function lancamentoDe_(r, col, data) {
+  return {
+    uuid: r[col.uuid],
+    data: data || normalizarData_(r[col.data]),
+    tipo: r[col.tipo] || 'despesa',
+    valor: Number(r[col.valor]) || 0,
+    categoria: r[col.categoria] || '',
+    descricao: r[col.descricao] || '',
+    conta: r[col.conta] || '',
+    metodo: r[col.metodo] || '',
+    fonte: r[col.fonte] || '',
+    pessoa: r[col.pessoa] || '',
+    parcela_atual: r[col.parcela_atual] || '',
+    parcelas_total: r[col.parcelas_total] || '',
+    texto_falado: r[col.texto_falado] || '',
+    status: r[col.status] || STATUS.OK,
+    revisar: r[col.revisar] === 'sim'
+  };
+}
+
+function acharLinhaPorUuid_(aba, uuid) {
+  var n = aba.getLastRow() - 1;
+  if (n <= 0) return 0;
+  var uuids = aba.getRange(2, 1, n, 1).getValues();
+  for (var i = 0; i < uuids.length; i++) {
+    if (String(uuids[i][0]) === String(uuid)) return i + 2;
+  }
+  return 0;
+}
+
+/** Altera só os campos enviados. O que não vier fica como está. */
+function editarLancamento_(pedido) {
+  if (!pedido.uuid) return { ok: false, erro: 'uuid_faltando' };
+
+  var trava = LockService.getScriptLock();
+  trava.waitLock(15000);
+  try {
+    var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('lancamentos');
+    var linha = acharLinhaPorUuid_(aba, pedido.uuid);
+    if (!linha) return { ok: false, erro: 'nao_encontrado' };
+
+    var col = indiceColunas_();
+    var faixa = aba.getRange(linha, 1, 1, ABAS.lancamentos.length);
+    var valores = faixa.getValues()[0];
+    var mudou = [];
+
+    CAMPOS_EDITAVEIS.forEach(function (campo) {
+      if (pedido.campos && pedido.campos[campo] !== undefined) {
+        var novo = pedido.campos[campo];
+        if (campo === 'valor') novo = Number(novo) || 0;
+        if (String(valores[col[campo]]) !== String(novo)) mudou.push(campo);
+        valores[col[campo]] = novo;
+      }
+    });
+
+    // Corrigir uma linha à mão resolve a dúvida que marcou ela para revisão.
+    valores[col.revisar] = '';
+    if (valores[col.status] !== STATUS.OK) valores[col.status] = STATUS.OK;
+
+    faixa.setValues([valores]);
+    atualizarResumo_();
+
+    return { ok: true, uuid: pedido.uuid, alterados: mudou };
+  } finally {
+    trava.releaseLock();
+  }
+}
+
+/**
+ * Marca como excluído em vez de apagar a linha: sai de todas as contas e
+ * gráficos, mas continua na planilha caso você tenha errado o toque.
+ */
+function excluirLancamento_(pedido) {
+  if (!pedido.uuid) return { ok: false, erro: 'uuid_faltando' };
+
+  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('lancamentos');
+  var linha = acharLinhaPorUuid_(aba, pedido.uuid);
+  if (!linha) return { ok: false, erro: 'nao_encontrado' };
+
+  var col = indiceColunas_();
+  aba.getRange(linha, col.status + 1).setValue(STATUS.EXCLUIDO);
+  atualizarResumo_();
+  return { ok: true, uuid: pedido.uuid };
+}
+
+// ---------------------------------------------------------------------------
+// Cadastros: contas, categorias, fontes e pessoas
+// ---------------------------------------------------------------------------
+//
+// Os quatro se comportam igual: uma aba, a primeira coluna é o nome, a última
+// diz se está ativo. Desativar em vez de apagar preserva os lançamentos antigos
+// que apontam para aquele nome — eles continuam fazendo sentido no histórico.
+
+var CADASTROS = {
+  contas:     { aba: 'contas',     campos: ['nome', 'tipo', 'pessoa', 'saldo_inicial', 'ativo'] },
+  categorias: { aba: 'categorias', campos: ['categoria', 'grupo', 'tipo', 'palavras_chave', 'orcamento_mes', 'ativo'] },
+  fontes:     { aba: 'fontes',     campos: ['nome', 'pessoa', 'tipo', 'ativo'] },
+  pessoas:    { aba: 'pessoas',    campos: ['nome', 'ativo'] }
+};
+
+/** Tudo que o app precisa para preencher os seletores, numa chamada só. */
+function cadastros_() {
+  return {
+    ok: true,
+    categorias: lerCategorias_(),
+    contas: lerCadastro_('contas'),
+    fontes: lerCadastro_('fontes'),
+    pessoas: lerCadastro_('pessoas'),
+    // compatibilidade com versões anteriores do app, que esperavam nomes soltos
+    contas_nomes: lerContas_()
+  };
+}
+
+function lerCadastro_(tipo) {
+  var def = CADASTROS[tipo];
+  if (!def) return [];
+  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(def.aba);
+  if (!aba) return [];
+  var n = aba.getLastRow() - 1;
+  if (n <= 0) return [];
+
+  return aba.getRange(2, 1, n, def.campos.length).getValues()
+    .map(function (linha, i) {
+      var item = { linha: i + 2 };
+      def.campos.forEach(function (campo, c) { item[campo] = linha[c]; });
+      item.ativo = item.ativo !== 'não' && item.ativo !== false;
+      return item;
+    })
+    .filter(function (item) { return item[def.campos[0]]; });
+}
+
+/** Cria, ou atualiza pelo nome. Renomeia se vier `nome_antigo`. */
+function salvarCadastro_(pedido) {
+  var tipo = pedido.tipo;
+  var def = CADASTROS[tipo];
+  if (!def) return { ok: false, erro: 'cadastro_desconhecido' };
+
+  var item = pedido.item || {};
+  var chaveCampo = def.campos[0];
+  var nome = String(item[chaveCampo] || pedido.nome || '').trim();
+  if (!nome) return { ok: false, erro: 'nome_vazio' };
+
+  var trava = LockService.getScriptLock();
+  trava.waitLock(15000);
+  try {
+    var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(def.aba);
+    var existentes = lerCadastro_(tipo);
+    var procurado = chaveNome_(pedido.nome_antigo || nome);
+    var achado = existentes.filter(function (e) {
+      return chaveNome_(e[chaveCampo]) === procurado;
+    })[0];
+
+    var valores = def.campos.map(function (campo) {
+      if (campo === chaveCampo) return nome;
+      if (campo === 'ativo') return item.ativo === false || item.ativo === 'não' ? 'não' : 'sim';
+      if (item[campo] !== undefined && item[campo] !== null) return item[campo];
+      return achado ? achado[campo] : '';
+    });
+
+    if (achado) {
+      aba.getRange(achado.linha, 1, 1, def.campos.length).setValues([valores]);
+      // Renomear precisa arrastar os lançamentos junto, senão eles ficam órfãos.
+      if (pedido.nome_antigo && chaveNome_(pedido.nome_antigo) !== chaveNome_(nome)) {
+        renomearNosLancamentos_(tipo, pedido.nome_antigo, nome);
+      }
+      return { ok: true, acao: 'atualizado', nome: nome };
+    }
+
+    aba.appendRow(valores);
+    return { ok: true, acao: 'criado', nome: nome };
+  } finally {
+    trava.releaseLock();
+  }
+}
+
+/** Desativa. Não apaga, para não quebrar o histórico. */
+function excluirCadastro_(pedido) {
+  var def = CADASTROS[pedido.tipo];
+  if (!def) return { ok: false, erro: 'cadastro_desconhecido' };
+
+  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(def.aba);
+  var alvo = chaveNome_(pedido.nome);
+  var achado = lerCadastro_(pedido.tipo).filter(function (e) {
+    return chaveNome_(e[def.campos[0]]) === alvo;
+  })[0];
+
+  if (!achado) return { ok: false, erro: 'nao_encontrado' };
+
+  var colunaAtivo = def.campos.indexOf('ativo') + 1;
+  aba.getRange(achado.linha, colunaAtivo).setValue('não');
+  return { ok: true, acao: 'desativado', nome: pedido.nome };
+}
+
+/** Quando um cadastro muda de nome, os lançamentos acompanham. */
+function renomearNosLancamentos_(tipo, de, para) {
+  var coluna = { contas: 'conta', categorias: 'categoria', fontes: 'fonte', pessoas: 'pessoa' }[tipo];
+  if (!coluna) return;
+
+  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('lancamentos');
+  var n = aba.getLastRow() - 1;
+  if (n <= 0) return;
+
+  var col = indiceColunas_();
+  var indice = col[coluna];
+  var faixa = aba.getRange(2, indice + 1, n, 1);
+  var valores = faixa.getValues();
+  var alvo = chaveNome_(de);
+  var mudou = false;
+
+  for (var i = 0; i < valores.length; i++) {
+    if (chaveNome_(valores[i][0]) === alvo) { valores[i][0] = para; mudou = true; }
+  }
+  if (mudou) faixa.setValues(valores);
+}
+
+function lerContas_() {
+  var contas = lerCadastro_('contas').filter(function (c) { return c.ativo; });
+  return contas.length ? contas.map(function (c) { return c.nome; }) : ['Dinheiro'];
 }
 
 // ---------------------------------------------------------------------------
