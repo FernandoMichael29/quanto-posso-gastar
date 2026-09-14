@@ -27,7 +27,18 @@ const casos = [
   ['ontem gastei uns 60 no posto e 35 no almoço', 'ia'],
   ['comprei umas coisas no mercado', 'ia'],
   ['sexta passada paguei 80 no bar', 'ia'],
-  ['', 'ia']
+  ['', 'ia'],
+
+  // regras sobre gastos fixos: NUNCA podem virar lançamento do dia
+  ['meu gasto mensal no aluguel é de 1800', 'ia'],
+  ['esse mês meu aluguel foi 1850', 'ia'],
+  ['meu aluguel agora é 1900', 'ia'],
+  ['pago 89,90 de internet todo mês', 'ia'],
+  ['o condomínio reajustou para 520', 'ia'],
+  ['assinei o spotify por 21,90', 'ia'],
+  ['cancelei a netflix', 'ia'],
+  ['minha faculdade é 430 todo dia 10', 'ia'],
+  ['este mês a luz veio 310', 'ia']
 ];
 
 let ok = 0, falhas = [];

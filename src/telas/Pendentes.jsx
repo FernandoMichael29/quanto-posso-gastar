@@ -24,6 +24,10 @@ const PRECISA_DE_VOCE = {
   token_invalido: {
     titulo: 'O token não confere',
     o_que_fazer: 'Rode verToken() no Apps Script e cole o valor certo nos Ajustes.'
+  },
+  teto_diario: {
+    titulo: 'Teto diário de interpretações atingido',
+    o_que_fazer: 'Tudo aqui é interpretado sozinho amanhã. Se você não fez esse volume de lançamentos hoje, troque o token: rode girarToken() no Apps Script.'
   }
 };
 

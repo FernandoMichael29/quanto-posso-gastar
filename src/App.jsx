@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Falar from './telas/Falar.jsx';
 import Pendentes from './telas/Pendentes.jsx';
+import Perguntar from './telas/Perguntar.jsx';
 import Ajustes from './telas/Ajustes.jsx';
 import { CATEGORIAS_PADRAO } from './lib/categorias.js';
 import { ESTADO, listar } from './lib/db.js';
@@ -86,6 +87,7 @@ export default function App() {
             aoMudarFila={() => { recarregarFila(); recarregarDados(); }}
           />
         )}
+        {aba === 'perguntar' && <Perguntar />}
         {aba === 'fila' && <Pendentes fila={fila} aoMudarFila={recarregarFila} />}
         {aba === 'ajustes' && (
           <Ajustes aoSalvar={() => { recarregarDados(); setAba('falar'); }} />
@@ -98,6 +100,11 @@ export default function App() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
               <rect x="9" y="2.5" width="6" height="11" rx="3" />
               <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" />
+            </svg>
+          </Botao>
+          <Botao atual={aba} id="perguntar" rotulo="Perguntar" aoClicar={setAba}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 19V9M9.5 19V5M15 19v-7M20.5 19v-4" />
             </svg>
           </Botao>
           <Botao atual={aba} id="fila" rotulo="Fila" aoClicar={setAba} selo={esperando}>

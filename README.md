@@ -18,18 +18,34 @@ O passo a passo detalhado está em [`INSTALAR.md`](./INSTALAR.md).
 3. Criar a chave da API da Claude
 4. Publicar o app no GitHub Pages e instalar no celular
 
+## Fato ou regra
+
+A distinção que o app precisa acertar:
+
+| Você fala | O que acontece |
+|---|---|
+| "mercado 120 reais" | Um gasto de hoje |
+| "meu gasto mensal com aluguel é 1800" | Passa a valer 1800 por mês, até você dizer outra coisa |
+| "esse mês o aluguel foi 1850" | Vale só neste mês; o futuro continua 1800 |
+| "meu aluguel agora é 1900" | Daqui pra frente é 1900 — e o mês passado continua 1800 |
+| "cancelei a netflix" | Encerra o compromisso neste mês |
+
+Nada é sobrescrito: cada mudança fecha a vigência anterior e abre uma nova, então
+o histórico fica inteiro e as projeções olham para o valor certo de cada mês.
+
 ## Estrutura
 
 ```
-apps-script/Codigo.gs   o servidor inteiro: planilha, IA, fila, avisos
-src/lib/parser.js       entende português sem internet e sem custo
-src/lib/db.js           a fila local (IndexedDB) — nada se perde
-src/lib/sync.js         quando e como tentar de novo
-src/lib/api.js          conversa com o Apps Script
-src/lib/voz.js          microfone, com queda para o teclado quando offline
-src/telas/              Falar, Fila e Ajustes
-public/sw.js            abre offline e sincroniza com o app fechado
-testes/parser.test.mjs  19 frases reais em português
+apps-script/Codigo.gs        o servidor inteiro: planilha, IA, vigências, fila, avisos
+src/lib/parser.js            entende português sem internet e sem custo
+src/lib/db.js                a fila local (IndexedDB) — nada se perde
+src/lib/sync.js              quando e como tentar de novo
+src/lib/api.js               conversa com o Apps Script
+src/lib/voz.js               microfone, com queda para o teclado quando offline
+src/telas/                   Falar, Perguntar, Fila e Ajustes
+src/componentes/             o gráfico de projeção
+public/sw.js                 abre offline e sincroniza com o app fechado
+testes/parser.test.mjs       28 frases reais em português
 ```
 
 ## Rodar na sua máquina
@@ -47,8 +63,14 @@ O microfone do navegador só funciona em HTTPS ou em `localhost`.
 
 ## O que já está pronto
 
-Fase 1 e parte da Fase 2: registrar por voz, regras locais, interpretação por
-IA, fila offline com estados, resumo do mês e avisos quando algo trava.
+- **Registrar por voz** com regras locais e interpretação por IA
+- **Fila offline** com estados e nova tentativa automática — nada se perde,
+  nem sem internet nem sem créditos na API
+- **Compromissos fixos com histórico de valores** (a tabela acima)
+- **Perguntar e simular**: "um carro de 950 por mês, quanto me afeta?", com
+  projeção de 12 meses em gráfico
+- **Memória**: o que você conta sobre si entra no contexto das próximas análises
+- Tetos diários de uso, limite por minuto e troca de token, como defesa de custo
 
-Fases seguintes: painel com gráficos, e a tela de perguntar
-*"e se eu comprar um carro de 950 por mês?"* com projeção.
+Falta a Fase 3: o painel de acompanhamento com gastos por categoria e evolução
+do saldo — mais útil depois de algumas semanas de dados.
