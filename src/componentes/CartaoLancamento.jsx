@@ -25,6 +25,13 @@ export default function CartaoLancamento({
     l.categoria,
     'categoria'
   );
+  // Na hora de confirmar, `valor` é o total da compra; depois de gravada, cada
+  // linha já é uma parcela. Por isso o rótulo muda entre os dois momentos.
+  const parcelado = Number(l.parcelas_total) > 1;
+  const valorParcela = parcelado
+    ? (modo === 'editar' && l.parcela_atual ? Number(l.valor) : Number(l.valor) / l.parcelas_total)
+    : Number(l.valor);
+
   const contas = paraSelecionar(cadastros.contas, l.conta);
   const fontes = paraSelecionar(cadastros.fontes, l.fonte);
   const pessoas = paraSelecionar(cadastros.pessoas, l.pessoa);
@@ -46,14 +53,32 @@ export default function CartaoLancamento({
         >
           {receita ? 'entrada' : 'saída'} ⇄
         </button>
-        {l.parcelas_total > 1 && (
+        {parcelado && (
           <span className="etiqueta">
-            {l.parcelas_total}× de {formatarBRL(l.valor / l.parcelas_total)}
+            {modo === 'editar' && l.parcela_atual
+              ? `parcela ${l.parcela_atual} de ${l.parcelas_total}`
+              : `${l.parcelas_total}× de ${formatarBRL(valorParcela)}`}
           </span>
         )}
       </div>
 
       {l.motivo && <p className="ajuda">{l.motivo}</p>}
+
+      {/* Antes de confirmar, deixo claro o que vai acontecer: a compra não pesa
+          inteira neste mês, ela vira uma parcela por mês. */}
+      {parcelado && modo === 'confirmar' && (
+        <p className="ajuda">
+          Vira {l.parcelas_total} lançamentos de {formatarBRL(valorParcela)}, um por mês —
+          este mês conta só a primeira.
+        </p>
+      )}
+
+      {parcelado && modo === 'editar' && (
+        <p className="ajuda">
+          Categoria, descrição e conta valem para as {l.parcelas_total} parcelas.
+          Valor e data mudam só nesta.
+        </p>
+      )}
 
       <div className="campo">
         <label htmlFor="c-descricao">Descrição</label>
@@ -138,7 +163,7 @@ export default function CartaoLancamento({
 
       {/* Sempre visível e sempre desmarcado. Um palpite do app sobre o que é
           conta fixa erraria justamente nos casos ambíguos; um toque não erra. */}
-      {modo === 'confirmar' && !receita && (
+      {modo === 'confirmar' && !receita && !parcelado && (
         <label className="repete-linha">
           <input
             type="checkbox"
@@ -152,7 +177,7 @@ export default function CartaoLancamento({
         </label>
       )}
 
-      {modo === 'editar' && aoTornarMensal && (
+      {modo === 'editar' && aoTornarMensal && !parcelado && (
         <button type="button" className="btn repetir" onClick={aoTornarMensal} disabled={ocupado}>
           ↻ Este gasto se repete todo mês
         </button>
@@ -165,7 +190,7 @@ export default function CartaoLancamento({
       <div className="botoes">
         {modo === 'editar' && aoExcluir && (
           <button type="button" className="btn perigo" onClick={aoExcluir} disabled={ocupado}>
-            Excluir
+            {parcelado ? `Excluir as ${l.parcelas_total}` : 'Excluir'}
           </button>
         )}
         <button type="button" className="btn discreto" onClick={aoCancelar} disabled={ocupado}>

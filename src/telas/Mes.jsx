@@ -335,7 +335,12 @@ export default function Mes({ cadastros, aoMudarDados }) {
               <span className="corpo">
                 <span className="titulo">{l.descricao || l.categoria || '(sem descrição)'}</span>
                 <span className="meta">
-                  {[l.categoria, l.conta, l.pessoa].filter(Boolean).join(' · ')} · {diaDe(l.data)}
+                  {[
+                    l.categoria,
+                    l.conta,
+                    l.pessoa,
+                    Number(l.parcelas_total) > 1 ? `parcela ${l.parcela_atual}/${l.parcelas_total}` : null
+                  ].filter(Boolean).join(' · ')} · {diaDe(l.data)}
                   {l.revisar ? ' · confira' : ''}
                 </span>
               </span>

@@ -424,12 +424,19 @@ function lancar_(pedido) {
         if (ehCartao_(conta)) l.fatura_mes = mesDaFatura_(conta, l.data || hojeISO_());
       }
 
-      novas.push(linhaDe_(l));
-      gravados.push(l.uuid);
+      // Compra parcelada vira uma linha por parcela.
+      expandirParcelas_(l).forEach(function (p) {
+        if (existentes[p.uuid]) { duplicados.push(p.uuid); return; }
+        existentes[p.uuid] = true;
+        novas.push(linhaDe_(p));
+        gravados.push(p.uuid);
+      });
 
       // Marcado como "repete todo mês" na hora de confirmar: além do gasto,
       // nasce a regra. Evita ter que voltar depois para transformá-lo em fixo.
-      if (l.repete) {
+      // Parcelamento não entra aqui: as parcelas já ocupam os meses seguintes,
+      // e uma regra mensal por cima delas cobraria o mesmo gasto duas vezes.
+      if (l.repete && !(Number(l.parcelas_total) > 1)) {
         try {
           aplicarRecorrente_({
             nome: l.descricao || l.categoria || 'Conta fixa',
@@ -455,6 +462,134 @@ function lancar_(pedido) {
   } finally {
     trava.releaseLock();
   }
+}
+
+/**
+ * Uma compra em 5x não é um gasto de 200 em setembro: são cinco de 40, um por
+ * mês — é assim que ela chega na fatura e é assim que ela pesa no seu mês. Por
+ * isso a compra parcelada vira cinco linhas, uma por parcela, cada uma na data
+ * e na fatura em que realmente cai. Somar o total no mês da compra faria
+ * setembro parecer 160 reais pior do que foi, e os outros quatro meses
+ * parecerem tranquilos.
+ *
+ * Os uuids das parcelas seguintes derivam do primeiro ("<uuid>-p2"), então
+ * reenviar a mesma compra continua sem duplicar nada, e dá para achar as irmãs
+ * de uma parcela sem inventar coluna nova na planilha.
+ */
+function expandirParcelas_(l) {
+  var n = Math.round(Number(l.parcelas_total) || 0);
+  var total = arred_(l.valor);
+  if (n < 2 || !total) return [l];
+
+  var parcela = arred_(total / n);
+  // Os centavos que não dividem certo ficam na primeira, como o cartão faz.
+  var primeira = arred_(total - parcela * (n - 1));
+
+  var dataCompra = normalizarData_(l.data || hojeISO_());
+  var faturaBase = l.fatura_mes ? normalizarMes_(l.fatura_mes) : '';
+  var partes = [];
+
+  for (var k = 0; k < n; k++) {
+    var p = {};
+    for (var campo in l) { if (l.hasOwnProperty(campo)) p[campo] = l[campo]; }
+    p.uuid = k === 0 ? l.uuid : l.uuid + '-p' + (k + 1);
+    p.valor = k === 0 ? primeira : parcela;
+    p.data = somarMesesData_(dataCompra, k);
+    p.parcela_atual = k + 1;
+    p.parcelas_total = n;
+    p.fatura_mes = faturaBase ? mesSomado_(faturaBase, k) : '';
+    p.repete = false;
+    partes.push(p);
+  }
+  return partes;
+}
+
+/** Todas as parcelas de uma compra compartilham este prefixo. */
+function grupoDoUuid_(uuid) {
+  return String(uuid || '').replace(/-p\d+$/, '');
+}
+
+function ehDoGrupo_(uuid, base) {
+  var u = String(uuid || '');
+  return u === base || u.indexOf(base + '-p') === 0;
+}
+
+/** "2026-11" três meses depois de "2026-08"; aceita n negativo. */
+function mesSomado_(mes, n) {
+  var ano = Number(String(mes).slice(0, 4));
+  var m = Number(String(mes).slice(5, 7)) - 1 + Number(n || 0);
+  ano += Math.floor(m / 12);
+  m = ((m % 12) + 12) % 12 + 1;
+  return ano + '-' + (m < 10 ? '0' + m : String(m));
+}
+
+/** Mesmo dia n meses depois; dia 31 em mês curto encosta no último dia. */
+function somarMesesData_(dataISO, n) {
+  var alvo = mesSomado_(String(dataISO).slice(0, 7), n);
+  var dia = Number(String(dataISO).slice(8, 10)) || 1;
+  var ultimo = new Date(Number(alvo.slice(0, 4)), Number(alvo.slice(5, 7)), 0).getDate();
+  var d = Math.min(dia, ultimo);
+  return alvo + '-' + (d < 10 ? '0' + d : String(d));
+}
+
+/**
+ * Conserta as compras parceladas que já estão na planilha lançadas pelo valor
+ * cheio num mês só. Rode uma vez, à mão, no editor do Apps Script — depois
+ * disso toda compra parcelada já nasce dividida. Rodar de novo não faz mal:
+ * quem já tem parcelas é ignorado.
+ */
+function corrigirParcelasAntigas() {
+  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('lancamentos');
+  var n = aba.getLastRow() - 1;
+  if (n <= 0) return 'Nada para corrigir.';
+
+  var col = indiceColunas_();
+  var largura = ABAS.lancamentos.length;
+  var dados = aba.getRange(2, 1, n, largura).getValues();
+
+  var existe = {};
+  dados.forEach(function (r) { existe[String(r[col.uuid])] = true; });
+
+  var novas = [], relato = [];
+
+  for (var i = 0; i < dados.length; i++) {
+    var r = dados[i];
+    if (r[col.status] !== STATUS.OK) continue;
+    if (Math.round(Number(r[col.parcelas_total]) || 0) < 2) continue;
+
+    var uuid = String(r[col.uuid]);
+    if (grupoDoUuid_(uuid) !== uuid) continue;   // já é parcela derivada
+    if (existe[uuid + '-p2']) continue;          // já foi dividida antes
+
+    var l = {};
+    ABAS.lancamentos.forEach(function (nome, c) { l[nome] = r[c]; });
+    l.data = normalizarData_(l.data);
+    l.fatura_mes = l.fatura_mes ? normalizarMes_(l.fatura_mes) : '';
+
+    var partes = expandirParcelas_(l);
+    if (partes.length < 2) continue;
+
+    var primeira = linhaDe_(partes[0]);
+    primeira[col.hora_registro] = r[col.hora_registro];   // preserva o registro original
+    aba.getRange(i + 2, 1, 1, largura).setValues([primeira]);
+
+    for (var k = 1; k < partes.length; k++) {
+      var linha = linhaDe_(partes[k]);
+      linha[col.hora_registro] = r[col.hora_registro];
+      novas.push(linha);
+      existe[partes[k].uuid] = true;
+    }
+
+    relato.push((l.descricao || l.categoria || uuid) + ': ' +
+      arred_(l.valor).toFixed(2) + ' em ' + partes.length + 'x de ' +
+      partes[1].valor.toFixed(2));
+  }
+
+  if (novas.length) {
+    aba.getRange(aba.getLastRow() + 1, 1, novas.length, largura).setValues(novas);
+    atualizarResumo_();
+  }
+  return relato.length ? relato.join('\n') : 'Nenhuma compra parcelada precisava de conserto.';
 }
 
 function linhaDe_(l) {
@@ -1732,13 +1867,70 @@ function editarLancamento_(pedido) {
     valores[col.revisar] = '';
     if (valores[col.status] !== STATUS.OK) valores[col.status] = STATUS.OK;
 
+    // Trocar a conta troca a fatura em que a compra cai. Sem recalcular aqui, a
+    // linha continuaria carimbada com a fatura do cartão antigo.
+    if (mudou.indexOf('conta') >= 0 || mudou.indexOf('data') >= 0) {
+      valores[col.fatura_mes] = '';
+      if (String(valores[col.tipo]) === TIPO.DESPESA) {
+        var cartao = indiceContas_()[chaveNome_(String(valores[col.conta] || ''))];
+        if (ehCartao_(cartao)) {
+          valores[col.fatura_mes] = mesDaFatura_(cartao, normalizarData_(valores[col.data]));
+        }
+      }
+    }
+
     faixa.setValues([valores]);
+
+    // Se é uma parcela, o que descreve a compra vale para todas as irmãs —
+    // categoria, descrição e conta são da compra, não da parcela. Valor e data
+    // continuam sendo de cada uma.
+    var irmas = propagarNoGrupo_(aba, col, pedido.uuid, valores, mudou);
+
     atualizarResumo_();
 
-    return { ok: true, uuid: pedido.uuid, alterados: mudou };
+    return { ok: true, uuid: pedido.uuid, alterados: mudou, parcelas_ajustadas: irmas };
   } finally {
     trava.releaseLock();
   }
+}
+
+/** Campos que descrevem a compra toda, não uma parcela dela. */
+var CAMPOS_DA_COMPRA = ['tipo', 'categoria', 'descricao', 'conta', 'metodo', 'fonte', 'pessoa'];
+
+function propagarNoGrupo_(aba, col, uuid, valores, mudou) {
+  var campos = CAMPOS_DA_COMPRA.filter(function (c) { return mudou.indexOf(c) >= 0; });
+  if (!campos.length) return 0;
+
+  var base = grupoDoUuid_(uuid);
+  var n = aba.getLastRow() - 1;
+  if (n <= 0) return 0;
+
+  var largura = ABAS.lancamentos.length;
+  var dados = aba.getRange(2, 1, n, largura).getValues();
+  var cartao = null, olhouCartao = false;
+  var ajustadas = 0;
+
+  for (var i = 0; i < dados.length; i++) {
+    var u = String(dados[i][col.uuid]);
+    if (u === String(uuid) || !ehDoGrupo_(u, base)) continue;
+    if (dados[i][col.status] === STATUS.EXCLUIDO) continue;
+
+    campos.forEach(function (c) { dados[i][col[c]] = valores[col[c]]; });
+
+    if (campos.indexOf('conta') >= 0) {
+      if (!olhouCartao) {
+        cartao = indiceContas_()[chaveNome_(String(valores[col.conta] || ''))];
+        olhouCartao = true;
+      }
+      dados[i][col.fatura_mes] = ehCartao_(cartao)
+        ? mesDaFatura_(cartao, normalizarData_(dados[i][col.data]))
+        : '';
+    }
+
+    aba.getRange(i + 2, 1, 1, largura).setValues([dados[i]]);
+    ajustadas++;
+  }
+  return ajustadas;
 }
 
 /**
@@ -1846,17 +2038,34 @@ function tornarMensal_(pedido) {
  * Marca como excluído em vez de apagar a linha: sai de todas as contas e
  * gráficos, mas continua na planilha caso você tenha errado o toque.
  */
+/**
+ * Excluir uma parcela exclui a compra inteira — ninguém devolve só a terceira
+ * de cinco. Compra à vista tem grupo de uma linha só, então o caminho é o mesmo.
+ */
 function excluirLancamento_(pedido) {
   if (!pedido.uuid) return { ok: false, erro: 'uuid_faltando' };
 
   var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('lancamentos');
-  var linha = acharLinhaPorUuid_(aba, pedido.uuid);
-  if (!linha) return { ok: false, erro: 'nao_encontrado' };
+  var n = aba.getLastRow() - 1;
+  if (n <= 0) return { ok: false, erro: 'nao_encontrado' };
 
   var col = indiceColunas_();
-  aba.getRange(linha, col.status + 1).setValue(STATUS.EXCLUIDO);
+  var base = grupoDoUuid_(pedido.uuid);
+  var uuids = aba.getRange(2, col.uuid + 1, n, 1).getValues();
+  var status = aba.getRange(2, col.status + 1, n, 1).getValues();
+  var excluidos = 0;
+
+  for (var i = 0; i < uuids.length; i++) {
+    if (!ehDoGrupo_(uuids[i][0], base)) continue;
+    if (status[i][0] === STATUS.EXCLUIDO) continue;
+    status[i][0] = STATUS.EXCLUIDO;
+    excluidos++;
+  }
+  if (!excluidos) return { ok: false, erro: 'nao_encontrado' };
+
+  aba.getRange(2, col.status + 1, n, 1).setValues(status);
   atualizarResumo_();
-  return { ok: true, uuid: pedido.uuid };
+  return { ok: true, uuid: pedido.uuid, excluidos: excluidos };
 }
 
 // ---------------------------------------------------------------------------
