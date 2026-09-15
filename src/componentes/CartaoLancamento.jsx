@@ -1,4 +1,5 @@
 import { formatarBRL } from '../lib/parser.js';
+import { paraSelecionar } from '../lib/cadastros.js';
 
 // O mesmo cartão em dois lugares: quando você acabou de falar um gasto e vai
 // confirmar, e quando toca num lançamento da lista do mês para corrigir.
@@ -19,11 +20,14 @@ export default function CartaoLancamento({
   const receita = l.tipo === 'receita';
   const mudar = (campo) => (e) => aoMudar({ ...l, [campo]: e.target.value });
 
-  const categorias = (cadastros.categorias || [])
-    .filter((c) => !c.tipo || c.tipo === l.tipo);
-  const contas = cadastros.contas || [];
-  const fontes = (cadastros.fontes || []).filter((f) => f.ativo !== false);
-  const pessoas = (cadastros.pessoas || []).filter((p) => p.ativo !== false);
+  const categorias = paraSelecionar(
+    (cadastros.categorias || []).filter((c) => !c.tipo || c.tipo === l.tipo),
+    l.categoria,
+    'categoria'
+  );
+  const contas = paraSelecionar(cadastros.contas, l.conta);
+  const fontes = paraSelecionar(cadastros.fontes, l.fonte);
+  const pessoas = paraSelecionar(cadastros.pessoas, l.pessoa);
 
   return (
     <div className="cartao destaque">
@@ -77,7 +81,9 @@ export default function CartaoLancamento({
           <select id="c-categoria" value={l.categoria || ''} onChange={mudar('categoria')}>
             <option value="">—</option>
             {categorias.map((c) => (
-              <option key={c.categoria} value={c.categoria}>{c.categoria}</option>
+              <option key={c.categoria} value={c.categoria}>
+                {c.categoria}{c.desativado ? ' (desativada)' : ''}
+              </option>
             ))}
           </select>
         </div>
@@ -85,10 +91,11 @@ export default function CartaoLancamento({
           <label htmlFor="c-conta">{receita ? 'Caiu em' : 'Pago com'}</label>
           <select id="c-conta" value={l.conta || ''} onChange={mudar('conta')}>
             <option value="">—</option>
-            {contas.map((c) => {
-              const nome = c.nome ?? c;
-              return <option key={nome} value={nome}>{nome}</option>;
-            })}
+            {contas.map((c) => (
+              <option key={c.nome} value={c.nome}>
+                {c.nome}{c.desativado ? ' (desativada)' : ''}
+              </option>
+            ))}
           </select>
         </div>
       </div>
@@ -99,7 +106,11 @@ export default function CartaoLancamento({
             <label htmlFor="c-fonte">Fonte da renda</label>
             <select id="c-fonte" value={l.fonte || ''} onChange={mudar('fonte')}>
               <option value="">—</option>
-              {fontes.map((f) => <option key={f.nome} value={f.nome}>{f.nome}</option>)}
+              {fontes.map((f) => (
+                <option key={f.nome} value={f.nome}>
+                  {f.nome}{f.desativado ? ' (desativada)' : ''}
+                </option>
+              ))}
             </select>
           </div>
         )}
@@ -107,7 +118,11 @@ export default function CartaoLancamento({
           <label htmlFor="c-pessoa">De quem</label>
           <select id="c-pessoa" value={l.pessoa || ''} onChange={mudar('pessoa')}>
             <option value="">—</option>
-            {pessoas.map((p) => <option key={p.nome} value={p.nome}>{p.nome}</option>)}
+            {pessoas.map((p) => (
+              <option key={p.nome} value={p.nome}>
+                {p.nome}{p.desativado ? ' (desativada)' : ''}
+              </option>
+            ))}
           </select>
         </div>
       </div>
@@ -119,6 +134,22 @@ export default function CartaoLancamento({
             {l.extras.map((e) => `${e.categoria} ${formatarBRL(e.valor)}`).join(' · ')}
           </span>
         </div>
+      )}
+
+      {/* Sempre visível e sempre desmarcado. Um palpite do app sobre o que é
+          conta fixa erraria justamente nos casos ambíguos; um toque não erra. */}
+      {modo === 'confirmar' && !receita && (
+        <label className="repete-linha">
+          <input
+            type="checkbox"
+            checked={Boolean(l.repete)}
+            onChange={(e) => aoMudar({ ...l, repete: e.target.checked })}
+          />
+          <span>
+            Repete todo mês
+            <em>vira conta fixa, e o app passa a cobrar você dela</em>
+          </span>
+        </label>
       )}
 
       {modo === 'editar' && aoTornarMensal && (

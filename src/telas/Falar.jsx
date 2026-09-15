@@ -5,6 +5,7 @@ import { enfileirar, ESTADO, novoId } from '../lib/db.js';
 import { api, configurado } from '../lib/api.js';
 import { sincronizar } from '../lib/sync.js';
 import CartaoLancamento from '../componentes/CartaoLancamento.jsx';
+import { ativos } from '../lib/cadastros.js';
 
 const IconeMic = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
@@ -15,7 +16,8 @@ const IconeMic = () => (
 );
 
 export default function Falar({ cadastros, resumo, aoMudarFila, aoIrParaFila }) {
-  const categorias = cadastros.categorias || [];
+  // Categoria desativada não é mais sugerida pelas regras locais.
+  const categorias = ativos(cadastros.categorias);
   const [ouvindo, setOuvindo] = useState(false);
   const [texto, setTexto] = useState('');
   const [rascunho, setRascunho] = useState(null);

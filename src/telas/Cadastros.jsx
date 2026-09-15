@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../lib/api.js';
+import { paraSelecionar } from '../lib/cadastros.js';
 
 // Contas, categorias, fontes de renda e pessoas. Os quatro funcionam igual:
 // o primeiro campo é o nome, e desativar não apaga — os lançamentos antigos
@@ -129,8 +130,10 @@ export default function Cadastros({ cadastros, aoMudar }) {
                 onChange={(e) => setEditando({ ...editando, pessoa: e.target.value })}
               >
                 <option value="">—</option>
-                {(cadastros.pessoas || []).map((p) => (
-                  <option key={p.nome} value={p.nome}>{p.nome}</option>
+                {paraSelecionar(cadastros.pessoas, editando.pessoa).map((p) => (
+                  <option key={p.nome} value={p.nome}>
+                    {p.nome}{p.desativado ? ' (desativada)' : ''}
+                  </option>
                 ))}
               </select>
             </div>
