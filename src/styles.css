@@ -579,6 +579,18 @@ button.item.sugestao:last-child { border-bottom: none; }
 .divisor { border: none; border-top: 1px solid var(--line); margin: 8px 0 0; }
 .btn.voltar { align-self: flex-start; flex: none; padding-left: 0; }
 
+.btn.repetir {
+  width: 100%;
+  background: var(--surface-2);
+  border-style: dashed;
+  color: var(--accent);
+  font-size: 14px;
+}
+
+.item.fixa .num { color: var(--ink-2); }
+.item.fixa.paga { opacity: .62; }
+.item.fixa.paga .num { text-decoration: line-through; }
+
 /* ---------- barras horizontais ---------- */
 
 .barras {

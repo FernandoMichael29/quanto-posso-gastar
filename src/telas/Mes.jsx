@@ -22,6 +22,7 @@ export default function Mes({ cadastros, aoMudarDados }) {
   const [editando, setEditando] = useState(null);
   const [salvando, setSalvando] = useState(false);
   const [filtroPessoa, setFiltroPessoa] = useState('');
+  const [virandoMensal, setVirandoMensal] = useState(null);
 
   const carregar = useCallback(async (alvo) => {
     if (!configurado()) { setErro('Configure o app nos Ajustes primeiro.'); return; }
@@ -44,6 +45,22 @@ export default function Mes({ cadastros, aoMudarDados }) {
     setSalvando(false);
     if (r.ok) { setEditando(null); carregar(mes); aoMudarDados?.(); }
     else setErro(traduzir(r.erro));
+  }
+
+  async function confirmarMensal() {
+    setSalvando(true);
+    const r = await api.tornarMensal(virandoMensal.uuid, {
+      nome: virandoMensal.nome,
+      dia: virandoMensal.dia,
+      mes_fim: virandoMensal.mes_fim || ''
+    });
+    setSalvando(false);
+    if (r.ok) {
+      setVirandoMensal(null);
+      setEditando(null);
+      carregar(mes);
+      aoMudarDados?.();
+    } else setErro(traduzir(r.erro));
   }
 
   async function excluirEdicao() {
@@ -83,13 +100,40 @@ export default function Mes({ cadastros, aoMudarDados }) {
             </div>
           </div>
 
-          {painel.previsto_total > 0 && (
-            <div className="aviso atencao">
-              <strong>Ainda previsto: {formatarBRL(painel.previsto_total)}</strong>
-              <span className="detalhe">
-                {painel.previsto.map((p) => `${p.nome}${p.dia ? ` (dia ${p.dia})` : ''}`).join(' · ')}
-              </span>
-            </div>
+          {painel.fixas?.length > 0 && (
+            <>
+              <div className="secao-cabecalho">
+                <p className="secao-titulo" style={{ margin: 0 }}>Contas fixas do mês</p>
+                <span className="ajuda" style={{ margin: 0 }}>
+                  {formatarBRL(painel.fixas_total)} no total
+                </span>
+              </div>
+              <div className="lista">
+                {painel.fixas.map((f) => (
+                  <div className={`item fixa ${f.lancado ? 'paga' : ''}`} key={f.nome}>
+                    <span className={`ponto ${f.lancado ? 'sincronizado' : 'pendente'}`} aria-hidden="true" />
+                    <span className="corpo">
+                      <span className="titulo">{f.nome}</span>
+                      <span className="meta">
+                        {f.lancado ? 'já lançado' : 'ainda não apareceu'}
+                        {f.dia ? ` · vence dia ${f.dia}` : ''}
+                        {f.categoria ? ` · ${f.categoria}` : ''}
+                      </span>
+                    </span>
+                    <span className="num">{formatarBRL(f.valor)}</span>
+                  </div>
+                ))}
+              </div>
+              {painel.previsto_total > 0 && (
+                <div className="aviso atencao">
+                  <strong>Ainda vai sair: {formatarBRL(painel.previsto_total)}</strong>
+                  <span className="detalhe">
+                    Contando só o que ainda não apareceu como lançamento.
+                    Sobra projetada: {formatarBRL(painel.saldo - painel.previsto_total)}.
+                  </span>
+                </div>
+              )}
+            </>
           )}
 
           <GraficoEvolucao evolucao={painel.evolucao} mesAtual={painel.mes} />
@@ -174,7 +218,65 @@ export default function Mes({ cadastros, aoMudarDados }) {
               aoConfirmar={salvarEdicao}
               aoCancelar={() => setEditando(null)}
               aoExcluir={excluirEdicao}
+              aoTornarMensal={() => setVirandoMensal({
+                uuid: editando.uuid,
+                nome: editando.descricao || editando.categoria || '',
+                dia: Number(String(editando.data).slice(8, 10)) || '',
+                mes_fim: ''
+              })}
             />
+          </div>
+        </div>
+      )}
+
+      {virandoMensal && (
+        <div className="modal" role="dialog" aria-modal="true" aria-label="Transformar em conta fixa">
+          <div className="modal-fundo" onClick={() => !salvando && setVirandoMensal(null)} />
+          <div className="modal-corpo">
+            <div className="cartao destaque">
+              <p className="secao-titulo" style={{ margin: 0 }}>Repetir todo mês</p>
+              <p className="ajuda">
+                O gasto que você já registrou continua onde está. O que nasce aqui é a regra
+                de que ele se repete — a partir deste mês, até você dizer o contrário.
+              </p>
+
+              <div className="campo">
+                <label htmlFor="m-nome">Como chamar</label>
+                <input
+                  id="m-nome"
+                  value={virandoMensal.nome}
+                  onChange={(e) => setVirandoMensal({ ...virandoMensal, nome: e.target.value })}
+                />
+              </div>
+
+              <div className="linha">
+                <div className="campo">
+                  <label htmlFor="m-dia">Vence dia</label>
+                  <input
+                    id="m-dia" type="number" min="1" max="31" inputMode="numeric"
+                    value={virandoMensal.dia}
+                    onChange={(e) => setVirandoMensal({ ...virandoMensal, dia: e.target.value })}
+                  />
+                </div>
+                <div className="campo">
+                  <label htmlFor="m-fim">Até (opcional)</label>
+                  <input
+                    id="m-fim" type="month"
+                    value={virandoMensal.mes_fim}
+                    onChange={(e) => setVirandoMensal({ ...virandoMensal, mes_fim: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="botoes">
+                <button className="btn discreto" onClick={() => setVirandoMensal(null)} disabled={salvando}>
+                  Cancelar
+                </button>
+                <button className="btn principal" onClick={confirmarMensal} disabled={salvando || !virandoMensal.nome.trim()}>
+                  {salvando ? 'Salvando…' : 'Repetir todo mês'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
