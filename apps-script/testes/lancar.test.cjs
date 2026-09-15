@@ -88,3 +88,21 @@ console.log('pagar fixa:', pg.ok, '| linhas novas', linhas().length - antes, '| 
 const p = painel_({ mes: '2026-09' });
 const f = p.fixas.filter(x => x.nome === 'Consórcio do carro')[0];
 console.log('painel:', f && ('lancado=' + f.lancado + ' valor_lancado=' + f.valor_lancado));
+
+// 9. ordem da lista do mês: dia, depois hora de registro, depois a planilha
+abas.lancamentos.dados.push(['z1','2026-09-05',new Date('2026-09-15T20:00:00'),'despesa',10,'Outros','tarde no dia 5','Pix','','','Fernando','','','','','manual','','ok','','']);
+abas.lancamentos.dados.push(['z2','2026-09-05',new Date('2026-09-15T08:00:00'),'despesa',20,'Outros','cedo no dia 5','Pix','','','Fernando','','','','','manual','','ok','','']);
+abas.lancamentos.dados.push(['z3','2026-09-20',new Date('2026-09-14T08:00:00'),'despesa',30,'Outros','dia 20','Pix','','','Fernando','','','','','manual','','ok','','']);
+const ordem = lancamentosDoMes_({ mes: '2026-09' }).lancamentos.map(l => l.data + ' ' + (l.descricao || l.categoria));
+console.log('ordem do mês:\n  ' + ordem.join('\n  '));
+console.log('sem chave interna:', lancamentosDoMes_({ mes: '2026-09' }).lancamentos.every(l => l._ordem === undefined));
+
+// 10. renda mensal: aparece como "a receber" e vira receita quando confirmada
+abas.recorrentes.dados.push(['Caju','receita','Outras Entradas',840,5,'Caju','','Fernando','2026-09','','padrao','','','recebo todo mês 840 de caju','2026-09-15']);
+let pnl = painel_({ mes: '2026-09' });
+console.log('rendas:', JSON.stringify(pnl.rendas.map(r => [r.nome, r.valor, r.lancado, r.tipo])), '| a receber', pnl.a_receber_total, '| recebi', pnl.receitas);
+const rec = pagarFixa_({ nome: 'Caju', mes: '2026-09', valor: 840, categoria: 'Outras Entradas', descricao: 'Caju', conta: 'Caju', pessoa: 'Fernando', data: '2026-09-05', dia: 5, ajuste: 'excecao' });
+console.log('registrar recebimento:', rec.ok, '| tipo', rec.lancamento && rec.lancamento.tipo, '| origem', rec.lancamento && rec.lancamento.origem);
+pnl = painel_({ mes: '2026-09' });
+console.log('depois: lancado', pnl.rendas[0].lancado, '| a receber', pnl.a_receber_total, '| recebi', pnl.receitas);
+console.log('fixas não viraram renda:', pnl.fixas.every(f => f.tipo !== 'receita'));

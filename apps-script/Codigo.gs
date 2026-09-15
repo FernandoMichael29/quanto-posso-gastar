@@ -1377,13 +1377,22 @@ function resumo_(pedido) {
     .map(function (c) { return { categoria: c, total: porCat[c] }; })
     .sort(function (a, b) { return b.total - a.total; });
 
-  saida.ultimos = linhas.slice(-12).reverse().map(function (r) {
-    return {
-      uuid: r[col.uuid], data: normalizarData_(r[col.data]), tipo: r[col.tipo],
+  // "Últimos lançamentos" é o que aconteceu por último, não o que está no fim da
+  // planilha. Desde que compra parcelada virou uma linha por mês, o fim da
+  // planilha guarda parcelas de 2027 — ordenar pela data é o que faz sentido.
+  var recentes = [];
+  linhas.forEach(function (r, i) {
+    if (r[col.status] === STATUS.EXCLUIDO) return;
+    var data = normalizarData_(r[col.data]);
+    if (data > hojeISO_()) return;                     // parcela futura não é "último"
+    recentes.push({
+      uuid: r[col.uuid], data: data, tipo: r[col.tipo],
       valor: Number(r[col.valor]) || 0, categoria: r[col.categoria],
-      descricao: r[col.descricao], status: r[col.status]
-    };
+      descricao: r[col.descricao], status: r[col.status],
+      _ordem: ordemDe_(data, r[col.hora_registro], i)
+    });
   });
+  saida.ultimos = ordenarDoMaisNovo_(recentes).slice(0, 12);
 
   return saida;
 }
@@ -1799,15 +1808,47 @@ function lancamentosDoMes_(pedido) {
   var col = indiceColunas_();
   var lista = [];
 
-  aba.getRange(2, 1, n, ABAS.lancamentos.length).getValues().forEach(function (r) {
+  aba.getRange(2, 1, n, ABAS.lancamentos.length).getValues().forEach(function (r, i) {
     if (r[col.status] === STATUS.EXCLUIDO) return;
     var data = normalizarData_(r[col.data]);
     if (data.indexOf(mes) !== 0) return;
-    lista.push(lancamentoDe_(r, col, data));
+    var item = lancamentoDe_(r, col, data);
+    item._ordem = ordemDe_(data, r[col.hora_registro], i);
+    lista.push(item);
   });
 
-  lista.sort(function (a, b) { return a.data < b.data ? 1 : (a.data > b.data ? -1 : 0); });
-  return { ok: true, mes: mes, lancamentos: lista };
+  return { ok: true, mes: mes, lancamentos: ordenarDoMaisNovo_(lista) };
+}
+
+/**
+ * A ordem da lista: dia do gasto primeiro; empatou no dia, vale a hora em que
+ * foi registrado; empatou nos dois, a ordem em que entrou na planilha.
+ *
+ * Sem o desempate, tudo que cai no mesmo dia — as contas fixas que você marca
+ * como pagas, os lançamentos de uma frase só — ficava na ordem em que a planilha
+ * cresceu, que para quem olha a tela é ordem nenhuma.
+ */
+function ordemDe_(data, horaRegistro, indiceLinha) {
+  var h = 0;
+  if (horaRegistro instanceof Date) h = horaRegistro.getTime();
+  else if (horaRegistro) {
+    var d = new Date(horaRegistro);
+    h = isNaN(d.getTime()) ? 0 : d.getTime();
+  }
+  return [data, h, indiceLinha];
+}
+
+/** Do mais novo para o mais antigo, e tira a chave de ordenação do resultado. */
+function ordenarDoMaisNovo_(lista) {
+  lista.sort(function (a, b) {
+    for (var k = 0; k < 3; k++) {
+      if (a._ordem[k] < b._ordem[k]) return 1;
+      if (a._ordem[k] > b._ordem[k]) return -1;
+    }
+    return 0;
+  });
+  lista.forEach(function (item) { delete item._ordem; });
+  return lista;
 }
 
 function lancamentoDe_(r, col, data) {
