@@ -592,6 +592,19 @@ button.item.sugestao:last-child { border-bottom: none; }
 .item.fixa.paga .num { text-decoration: line-through; }
 .item.fixa .meta.atrasada { color: var(--crit); font-weight: 600; }
 
+.modal-titulo {
+  margin: 0 0 8px;
+  padding: 0 4px;
+  font-size: 12px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--surface);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .6);
+}
+
+.modal-corpo > .cartao + .cartao { margin-top: 12px; }
+
 /* ---------- barras horizontais ---------- */
 
 .barras {
