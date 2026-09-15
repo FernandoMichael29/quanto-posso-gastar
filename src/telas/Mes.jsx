@@ -72,20 +72,22 @@ export default function Mes({ cadastros, aoMudarDados }) {
       if (lancamento) setEditando({ ...lancamento });
       return;
     }
+    const receita = f.tipo === 'receita';
     setPagandoFixa({
       nome: f.nome,
+      receita,
       valorCombinado: f.valor,
       dia: f.dia,
       ajuste: 'excecao',
       lancamento: {
-        tipo: 'despesa',
+        tipo: receita ? 'receita' : 'despesa',
         valor: f.valor,
         categoria: f.categoria || '',
         descricao: f.nome,
         data: dataDoVencimento(mes, f.dia),
-        conta: '',
-        metodo: '',
-        pessoa: ''
+        conta: f.conta || '',
+        metodo: f.metodo || '',
+        pessoa: f.pessoa || ''
       }
     });
   }
@@ -144,6 +146,9 @@ export default function Mes({ cadastros, aoMudarDados }) {
   // diferentes: ainda vai vencer, ou já venceu e ninguém registrou. Chamar as
   // duas de "previsto" escondia a segunda, que é justamente a que precisa de você.
   const fixas = (painel?.fixas || []).map((f) => ({ ...f, ...situacaoDa(f, painel.mes) }));
+  const rendas = (painel?.rendas || []).map((r) => ({
+    ...r, tipo: 'receita', ...situacaoDa({ ...r, tipo: 'receita' }, painel.mes)
+  }));
   const atrasadas = resumirFixas(fixas.filter((f) => f.situacao === 'erro'));
   const aVencer = resumirFixas(fixas.filter((f) => f.situacao === 'pendente'));
 
@@ -178,6 +183,42 @@ export default function Mes({ cadastros, aoMudarDados }) {
                 <span>Vai sair na fatura <strong>{formatarBRL(painel.no_credito)}</strong></span>
               )}
             </div>
+          )}
+
+          {/* Renda mensal vem antes das contas: é com ela que você paga o resto. */}
+          {rendas.length > 0 && (
+            <>
+              <div className="secao-cabecalho">
+                <p className="secao-titulo" style={{ margin: 0 }}>Rendas do mês</p>
+                <span className="ajuda" style={{ margin: 0 }}>
+                  {painel.a_receber_total > 0
+                    ? `${formatarBRL(painel.a_receber_total)} a receber`
+                    : 'tudo recebido'}
+                </span>
+              </div>
+              <div className="lista">
+                {rendas.map((r) => (
+                  <button
+                    type="button"
+                    className={`item fixa clicavel ${r.lancado ? 'paga' : ''}`}
+                    key={r.nome}
+                    onClick={() => abrirFixa(r)}
+                  >
+                    <span className={`ponto ${r.situacao}`} aria-hidden="true" />
+                    <span className="corpo">
+                      <span className="titulo">{r.nome}</span>
+                      <span className={`meta ${r.situacao === 'erro' ? 'atrasada' : ''}`}>
+                        {r.rotulo}{r.conta ? ` · ${r.conta}` : ''}
+                      </span>
+                    </span>
+                    <span className="num receita">
+                      {formatarBRL(r.lancado && r.valor_lancado != null ? r.valor_lancado : r.valor)}
+                    </span>
+                    <span className="seta" aria-hidden="true">›</span>
+                  </button>
+                ))}
+              </div>
+            </>
           )}
 
           {fixas.length > 0 && (
@@ -224,7 +265,11 @@ export default function Mes({ cadastros, aoMudarDados }) {
                 <div className="aviso atencao">
                   <strong>Ainda vai vencer: {formatarBRL(aVencer.total)}</strong>
                   <span className="detalhe">
-                    Sobra projetada no fim do mês: {formatarBRL(painel.saldo - painel.previsto_total)}.
+                    Sobra projetada no fim do mês:{' '}
+                    {formatarBRL(painel.saldo + (painel.a_receber_total || 0) - painel.previsto_total)}
+                    {painel.a_receber_total > 0
+                      ? ` (contando ${formatarBRL(painel.a_receber_total)} que ainda entram).`
+                      : '.'}
                   </span>
                 </div>
               )}
@@ -446,10 +491,17 @@ export default function Mes({ cadastros, aoMudarDados }) {
       )}
 
       {pagandoFixa && (
-        <div className="modal" role="dialog" aria-modal="true" aria-label={`Registrar pagamento de ${pagandoFixa.nome}`}>
+        <div
+          className="modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${pagandoFixa.receita ? 'Registrar recebimento' : 'Registrar pagamento'} de ${pagandoFixa.nome}`}
+        >
           <div className="modal-fundo" onClick={() => !salvando && setPagandoFixa(null)} />
           <div className="modal-corpo">
-            <p className="modal-titulo">Registrar pagamento · {pagandoFixa.nome}</p>
+            <p className="modal-titulo">
+              {pagandoFixa.receita ? 'Registrar recebimento' : 'Registrar pagamento'} · {pagandoFixa.nome}
+            </p>
 
             <CartaoLancamento
               valor={pagandoFixa.lancamento}
@@ -468,15 +520,17 @@ export default function Mes({ cadastros, aoMudarDados }) {
                   O que isso significa?
                 </p>
                 <div className="campo">
-                  <label htmlFor="ajuste-fixa">A conta fixa</label>
+                  <label htmlFor="ajuste-fixa">{pagandoFixa.receita ? 'A renda mensal' : 'A conta fixa'}</label>
                   <select
                     id="ajuste-fixa"
                     value={pagandoFixa.ajuste}
                     onChange={(e) => setPagandoFixa({ ...pagandoFixa, ajuste: e.target.value })}
                   >
                     <option value="excecao">variou só este mês — continua {formatarBRL(pagandoFixa.valorCombinado)}</option>
-                    <option value="definir">mudou de preço — passa a ser {formatarBRL(pagandoFixa.lancamento.valor)}</option>
-                    <option value="nenhum">não mexer na conta fixa</option>
+                    <option value="definir">
+                      {pagandoFixa.receita ? 'mudou de valor' : 'mudou de preço'} — passa a ser {formatarBRL(pagandoFixa.lancamento.valor)}
+                    </option>
+                    <option value="nenhum">{pagandoFixa.receita ? 'não mexer na renda' : 'não mexer na conta fixa'}</option>
                   </select>
                 </div>
               </div>
@@ -580,29 +634,44 @@ function dataDoVencimento(mes, dia) {
   return iso > hojeIso ? hojeIso : iso;
 }
 
-/** Em que pé está uma conta fixa, comparando o vencimento com hoje. */
+// Conta fixa vence, renda cai. Mesma lógica de datas, palavras diferentes —
+// "venceu há 5 dias" numa entrada de dinheiro não quer dizer nada.
+const PALAVRAS = {
+  despesa: {
+    feito: 'já lançado',
+    futuro: (d) => `vence dia ${d}`,
+    passado: (d) => `venceu dia ${d} e não foi lançado`,
+    emDias: (n) => (n === 1 ? 'vence amanhã' : `vence em ${n} dias`),
+    hoje: 'vence hoje',
+    atrasado: (n) => `venceu há ${n} dia${n > 1 ? 's' : ''} e não foi lançado`
+  },
+  receita: {
+    feito: 'já recebido',
+    futuro: (d) => `cai dia ${d}`,
+    passado: (d) => `era para cair dia ${d} e não foi registrado`,
+    emDias: (n) => (n === 1 ? 'cai amanhã' : `cai em ${n} dias`),
+    hoje: 'cai hoje',
+    atrasado: (n) => `era para ter caído há ${n} dia${n > 1 ? 's' : ''}`
+  }
+};
+
+/** Em que pé está um compromisso do mês, comparando o dia dele com hoje. */
 function situacaoDa(f, mesPainel) {
-  if (f.lancado) return { situacao: 'sincronizado', rotulo: 'já lançado' };
+  const p = PALAVRAS[f.tipo === 'receita' ? 'receita' : 'despesa'];
+
+  if (f.lancado) return { situacao: 'sincronizado', rotulo: p.feito };
   if (!f.dia) return { situacao: 'pendente', rotulo: 'sem dia definido' };
 
   const hoje = new Date();
   const mesHoje = mesDeHoje();
 
-  if (mesPainel > mesHoje) return { situacao: 'pendente', rotulo: `vence dia ${f.dia}` };
-  if (mesPainel < mesHoje) return { situacao: 'erro', rotulo: `venceu dia ${f.dia} e não foi lançado` };
+  if (mesPainel > mesHoje) return { situacao: 'pendente', rotulo: p.futuro(f.dia) };
+  if (mesPainel < mesHoje) return { situacao: 'erro', rotulo: p.passado(f.dia) };
 
   const diasAte = f.dia - hoje.getDate();
-  if (diasAte > 0) {
-    return {
-      situacao: 'pendente',
-      rotulo: diasAte === 1 ? 'vence amanhã' : `vence em ${diasAte} dias`
-    };
-  }
-  if (diasAte === 0) return { situacao: 'pendente', rotulo: 'vence hoje' };
-  return {
-    situacao: 'erro',
-    rotulo: `venceu há ${-diasAte} dia${diasAte < -1 ? 's' : ''} e não foi lançado`
-  };
+  if (diasAte > 0) return { situacao: 'pendente', rotulo: p.emDias(diasAte) };
+  if (diasAte === 0) return { situacao: 'pendente', rotulo: p.hoje };
+  return { situacao: 'erro', rotulo: p.atrasado(-diasAte) };
 }
 
 function resumirFixas(lista) {
