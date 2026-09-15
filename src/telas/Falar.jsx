@@ -206,9 +206,9 @@ export default function Falar({ cadastros, resumo, aoMudarFila, aoIrParaFila }) 
         <>
           <p className="secao-titulo">Este mês</p>
           <div className="resumo">
-            <div><span className="r">Entrou</span><span className="v pos">{formatarBRL(resumo.receitas)}</span></div>
-            <div><span className="r">Saiu</span><span className="v">{formatarBRL(resumo.despesas)}</span></div>
-            <div><span className="r">Sobra</span><span className={`v ${resumo.saldo >= 0 ? 'pos' : 'neg'}`}>{formatarBRL(resumo.saldo)}</span></div>
+            <div><span className="r">Recebi</span><span className="v pos">{formatarBRL(resumo.receitas)}</span></div>
+            <div><span className="r">Gastei</span><span className="v">{formatarBRL(resumo.despesas)}</span></div>
+            <div><span className="r">Sobrou</span><span className={`v ${resumo.saldo >= 0 ? 'pos' : 'neg'}`}>{formatarBRL(resumo.saldo)}</span></div>
           </div>
         </>
       )}

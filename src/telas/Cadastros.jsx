@@ -8,7 +8,7 @@ import { api } from '../lib/api.js';
 const TIPOS = {
   contas: {
     rotulo: 'Contas e cartões',
-    ajuda: 'Com o que você paga: bancos, cartões, benefícios, espécie. O tipo aqui é o que diz se é crédito, débito ou dinheiro.',
+    ajuda: 'Com o que você paga. Cartão de crédito precisa do ciclo: o que você compra nele não sai da conta na hora, sai quando a fatura vence.',
     chave: 'nome',
     opcoes: ['conta corrente', 'credito', 'debito', 'beneficio', 'dinheiro', 'investimento'],
     campoTipo: 'tipo',
@@ -136,6 +136,35 @@ export default function Cadastros({ cadastros, aoMudar }) {
             </div>
           )}
 
+          {aberto === 'contas' && editando.tipo === 'credito' && (
+            <>
+              <div className="linha">
+                <div className="campo">
+                  <label htmlFor="cad-fechamento">Fecha dia</label>
+                  <input
+                    id="cad-fechamento" type="number" min="1" max="31" inputMode="numeric"
+                    value={editando.dia_fechamento ?? ''}
+                    placeholder="28"
+                    onChange={(e) => setEditando({ ...editando, dia_fechamento: e.target.value })}
+                  />
+                </div>
+                <div className="campo">
+                  <label htmlFor="cad-vencimento">Vence dia</label>
+                  <input
+                    id="cad-vencimento" type="number" min="1" max="31" inputMode="numeric"
+                    value={editando.dia_vencimento ?? ''}
+                    placeholder="5"
+                    onChange={(e) => setEditando({ ...editando, dia_vencimento: e.target.value })}
+                  />
+                </div>
+              </div>
+              <p className="ajuda">
+                Compra feita até o dia do fechamento entra na fatura que fecha naquele mês;
+                depois dele, na do mês seguinte.
+              </p>
+            </>
+          )}
+
           {aberto === 'contas' && (
             <div className="campo">
               <label htmlFor="cad-saldo">Saldo inicial</label>
@@ -203,7 +232,15 @@ export default function Cadastros({ cadastros, aoMudar }) {
             <span className="corpo">
               <span className="titulo">{item[def.chave]}</span>
               <span className="meta">
-                {[item.tipo, item.pessoa, item.ativo ? null : 'desativado'].filter(Boolean).join(' · ') || '—'}
+                {[
+                  item.tipo,
+                  item.pessoa,
+                  item.tipo === 'credito' && item.dia_vencimento
+                    ? `fecha ${item.dia_fechamento || '?'} · vence ${item.dia_vencimento}`
+                    : null,
+                  item.tipo === 'credito' && !item.dia_vencimento ? 'falta o ciclo' : null,
+                  item.ativo ? null : 'desativado'
+                ].filter(Boolean).join(' · ') || '—'}
               </span>
             </span>
             <button

@@ -24,6 +24,7 @@ export default function Mes({ cadastros, aoMudarDados }) {
   const [filtroPessoa, setFiltroPessoa] = useState('');
   const [virandoMensal, setVirandoMensal] = useState(null);
   const [pagandoFixa, setPagandoFixa] = useState(null);
+  const [pagandoFatura, setPagandoFatura] = useState(null);
 
   const carregar = useCallback(async (alvo) => {
     if (!configurado()) { setErro('Configure o app nos Ajustes primeiro.'); return; }
@@ -98,6 +99,32 @@ export default function Mes({ cadastros, aoMudarDados }) {
     else setErro(traduzir(r.erro));
   }
 
+  function abrirFatura(f) {
+    if (f.pago) {
+      const l = lista.find((x) => x.uuid === f.uuid_pagamento);
+      if (l) setEditando({ ...l });
+      return;
+    }
+    setPagandoFatura({
+      cartao: f.cartao,
+      valor: f.total,
+      conta: '',
+      data: hojeOuVencimento(mes, f.dia)
+    });
+  }
+
+  async function confirmarFatura() {
+    setSalvando(true);
+    const r = await api.pagarFatura(pagandoFatura.cartao, mes, {
+      valor: Number(pagandoFatura.valor) || 0,
+      conta: pagandoFatura.conta,
+      data: pagandoFatura.data
+    });
+    setSalvando(false);
+    if (r.ok) { setPagandoFatura(null); carregar(mes); aoMudarDados?.(); }
+    else setErro(traduzir(r.erro));
+  }
+
   async function excluirEdicao() {
     setSalvando(true);
     const r = await api.excluirLancamento(editando.uuid);
@@ -134,13 +161,24 @@ export default function Mes({ cadastros, aoMudarDados }) {
       {painel && (
         <>
           <div className="resumo">
-            <div><span className="r">Entrou</span><span className="v pos">{formatarBRL(painel.receitas)}</span></div>
-            <div><span className="r">Saiu</span><span className="v">{formatarBRL(painel.despesas)}</span></div>
+            <div><span className="r">Recebi</span><span className="v pos">{formatarBRL(painel.receitas)}</span></div>
+            <div><span className="r">Gastei</span><span className="v">{formatarBRL(painel.despesas)}</span></div>
             <div>
-              <span className="r">Sobra</span>
+              <span className="r">Sobrou</span>
               <span className={`v ${painel.saldo >= 0 ? 'pos' : 'neg'}`}>{formatarBRL(painel.saldo)}</span>
             </div>
           </div>
+
+          {/* Gastar no crédito não é o mesmo que o dinheiro sair da conta.
+              Sem esta linha, o "sobra" acima parece menos do que você tem. */}
+          {(painel.no_credito > 0 || painel.saiu_caixa !== painel.despesas) && (
+            <div className="faixa-caixa">
+              <span>Já saiu da conta <strong>{formatarBRL(painel.saiu_caixa)}</strong></span>
+              {painel.no_credito > 0 && (
+                <span>Vai sair na fatura <strong>{formatarBRL(painel.no_credito)}</strong></span>
+              )}
+            </div>
+          )}
 
           {fixas.length > 0 && (
             <>
@@ -190,6 +228,42 @@ export default function Mes({ cadastros, aoMudarDados }) {
                   </span>
                 </div>
               )}
+            </>
+          )}
+
+          {painel.faturas?.length > 0 && (
+            <>
+              <div className="secao-cabecalho">
+                <p className="secao-titulo" style={{ margin: 0 }}>Faturas que vencem neste mês</p>
+                {painel.faturas_abertas > 0 && (
+                  <span className="ajuda" style={{ margin: 0 }}>
+                    {formatarBRL(painel.faturas_abertas)} em aberto
+                  </span>
+                )}
+              </div>
+              <div className="lista">
+                {painel.faturas.map((f) => (
+                  <button
+                    type="button"
+                    className={`item fatura clicavel ${f.pago ? 'paga' : ''}`}
+                    key={f.cartao}
+                    onClick={() => abrirFatura(f)}
+                  >
+                    <span className={`ponto ${f.pago ? 'sincronizado' : 'pendente'}`} aria-hidden="true" />
+                    <span className="corpo">
+                      <span className="titulo">{f.cartao}</span>
+                      <span className="meta">
+                        {f.pago
+                          ? `paga${f.pago_em ? ` em ${diaDe(f.pago_em)}` : ''}`
+                          : `${f.lancamentos} compra${f.lancamentos === 1 ? '' : 's'}${f.dia ? ` · vence dia ${f.dia}` : ''}`}
+                        {f.pessoa ? ` · ${f.pessoa}` : ''}
+                      </span>
+                    </span>
+                    <span className="num">{formatarBRL(f.pago ? f.valor_pago : f.total)}</span>
+                    <span className="seta" aria-hidden="true">›</span>
+                  </button>
+                ))}
+              </div>
             </>
           )}
 
@@ -282,6 +356,75 @@ export default function Mes({ cadastros, aoMudarDados }) {
                 mes_fim: ''
               })}
             />
+          </div>
+        </div>
+      )}
+
+      {pagandoFatura && (
+        <div className="modal" role="dialog" aria-modal="true" aria-label={`Pagar fatura ${pagandoFatura.cartao}`}>
+          <div className="modal-fundo" onClick={() => !salvando && setPagandoFatura(null)} />
+          <div className="modal-corpo">
+            <div className="cartao destaque">
+              <p className="secao-titulo" style={{ margin: 0 }}>Pagar fatura · {pagandoFatura.cartao}</p>
+              <p className="ajuda">
+                Aqui é onde o dinheiro sai de verdade. As compras que formaram esta fatura
+                já foram contadas como gasto quando aconteceram, então este pagamento não
+                entra de novo nas categorias.
+              </p>
+
+              <div className="linha">
+                <div className="campo">
+                  <label htmlFor="fat-valor">Valor pago</label>
+                  <input
+                    id="fat-valor" type="number" inputMode="decimal" step="0.01"
+                    value={pagandoFatura.valor}
+                    onChange={(e) => setPagandoFatura({ ...pagandoFatura, valor: e.target.value })}
+                  />
+                </div>
+                <div className="campo">
+                  <label htmlFor="fat-data">Data</label>
+                  <input
+                    id="fat-data" type="date"
+                    value={pagandoFatura.data}
+                    onChange={(e) => setPagandoFatura({ ...pagandoFatura, data: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <details className="opcional">
+                <summary>De qual conta saiu <span>(opcional)</span></summary>
+                <div className="campo">
+                  <select
+                    id="fat-conta"
+                    aria-label="De qual conta saiu"
+                    value={pagandoFatura.conta}
+                    onChange={(e) => setPagandoFatura({ ...pagandoFatura, conta: e.target.value })}
+                  >
+                    <option value="">não importa</option>
+                    {(cadastros.contas || [])
+                      .filter((c) => c.tipo !== 'credito' && c.ativo !== false)
+                      .map((c) => <option key={c.nome} value={c.nome}>{c.nome}</option>)}
+                  </select>
+                  <p className="ajuda">
+                    Só preencha se você acompanha o saldo de cada conta separado.
+                    Para o total do mês, tanto faz de onde saiu.
+                  </p>
+                </div>
+              </details>
+
+              <div className="botoes">
+                <button className="btn discreto" onClick={() => setPagandoFatura(null)} disabled={salvando}>
+                  Cancelar
+                </button>
+                <button
+                  className="btn principal"
+                  onClick={confirmarFatura}
+                  disabled={salvando || !Number(pagandoFatura.valor)}
+                >
+                  {salvando ? 'Salvando…' : 'Registrar pagamento'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -405,6 +548,11 @@ function SeletorMes({ mes, aoMudar }) {
 }
 
 /** O dia do vencimento dentro do mês, sem estourar o fim nem passar de hoje. */
+/** O vencimento daquele mês, ou hoje se ele ainda não chegou. */
+function hojeOuVencimento(mes, dia) {
+  return dataDoVencimento(mes, dia);
+}
+
 function dataDoVencimento(mes, dia) {
   const ano = Number(mes.slice(0, 4));
   const m = Number(mes.slice(5, 7));

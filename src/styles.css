@@ -617,6 +617,36 @@ button.aviso.clicavel {
 
 button.aviso.clicavel .ver-fila { font-weight: 600; opacity: .9; margin-top: 2px; }
 
+/* a linha que separa o que você gastou do que saiu da conta */
+.faixa-caixa {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  padding: 10px 14px;
+  border: 1px dashed var(--line);
+  border-radius: 9px;
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.faixa-caixa strong { color: var(--ink); font-weight: 600; }
+
+details.opcional summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
+  padding: 4px 0;
+  list-style-position: inside;
+}
+
+details.opcional summary span { opacity: .7; }
+details.opcional[open] summary { margin-bottom: 8px; }
+
+.item.fatura .num { font-weight: 700; }
+.item.fatura.paga { opacity: .62; }
+.item.fatura.paga .num { text-decoration: line-through; }
+
 /* ---------- barras horizontais ---------- */
 
 .barras {
