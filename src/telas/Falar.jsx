@@ -14,7 +14,7 @@ const IconeMic = () => (
   </svg>
 );
 
-export default function Falar({ cadastros, resumo, aoMudarFila }) {
+export default function Falar({ cadastros, resumo, aoMudarFila, aoIrParaFila }) {
   const categorias = cadastros.categorias || [];
   const [ouvindo, setOuvindo] = useState(false);
   const [texto, setTexto] = useState('');
@@ -108,6 +108,7 @@ export default function Falar({ cadastros, resumo, aoMudarFila }) {
     setTexto('');
     setRecado({
       tom: 'atencao',
+      fila: true,
       titulo: 'Guardei sua frase na fila',
       detalhe: MOTIVO_TELA[motivo] || 'Vou interpretar assim que der e você não precisa fazer nada.'
     });
@@ -134,10 +135,18 @@ export default function Falar({ cadastros, resumo, aoMudarFila }) {
   return (
     <>
       {recado && (
-        <div className={`aviso ${recado.tom}`} role="status">
-          <strong>{recado.titulo}</strong>
-          {recado.detalhe && <span className="detalhe">{recado.detalhe}</span>}
-        </div>
+        recado.fila && aoIrParaFila ? (
+          <button type="button" className={`aviso ${recado.tom} clicavel`} onClick={aoIrParaFila}>
+            <strong>{recado.titulo}</strong>
+            {recado.detalhe && <span className="detalhe">{recado.detalhe}</span>}
+            <span className="detalhe ver-fila">Toque para ver a fila ›</span>
+          </button>
+        ) : (
+          <div className={`aviso ${recado.tom}`} role="status">
+            <strong>{recado.titulo}</strong>
+            {recado.detalhe && <span className="detalhe">{recado.detalhe}</span>}
+          </div>
+        )
       )}
 
       {!rascunho && (

@@ -10,7 +10,7 @@
 // Configuração
 // ---------------------------------------------------------------------------
 
-var VERSAO = '1.2.0';
+var VERSAO = '1.2.5';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -45,6 +45,7 @@ var ABAS = {
   // escopo 'excecao' vale só no mês de vigencia_inicio e ganha da vigência normal.
   recorrentes: [
     'nome', 'tipo', 'categoria', 'valor', 'dia',
+    'conta', 'metodo', 'pessoa',
     'vigencia_inicio', 'vigencia_fim', 'escopo',
     'parcelas_total', 'parcelas_restantes', 'texto_falado', 'criado_em'
   ],
@@ -670,7 +671,8 @@ function chamarClaude_(texto) {
     '"parcela_atual":number|null,"parcelas_total":number|null}],\n' +
     ' "recorrentes":[{"nome":string,"acao":"definir|excecao|encerrar","valor":number,' +
     '"tipo":"despesa|receita","categoria":string,"dia":number|null,"mes":"YYYY-MM",' +
-    '"mes_fim":"YYYY-MM"|null}],\n' +
+    '"mes_fim":"YYYY-MM"|null,"conta":string,"metodo":"pix|credito|debito|dinheiro|boleto|",' +
+    '"pessoa":string}],\n' +
     ' "memoria":[string],\n' +
     ' "cadastros":[{"tipo":"contas|categorias|fontes|pessoas","acao":"salvar|excluir",' +
     '"nome":string,"nome_antigo":string|null,"pessoa":string|null,' +
@@ -694,6 +696,9 @@ function chamarClaude_(texto) {
     '  deixe "" — nunca invente uma conta nova e nunca cadastre uma.\n' +
     '- pix, crédito, débito, dinheiro e boleto são MÉTODO, jamais conta. "paguei no pix"\n' +
     '  significa metodo "pix" e conta "".\n' +
+    '- Quando os dois aparecem juntos, separe: "no cartão de crédito Santander" é\n' +
+    '  conta "Santander" e metodo "credito". Isso vale também em "recorrentes" —\n' +
+    '  um compromisso fixo guarda de qual conta ele sai e por qual método.\n' +
     '- "fonte" só vale em receitas, e é de onde a renda vem. Deixe "" em despesas.\n' +
     '- "pessoa" é de quem é o gasto ou a renda. Se a frase não disser, deixe "" que eu\n' +
     '  deduzo pela conta.\n' +
@@ -1321,6 +1326,7 @@ function painel_(pedido) {
     return {
       nome: c.nome, valor: arred_(c.valor), dia: c.dia,
       categoria: c.categoria,
+      conta: c.conta, metodo: c.metodo, pessoa: c.pessoa,
       lancado: !!pagou,
       // o uuid fecha o ciclo: tocar numa conta já paga abre o lançamento dela
       uuid_lancamento: pagou ? pagou.uuid : '',
@@ -1532,9 +1538,9 @@ function pagarFixa_(pedido) {
     valor: valor,
     categoria: pedido.categoria || compromisso.categoria || 'Outros',
     descricao: pedido.descricao || nome,
-    conta: pedido.conta || '',
-    metodo: pedido.metodo || '',
-    pessoa: pedido.pessoa || '',
+    conta: pedido.conta || compromisso.conta || '',
+    metodo: pedido.metodo || compromisso.metodo || '',
+    pessoa: pedido.pessoa || compromisso.pessoa || '',
     texto_falado: '',
     origem: 'conta fixa',
     confianca: 'fixa',
@@ -1588,6 +1594,9 @@ function tornarMensal_(pedido) {
     tipo: r[col.tipo] || 'despesa',
     categoria: r[col.categoria] || 'Outros',
     dia: Number(pedido.dia) || Number(data.slice(8, 10)) || '',
+    conta: r[col.conta] || '',
+    metodo: r[col.metodo] || '',
+    pessoa: r[col.pessoa] || '',
     mes: pedido.mes || data.slice(0, 7),
     mes_fim: pedido.mes_fim || '',
     texto_falado: r[col.texto_falado] || ''
@@ -1826,6 +1835,9 @@ function lerRecorrentes_() {
       categoria: r[c.categoria] || '',
       valor: Number(r[c.valor]) || 0,
       dia: Number(r[c.dia]) || 0,
+      conta: r[c.conta] || '',
+      metodo: r[c.metodo] || '',
+      pessoa: r[c.pessoa] || '',
       inicio: normalizarMes_(r[c.vigencia_inicio]),
       fim: normalizarMes_(r[c.vigencia_fim]),
       escopo: r[c.escopo] || 'padrao',
@@ -1907,6 +1919,9 @@ function recorrentesDoMes_(mes) {
       tipo: r.registro.tipo,
       categoria: r.registro.categoria,
       dia: r.registro.dia,
+      conta: r.registro.conta,
+      metodo: r.registro.metodo,
+      pessoa: r.registro.pessoa,
       excecao: r.origem === 'excecao',
       parcelas_restantes: r.registro.parcelas_restantes
     });
@@ -1946,6 +1961,9 @@ function aplicarRecorrente_(d) {
       categoria: d.categoria || (base && base.registro.categoria) || 'Outros',
       valor: d.valor,
       dia: d.dia || (base && base.registro.dia) || '',
+      conta: d.conta || (base && base.registro.conta) || '',
+      metodo: d.metodo || (base && base.registro.metodo) || '',
+      pessoa: d.pessoa || (base && base.registro.pessoa) || '',
       inicio: mes, fim: mes, escopo: 'excecao',
       texto: d.texto_falado || ''
     }));
@@ -1988,6 +2006,9 @@ function aplicarRecorrente_(d) {
     categoria: d.categoria || (anterior && anterior.categoria) || 'Outros',
     valor: d.valor,
     dia: d.dia || (anterior && anterior.dia) || '',
+    conta: d.conta || (anterior && anterior.conta) || '',
+    metodo: d.metodo || (anterior && anterior.metodo) || '',
+    pessoa: d.pessoa || (anterior && anterior.pessoa) || '',
     inicio: mes, fim: fim, escopo: 'padrao',
     parcelas_total: d.parcelas_total || '',
     parcelas_restantes: d.parcelas_restantes || d.parcelas_total || '',
@@ -2005,6 +2026,7 @@ function aplicarRecorrente_(d) {
 function linhaRecorrente_(r) {
   return [
     r.nome, r.tipo, r.categoria, r.valor, r.dia,
+    r.conta || '', r.metodo || '', r.pessoa || '',
     r.inicio, r.fim, r.escopo,
     r.parcelas_total || '', r.parcelas_restantes || '',
     r.texto || '', new Date()

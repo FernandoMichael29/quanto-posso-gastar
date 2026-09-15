@@ -5,31 +5,31 @@ import Perguntar from './telas/Perguntar.jsx';
 import Pendentes from './telas/Pendentes.jsx';
 import Ajustes from './telas/Ajustes.jsx';
 import Cadastros from './telas/Cadastros.jsx';
-import { CATEGORIAS_PADRAO } from './lib/categorias.js';
 import { ESTADO, listar } from './lib/db.js';
-import { api, configurado } from './lib/api.js';
+import { acessoValidado, api, configurado, marcarAcessoValido } from './lib/api.js';
 import { aoMudar, ligarSincronizacaoAutomatica } from './lib/sync.js';
 
 const CACHE = 'qpg.cadastros';
+const VAZIO = { categorias: [], contas: [], fontes: [], pessoas: [] };
 
-const VAZIO = {
-  categorias: CATEGORIAS_PADRAO,
-  contas: [{ nome: 'Dinheiro', ativo: true }],
-  fontes: [],
-  pessoas: []
-};
+/** O cache só é seu depois que o app falou com a sua planilha neste aparelho. */
+function cadastrosSalvos() {
+  if (!acessoValidado()) return VAZIO;
+  try {
+    const salvo = JSON.parse(localStorage.getItem(CACHE) || 'null');
+    return salvo?.categorias ? salvo : VAZIO;
+  } catch {
+    return VAZIO;
+  }
+}
 
 export default function App() {
-  const [aba, setAba] = useState(configurado() ? 'falar' : 'ajustes');
+  // 'verificando' enquanto o app checa a planilha; 'bloqueado' significa que
+  // nunca houve conversa bem-sucedida com ela, e aí nada é mostrado.
+  const [acesso, setAcesso] = useState(() => (acessoValidado() ? 'liberado' : 'verificando'));
+  const [aba, setAba] = useState('falar');
   const [fila, setFila] = useState([]);
-  const [cadastros, setCadastros] = useState(() => {
-    try {
-      const salvo = JSON.parse(localStorage.getItem(CACHE) || 'null');
-      return salvo?.categorias?.length ? salvo : VAZIO;
-    } catch {
-      return VAZIO;
-    }
-  });
+  const [cadastros, setCadastros] = useState(cadastrosSalvos);
   const [resumo, setResumo] = useState(null);
   const [online, setOnline] = useState(navigator.onLine);
 
@@ -39,6 +39,7 @@ export default function App() {
     if (!configurado() || !navigator.onLine) return;
 
     const c = await api.cadastros();
+    if (c.ok) marcarAcessoValido();
     if (c.ok && c.categorias?.length) {
       const novo = {
         categorias: c.categorias,
@@ -54,9 +55,35 @@ export default function App() {
     if (r.ok) setResumo(r);
   }, []);
 
+  // A porta de entrada: sem um "alô" da planilha, o app não mostra nada.
+  const verificarAcesso = useCallback(async () => {
+    if (acessoValidado()) { setAcesso('liberado'); return true; }
+    if (!configurado()) { setAcesso('bloqueado'); return false; }
+
+    const r = await api.ping();
+    if (r.ok) {
+      marcarAcessoValido();
+      setAcesso('liberado');
+      return true;
+    }
+    setAcesso('bloqueado');
+    setCadastros(VAZIO);
+    setResumo(null);
+    return false;
+  }, []);
+
   useEffect(() => {
-    recarregarFila();
-    recarregarDados();
+    let vivo = true;
+    verificarAcesso().then((ok) => {
+      if (!vivo || !ok) return;
+      recarregarFila();
+      recarregarDados();
+    });
+    return () => { vivo = false; };
+  }, [verificarAcesso, recarregarFila, recarregarDados]);
+
+  useEffect(() => {
+    if (acesso !== 'liberado') return;
     const desligar = ligarSincronizacaoAutomatica();
     const parar = aoMudar(recarregarFila);
 
@@ -70,10 +97,46 @@ export default function App() {
       window.removeEventListener('online', mudouRede);
       window.removeEventListener('offline', mudouRede);
     };
-  }, [recarregarFila, recarregarDados]);
+  }, [acesso, recarregarFila]);
 
   const esperando = fila.filter((i) => i.estado !== ESTADO.SINCRONIZADO).length;
   const tudo = () => { recarregarFila(); recarregarDados(); };
+
+  if (acesso === 'verificando') {
+    return (
+      <div className="app">
+        <main className="conteudo porta">
+          <div className="cartao pensando">
+            <span className="girando" aria-hidden="true" />
+            <span>Falando com a sua planilha…</span>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (acesso === 'bloqueado') {
+    return (
+      <div className="app">
+        <header className="topo">
+          <h1>
+            Quanto Posso Gastar
+            <span className="sub">conectar à planilha</span>
+          </h1>
+        </header>
+        <main className="conteudo porta">
+          <div className="aviso atencao">
+            <strong>Ainda não falei com a sua planilha</strong>
+            <span className="detalhe">
+              Enquanto isso, não mostro nada — qualquer número aqui seria invenção minha,
+              não o seu dinheiro. Preencha os dois campos abaixo e o app abre.
+            </span>
+          </div>
+          <Ajustes aoSalvar={() => { verificarAcesso().then((ok) => { if (ok) { recarregarDados(); recarregarFila(); setAba('falar'); } }); }} />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="app">
@@ -98,7 +161,7 @@ export default function App() {
 
       <main className="conteudo">
         {aba === 'falar' && (
-          <Falar cadastros={cadastros} resumo={resumo} aoMudarFila={tudo} />
+          <Falar cadastros={cadastros} resumo={resumo} aoMudarFila={tudo} aoIrParaFila={() => setAba('fila')} />
         )}
         {aba === 'mes' && <Mes cadastros={cadastros} aoMudarDados={tudo} />}
         {aba === 'perguntar' && <Perguntar />}
