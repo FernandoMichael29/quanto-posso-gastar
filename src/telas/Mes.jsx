@@ -23,7 +23,7 @@ export default function Mes({ cadastros, aoMudarDados }) {
   const [salvando, setSalvando] = useState(false);
   const [filtroPessoa, setFiltroPessoa] = useState('');
   const [virandoMensal, setVirandoMensal] = useState(null);
-  const [pagando, setPagando] = useState(null);
+  const [pagandoFixa, setPagandoFixa] = useState(null);
 
   const carregar = useCallback(async (alvo) => {
     if (!configurado()) { setErro('Configure o app nos Ajustes primeiro.'); return; }
@@ -64,11 +64,37 @@ export default function Mes({ cadastros, aoMudarDados }) {
     } else setErro(traduzir(r.erro));
   }
 
-  async function pagarFixa(f) {
-    setPagando(f.nome);
-    const r = await api.pagarFixa(f.nome, mes, { dia: f.dia });
-    setPagando(null);
-    if (r.ok) { carregar(mes); aoMudarDados?.(); }
+  /** Tocar numa conta fixa: se já foi paga, abre o lançamento; se não, o pagamento. */
+  function abrirFixa(f) {
+    if (f.lancado) {
+      const lancamento = lista.find((l) => l.uuid === f.uuid_lancamento);
+      if (lancamento) setEditando({ ...lancamento });
+      return;
+    }
+    setPagandoFixa({
+      nome: f.nome,
+      valorCombinado: f.valor,
+      dia: f.dia,
+      ajuste: 'excecao',
+      lancamento: {
+        tipo: 'despesa',
+        valor: f.valor,
+        categoria: f.categoria || '',
+        descricao: f.nome,
+        data: dataDoVencimento(mes, f.dia),
+        conta: '',
+        metodo: '',
+        pessoa: ''
+      }
+    });
+  }
+
+  async function confirmarPagamento() {
+    const { nome, ajuste, lancamento } = pagandoFixa;
+    setSalvando(true);
+    const r = await api.pagarFixa(nome, mes, { ...lancamento, dia: pagandoFixa.dia, ajuste });
+    setSalvando(false);
+    if (r.ok) { setPagandoFixa(null); carregar(mes); aoMudarDados?.(); }
     else setErro(traduzir(r.erro));
   }
 
@@ -126,7 +152,12 @@ export default function Mes({ cadastros, aoMudarDados }) {
               </div>
               <div className="lista">
                 {fixas.map((f) => (
-                  <div className={`item fixa ${f.lancado ? 'paga' : ''}`} key={f.nome}>
+                  <button
+                    type="button"
+                    className={`item fixa clicavel ${f.lancado ? 'paga' : ''}`}
+                    key={f.nome}
+                    onClick={() => abrirFixa(f)}
+                  >
                     <span className={`ponto ${f.situacao}`} aria-hidden="true" />
                     <span className="corpo">
                       <span className="titulo">{f.nome}</span>
@@ -134,17 +165,11 @@ export default function Mes({ cadastros, aoMudarDados }) {
                         {f.rotulo}{f.categoria ? ` · ${f.categoria}` : ''}
                       </span>
                     </span>
-                    <span className="num">{formatarBRL(f.valor)}</span>
-                    {!f.lancado && (
-                      <button
-                        className="btn discreto pequeno"
-                        onClick={() => pagarFixa(f)}
-                        disabled={pagando === f.nome}
-                      >
-                        {pagando === f.nome ? '…' : 'paguei'}
-                      </button>
-                    )}
-                  </div>
+                    <span className="num">
+                      {formatarBRL(f.lancado && f.valor_lancado != null ? f.valor_lancado : f.valor)}
+                    </span>
+                    <span className="seta" aria-hidden="true">›</span>
+                  </button>
                 ))}
               </div>
 
@@ -152,7 +177,7 @@ export default function Mes({ cadastros, aoMudarDados }) {
                 <div className="aviso ruim">
                   <strong>Venceu e não foi lançado: {formatarBRL(atrasadas.total)}</strong>
                   <span className="detalhe">
-                    {atrasadas.nomes.join(' · ')} — se já pagou, toque em &ldquo;paguei&rdquo;.
+                    {atrasadas.nomes.join(' · ')} — se já pagou, toque na conta para registrar.
                   </span>
                 </div>
               )}
@@ -261,6 +286,46 @@ export default function Mes({ cadastros, aoMudarDados }) {
         </div>
       )}
 
+      {pagandoFixa && (
+        <div className="modal" role="dialog" aria-modal="true" aria-label={`Registrar pagamento de ${pagandoFixa.nome}`}>
+          <div className="modal-fundo" onClick={() => !salvando && setPagandoFixa(null)} />
+          <div className="modal-corpo">
+            <p className="modal-titulo">Registrar pagamento · {pagandoFixa.nome}</p>
+
+            <CartaoLancamento
+              valor={pagandoFixa.lancamento}
+              aoMudar={(l) => setPagandoFixa({ ...pagandoFixa, lancamento: l })}
+              cadastros={cadastros}
+              modo="confirmar"
+              ocupado={salvando}
+              aoConfirmar={confirmarPagamento}
+              aoCancelar={() => setPagandoFixa(null)}
+            />
+
+            {Math.abs(pagandoFixa.lancamento.valor - pagandoFixa.valorCombinado) >= 0.01 && (
+              <div className="cartao">
+                <p className="ajuda" style={{ margin: 0 }}>
+                  Veio diferente dos {formatarBRL(pagandoFixa.valorCombinado)} combinados.
+                  O que isso significa?
+                </p>
+                <div className="campo">
+                  <label htmlFor="ajuste-fixa">A conta fixa</label>
+                  <select
+                    id="ajuste-fixa"
+                    value={pagandoFixa.ajuste}
+                    onChange={(e) => setPagandoFixa({ ...pagandoFixa, ajuste: e.target.value })}
+                  >
+                    <option value="excecao">variou só este mês — continua {formatarBRL(pagandoFixa.valorCombinado)}</option>
+                    <option value="definir">mudou de preço — passa a ser {formatarBRL(pagandoFixa.lancamento.valor)}</option>
+                    <option value="nenhum">não mexer na conta fixa</option>
+                  </select>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {virandoMensal && (
         <div className="modal" role="dialog" aria-modal="true" aria-label="Transformar em conta fixa">
           <div className="modal-fundo" onClick={() => !salvando && setVirandoMensal(null)} />
@@ -337,6 +402,18 @@ function SeletorMes({ mes, aoMudar }) {
       >›</button>
     </div>
   );
+}
+
+/** O dia do vencimento dentro do mês, sem estourar o fim nem passar de hoje. */
+function dataDoVencimento(mes, dia) {
+  const ano = Number(mes.slice(0, 4));
+  const m = Number(mes.slice(5, 7));
+  const ultimo = new Date(ano, m, 0).getDate();
+  const d = Math.min(Math.max(Number(dia) || 1, 1), ultimo);
+  const iso = `${mes}-${String(d).padStart(2, '0')}`;
+  const hoje = new Date();
+  const hojeIso = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
+  return iso > hojeIso ? hojeIso : iso;
 }
 
 /** Em que pé está uma conta fixa, comparando o vencimento com hoje. */

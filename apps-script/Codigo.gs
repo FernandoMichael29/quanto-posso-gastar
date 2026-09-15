@@ -10,7 +10,7 @@
 // Configuração
 // ---------------------------------------------------------------------------
 
-var VERSAO = '1.2.4';
+var VERSAO = '1.2.0';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -1299,6 +1299,7 @@ function painel_(pedido) {
 
   var assinaturas = lancamentosDoMesCru_(mes, col, aba, n).map(function (l) {
     return {
+      uuid: l.uuid,
       descricao: chaveNome_(l.descricao),
       categoria: chaveNome_(l.categoria),
       valor: l.valor
@@ -1307,16 +1308,23 @@ function painel_(pedido) {
 
   var fixas = compromissos.map(function (c) {
     var alvo = chaveNome_(c.nome);
-    var lancado = assinaturas.some(function (a) {
-      if (!alvo) return false;
-      if (a.descricao.indexOf(alvo) >= 0) return true;
-      if (a.categoria && a.categoria === alvo) return true;
-      // mesmo valor e mesma categoria também conta como pago
-      return a.categoria === chaveNome_(c.categoria) && Math.abs(a.valor - c.valor) < 0.01;
-    });
+    var pagou = null;
+    for (var i = 0; i < assinaturas.length && alvo; i++) {
+      var a = assinaturas[i];
+      if (a.descricao.indexOf(alvo) >= 0 ||
+          (a.categoria && a.categoria === alvo) ||
+          (a.categoria === chaveNome_(c.categoria) && Math.abs(a.valor - c.valor) < 0.01)) {
+        pagou = a;
+        break;
+      }
+    }
     return {
       nome: c.nome, valor: arred_(c.valor), dia: c.dia,
-      categoria: c.categoria, lancado: lancado
+      categoria: c.categoria,
+      lancado: !!pagou,
+      // o uuid fecha o ciclo: tocar numa conta já paga abre o lançamento dela
+      uuid_lancamento: pagou ? pagou.uuid : '',
+      valor_lancado: pagou ? arred_(pagou.valor) : null
     };
   });
 
@@ -1367,6 +1375,7 @@ function lancamentosDoMesCru_(mes, col, aba, n) {
     if (r[col.tipo] === 'receita') return;
     if (normalizarData_(r[col.data]).slice(0, 7) !== mes) return;
     saida.push({
+      uuid: r[col.uuid],
       descricao: String(r[col.descricao] || '') + ' ' + String(r[col.texto_falado] || ''),
       categoria: String(r[col.categoria] || ''),
       valor: Number(r[col.valor]) || 0
@@ -1514,13 +1523,15 @@ function pagarFixa_(pedido) {
   var data = pedido.data || (mes + '-' + (dia < 10 ? '0' + dia : String(dia)));
   if (data > hojeISO_()) data = hojeISO_();
 
+  var valor = Number(pedido.valor) || compromisso.valor;
+
   var lancamento = {
     uuid: pedido.uuid || Utilities.getUuid(),
     data: data,
     tipo: compromisso.tipo || 'despesa',
-    valor: Number(pedido.valor) || compromisso.valor,
-    categoria: compromisso.categoria || 'Outros',
-    descricao: nome,
+    valor: valor,
+    categoria: pedido.categoria || compromisso.categoria || 'Outros',
+    descricao: pedido.descricao || nome,
     conta: pedido.conta || '',
     metodo: pedido.metodo || '',
     pessoa: pedido.pessoa || '',
@@ -1531,7 +1542,23 @@ function pagarFixa_(pedido) {
   };
 
   var r = lancar_({ lancamentos: [lancamento] });
-  return { ok: true, gravados: r.gravados, lancamento: lancamento };
+
+  // Pagou um valor diferente do combinado? Você decide o que isso significa:
+  // foi só desta vez (exceção) ou a conta mudou de preço (nova vigência).
+  var ajuste = null;
+  if (Math.abs(valor - compromisso.valor) >= 0.01 && pedido.ajuste && pedido.ajuste !== 'nenhum') {
+    ajuste = aplicarRecorrente_({
+      nome: nome,
+      acao: pedido.ajuste === 'definir' ? 'definir' : 'excecao',
+      valor: valor,
+      tipo: compromisso.tipo,
+      categoria: compromisso.categoria,
+      dia: compromisso.dia,
+      mes: mes
+    });
+  }
+
+  return { ok: true, gravados: r.gravados, lancamento: lancamento, ajuste: ajuste };
 }
 
 /**
