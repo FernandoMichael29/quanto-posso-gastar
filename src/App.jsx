@@ -126,11 +126,7 @@ export default function App() {
         </header>
         <main className="conteudo porta">
           <div className="aviso atencao">
-            <strong>Ainda não falei com a sua planilha</strong>
-            <span className="detalhe">
-              Enquanto isso, não mostro nada — qualquer número aqui seria invenção minha,
-              não o seu dinheiro. Preencha os dois campos abaixo e o app abre.
-            </span>
+            <strong>Endereço ou token não encontrado</strong>
           </div>
           <Ajustes aoSalvar={() => { verificarAcesso().then((ok) => { if (ok) { recarregarDados(); recarregarFila(); setAba('falar'); } }); }} />
         </main>
