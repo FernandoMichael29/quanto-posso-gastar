@@ -10,7 +10,7 @@
 // Configuração
 // ---------------------------------------------------------------------------
 
-var VERSAO = '1.2.5';
+var VERSAO = '1.2.0';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -30,11 +30,12 @@ var MAX_ANALISE_DIA = 30;      // perguntas de análise por dia — cada uma cus
 var ABAS = {
   lancamentos: [
     'uuid', 'data', 'hora_registro', 'tipo', 'valor', 'categoria', 'descricao',
-    'conta', 'metodo', 'fonte', 'pessoa', 'parcela_atual', 'parcelas_total',
+    'conta', 'metodo', 'fonte', 'pessoa', 'fatura_mes', 'parcela_atual', 'parcelas_total',
     'texto_falado', 'origem', 'confianca', 'status', 'revisar', 'erro'
   ],
   // As carteiras de onde o dinheiro sai: bancos, cartões, benefícios, espécie.
-  contas: ['nome', 'tipo', 'pessoa', 'saldo_inicial', 'ativo'],
+  // Cartão de crédito tem ciclo: fecha num dia, vence noutro.
+  contas: ['nome', 'tipo', 'pessoa', 'dia_fechamento', 'dia_vencimento', 'saldo_inicial', 'ativo'],
   // De onde a renda vem. Só se aplica a receitas.
   fontes: ['nome', 'pessoa', 'tipo', 'ativo'],
   pessoas: ['nome', 'ativo'],
@@ -55,6 +56,15 @@ var ABAS = {
 };
 
 // Status possíveis de um lançamento na planilha.
+// Um lançamento é uma de três coisas. A terceira existe porque comprar no
+// crédito não tira dinheiro da conta: cria dívida. Quem tira é o pagamento da
+// fatura — e ele não pode contar como gasto de novo, senão dobra tudo.
+var TIPO = {
+  DESPESA: 'despesa',
+  RECEITA: 'receita',
+  FATURA: 'fatura'   // pagamento de fatura de cartão: sai do caixa, não é gasto novo
+};
+
 var STATUS = {
   OK: 'ok',                       // interpretado e confirmado
   AGUARDANDO_IA: 'aguardando_ia', // texto salvo, esperando a IA conseguir interpretar
@@ -224,13 +234,13 @@ function semearCategorias_() {
  */
 function semearContas_() {
   var padrao = [
-    ['Dinheiro', 'dinheiro', 'Fernando', 0, 'sim'],
-    ['Itaú', 'conta corrente', 'Fernando', 0, 'sim'],
-    ['Santander', 'conta corrente', 'Fernando', 0, 'sim'],
-    ['Nubank May', 'credito', 'Mayara', 0, 'sim'],
-    ['Caju', 'beneficio', 'Fernando', 0, 'sim'],
-    ['Alimentação', 'beneficio', 'Fernando', 0, 'sim'],
-    ['Amazon', 'credito', 'Fernando', 0, 'sim']
+    ['Dinheiro', 'dinheiro', 'Fernando', '', '', 0, 'sim'],
+    ['Itaú', 'credito', 'Fernando', '', '', 0, 'sim'],
+    ['Santander', 'credito', 'Fernando', '', '', 0, 'sim'],
+    ['Nubank May', 'credito', 'Mayara', '', '', 0, 'sim'],
+    ['Caju', 'beneficio', 'Fernando', '', '', 0, 'sim'],
+    ['Alimentação', 'beneficio', 'Fernando', '', '', 0, 'sim'],
+    ['Amazon', 'credito', 'Fernando', '', '', 0, 'sim']
   ];
   acrescentarSeFaltar_('contas', padrao);
 }
@@ -317,6 +327,7 @@ function doPost(e) {
       case 'excluir_lancamento': return json_(excluirLancamento_(pedido));
       case 'tornar_mensal':      return json_(tornarMensal_(pedido));
       case 'pagar_fixa':         return json_(pagarFixa_(pedido));
+      case 'pagar_fatura':       return json_(pagarFatura_(pedido));
       case 'recorrentes':        return json_({ ok: true, recorrentes: recorrentesDoMes_(pedido.mes || mesAtual_()) });
       case 'painel':      return json_(painel_(pedido));
       default:            return json_({ ok: false, erro: 'acao_desconhecida' });
@@ -398,11 +409,21 @@ function lancar_(pedido) {
     var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('lancamentos');
     var existentes = uuidsExistentes_(aba);
 
+    var contas = indiceContas_();
     var novas = [], gravados = [], duplicados = [];
     lista.forEach(function (l) {
       if (!l.uuid) { l.uuid = Utilities.getUuid(); }
       if (existentes[l.uuid]) { duplicados.push(l.uuid); return; }
       existentes[l.uuid] = true;
+
+      // Compra no crédito já nasce sabendo em qual fatura vai cair. Guardar o
+      // carimbo na linha faz o histórico continuar certo mesmo que você mude o
+      // ciclo do cartão depois.
+      if (!l.fatura_mes && (l.tipo || 'despesa') === TIPO.DESPESA) {
+        var conta = contas[chaveNome_(String(l.conta || ''))];
+        if (ehCartao_(conta)) l.fatura_mes = mesDaFatura_(conta, l.data || hojeISO_());
+      }
+
       novas.push(linhaDe_(l));
       gravados.push(l.uuid);
     });
@@ -430,6 +451,7 @@ function linhaDe_(l) {
     l.metodo || '',
     l.fonte || '',
     l.pessoa || pessoaDaConta_(l.conta),
+    l.fatura_mes || '',
     l.parcela_atual || '',
     l.parcelas_total || '',
     l.texto_falado || '',
@@ -852,6 +874,8 @@ function lerContasCompletas_() {
     .map(function (c) {
       return {
         nome: c.nome, tipo: c.tipo, pessoa: c.pessoa,
+        dia_fechamento: Number(c.dia_fechamento) || 0,
+        dia_vencimento: Number(c.dia_vencimento) || 0,
         saldo_inicial: Number(c.saldo_inicial) || 0
       };
     });
@@ -1180,10 +1204,11 @@ function resumo_(pedido) {
 
   linhas.forEach(function (r) {
     if (r[col.status] !== STATUS.OK) return;
+    if (r[col.tipo] === TIPO.FATURA) return; // já contado nas compras
     var data = normalizarData_(r[col.data]);
     if (data.indexOf(mes) !== 0) return;
     var valor = Number(r[col.valor]) || 0;
-    if (r[col.tipo] === 'receita') saida.receitas += valor;
+    if (r[col.tipo] === TIPO.RECEITA) saida.receitas += valor;
     else {
       saida.despesas += valor;
       var c = r[col.categoria] || 'Outros';
@@ -1229,6 +1254,149 @@ function lerCategorias_() {
 }
 
 // ---------------------------------------------------------------------------
+// Faturas de cartão
+// ---------------------------------------------------------------------------
+//
+// Comprar no crédito não tira dinheiro da conta — cria dívida. O dinheiro sai
+// quando a fatura é paga. Misturar as duas coisas é o erro que faz um app de
+// finanças dizer que você tem menos do que tem, e depois não avisar da fatura.
+//
+// Então cada compra no crédito é carimbada com o mês em que a fatura dela vence,
+// e o painel passa a ter dois números: o que você GASTOU e o que SAIU do bolso.
+
+/** Índice das contas por nome, para não reler a aba a cada lançamento. */
+function indiceContas_() {
+  var mapa = {};
+  lerCadastro_('contas').forEach(function (c) {
+    mapa[chaveNome_(c.nome)] = {
+      nome: c.nome,
+      tipo: String(c.tipo || '').toLowerCase(),
+      pessoa: c.pessoa,
+      fechamento: Number(c.dia_fechamento) || 0,
+      vencimento: Number(c.dia_vencimento) || 0
+    };
+  });
+  return mapa;
+}
+
+function ehCartao_(conta) {
+  return Boolean(conta && conta.tipo === 'credito');
+}
+
+/**
+ * Em que mês vence a fatura que engole uma compra feita nesta data.
+ *
+ * Comprou até o dia do fechamento, entra na fatura que fecha neste mês; depois
+ * dele, na do mês seguinte. E a fatura que fecha num mês vence nele mesmo
+ * quando o vencimento cai depois do fechamento — senão, no mês seguinte.
+ */
+function mesDaFatura_(cartao, dataISO) {
+  if (!cartao || !cartao.vencimento) return '';
+  var mes = String(dataISO).slice(0, 7);
+  var dia = Number(String(dataISO).slice(8, 10)) || 1;
+
+  var F = cartao.fechamento;
+  var mesFecha = (F && dia > F) ? mesSeguinte_(mes) : mes;
+
+  // Sem dia de fechamento, assumo que fecha no fim do mês e vence no seguinte.
+  if (!F) return mesSeguinte_(mesFecha);
+  return cartao.vencimento > F ? mesFecha : mesSeguinte_(mesFecha);
+}
+
+/**
+ * As faturas que vencem num mês: quanto cada cartão acumulou e se já foi paga.
+ * Precisa varrer todos os lançamentos, não só os do mês, porque a fatura de
+ * outubro é feita de compras de setembro.
+ */
+function faturasDoMes_(mes, contas, linhas, col) {
+  var porCartao = {};
+
+  linhas.forEach(function (r) {
+    if (r[col.status] !== STATUS.OK) return;
+
+    var nomeConta = String(r[col.conta] || '');
+    var conta = contas[chaveNome_(nomeConta)];
+
+    // Pagamento de fatura: marca aquela fatura como quitada.
+    if (r[col.tipo] === TIPO.FATURA) {
+      var alvoMes = normalizarMes_(r[col.fatura_mes]);
+      var alvoCartao = String(r[col.categoria] || '');
+      if (alvoMes !== mes || !alvoCartao) return;
+      var kp = chaveNome_(alvoCartao);
+      if (!porCartao[kp]) porCartao[kp] = novaFatura_(alvoCartao);
+      porCartao[kp].pago = true;
+      porCartao[kp].valor_pago = arred_((porCartao[kp].valor_pago || 0) + (Number(r[col.valor]) || 0));
+      porCartao[kp].uuid_pagamento = r[col.uuid];
+      porCartao[kp].pago_em = normalizarData_(r[col.data]);
+      return;
+    }
+
+    if (r[col.tipo] !== TIPO.DESPESA) return;
+    if (!ehCartao_(conta)) return;
+
+    // O carimbo gravado na linha manda; se não houver, calcula pela data.
+    var mesFatura = normalizarMes_(r[col.fatura_mes]) ||
+                    mesDaFatura_(conta, normalizarData_(r[col.data]));
+    if (mesFatura !== mes) return;
+
+    var k = chaveNome_(conta.nome);
+    if (!porCartao[k]) porCartao[k] = novaFatura_(conta.nome);
+    porCartao[k].total += Number(r[col.valor]) || 0;
+    porCartao[k].lancamentos++;
+    porCartao[k].dia = conta.vencimento;
+    porCartao[k].pessoa = conta.pessoa;
+  });
+
+  return Object.keys(porCartao)
+    .map(function (k) {
+      var f = porCartao[k];
+      f.total = arred_(f.total);
+      return f;
+    })
+    .filter(function (f) { return f.total > 0 || f.pago; })
+    .sort(function (a, b) { return (a.dia || 99) - (b.dia || 99); });
+}
+
+function novaFatura_(cartao) {
+  return {
+    cartao: cartao, total: 0, lancamentos: 0, dia: 0, pessoa: '',
+    pago: false, valor_pago: 0, uuid_pagamento: '', pago_em: ''
+  };
+}
+
+/**
+ * Registra o pagamento de uma fatura: aqui sim o dinheiro sai da conta.
+ * O lançamento entra com tipo `fatura`, que é somado ao caixa e ignorado
+ * nos gastos por categoria — as compras que formaram a fatura já foram contadas.
+ */
+function pagarFatura_(pedido) {
+  var cartao = String(pedido.cartao || '').trim();
+  var mes = normalizarMes_(pedido.mes);
+  if (!cartao || !mes) return { ok: false, erro: 'fatura_incompleta' };
+
+  var lancamento = {
+    uuid: pedido.uuid || Utilities.getUuid(),
+    data: pedido.data || hojeISO_(),
+    tipo: TIPO.FATURA,
+    valor: Number(pedido.valor) || 0,
+    categoria: cartao,
+    descricao: pedido.descricao || ('Fatura ' + cartao + ' ' + mes),
+    conta: pedido.conta || '',
+    metodo: pedido.metodo || '',
+    pessoa: pedido.pessoa || '',
+    fatura_mes: mes,
+    origem: 'fatura',
+    confianca: 'fatura',
+    status: STATUS.OK
+  };
+
+  if (!lancamento.valor) return { ok: false, erro: 'valor_zerado' };
+
+  var r = lancar_({ lancamentos: [lancamento] });
+  return { ok: true, gravados: r.gravados, lancamento: lancamento };
+}
+
+// ---------------------------------------------------------------------------
 // Painel do mês
 // ---------------------------------------------------------------------------
 
@@ -1251,46 +1419,64 @@ function painel_(pedido) {
   var serie = {};
   meses.forEach(function (k) { serie[k] = { mes: k, receitas: 0, despesas: 0 }; });
 
-  var totais = { receitas: 0, despesas: 0, lancamentos: 0 };
+  var totais = { receitas: 0, despesas: 0, lancamentos: 0, credito: 0, caixa: 0 };
   var porCategoria = {}, porConta = {}, porPessoa = {}, porFonte = {}, porGrupo = {};
   var porDia = {};
 
   var grupoDe = {};
   lerCategorias_().forEach(function (c) { grupoDe[chaveNome_(c.categoria)] = c.grupo || 'Outros'; });
 
-  if (n > 0) {
-    aba.getRange(2, 1, n, ABAS.lancamentos.length).getValues().forEach(function (r) {
-      if (r[col.status] !== STATUS.OK) return;
+  var contas = indiceContas_();
+  var linhas = n > 0 ? aba.getRange(2, 1, n, ABAS.lancamentos.length).getValues() : [];
 
-      var data = normalizarData_(r[col.data]);
-      var mesLinha = data.slice(0, 7);
-      var valor = Number(r[col.valor]) || 0;
-      var receita = r[col.tipo] === 'receita';
+  linhas.forEach(function (r) {
+    if (r[col.status] !== STATUS.OK) return;
 
-      if (serie[mesLinha]) {
-        if (receita) serie[mesLinha].receitas += valor;
-        else serie[mesLinha].despesas += valor;
-      }
+    var data = normalizarData_(r[col.data]);
+    var mesLinha = data.slice(0, 7);
+    var valor = Number(r[col.valor]) || 0;
+    var tipo = r[col.tipo];
+    var conta = contas[chaveNome_(String(r[col.conta] || ''))];
+    var noCredito = tipo === TIPO.DESPESA && ehCartao_(conta);
 
-      if (mesLinha !== mes) return;
+    // A evolução compara meses pelo que saiu do bolso: é o fluxo de caixa,
+    // o número que responde "sobrou dinheiro naquele mês".
+    if (serie[mesLinha]) {
+      if (tipo === TIPO.RECEITA) serie[mesLinha].receitas += valor;
+      else if (tipo === TIPO.FATURA) serie[mesLinha].despesas += valor;
+      else if (!noCredito) serie[mesLinha].despesas += valor;
+    }
 
-      totais.lancamentos++;
-      var pessoa = r[col.pessoa] || 'Sem dono';
+    if (mesLinha !== mes) return;
+    totais.lancamentos++;
 
-      if (receita) {
-        totais.receitas += valor;
-        somar_(porFonte, r[col.fonte] || 'Sem fonte', valor);
-      } else {
-        totais.despesas += valor;
-        var cat = r[col.categoria] || 'Outros';
-        somar_(porCategoria, cat, valor);
-        somar_(porGrupo, grupoDe[chaveNome_(cat)] || 'Outros', valor);
-        somar_(porConta, r[col.conta] || 'Sem conta', valor);
-        somar_(porDia, data, valor);
-      }
-      somar_(porPessoa, pessoa, receita ? 0 : valor);
-    });
-  }
+    if (tipo === TIPO.RECEITA) {
+      totais.receitas += valor;
+      somar_(porFonte, r[col.fonte] || 'Sem fonte', valor);
+      return;
+    }
+
+    // Pagar fatura tira dinheiro da conta, mas não é gasto novo: as compras
+    // que formaram essa fatura já entraram nos gastos quando aconteceram.
+    if (tipo === TIPO.FATURA) {
+      totais.caixa += valor;
+      return;
+    }
+
+    totais.despesas += valor;
+    if (noCredito) totais.credito += valor;
+    else totais.caixa += valor;
+
+    var cat = r[col.categoria] || 'Outros';
+    somar_(porCategoria, cat, valor);
+    somar_(porGrupo, grupoDe[chaveNome_(cat)] || 'Outros', valor);
+    somar_(porConta, r[col.conta] || 'Sem conta', valor);
+    somar_(porDia, data, valor);
+    somar_(porPessoa, r[col.pessoa] || 'Sem dono', valor);
+  });
+
+  var faturas = faturasDoMes_(mes, contas, linhas, col);
+  var faturasAbertas = faturas.filter(function (f) { return !f.pago; });
 
   // Os compromissos fixos do mês, e quais deles já apareceram como lançamento.
   //
@@ -1345,8 +1531,13 @@ function painel_(pedido) {
     ok: true,
     mes: mes,
     receitas: arred_(totais.receitas),
-    despesas: arred_(totais.despesas),
+    despesas: arred_(totais.despesas),          // tudo que você gastou (competência)
+    saiu_caixa: arred_(totais.caixa),           // o que de fato deixou as contas
+    no_credito: arred_(totais.credito),         // virou fatura, ainda não saiu
     saldo: arred_(totais.receitas - totais.despesas),
+    saldo_caixa: arred_(totais.receitas - totais.caixa),
+    faturas: faturas,
+    faturas_abertas: arred_(faturasAbertas.reduce(function (a, f) { return a + f.total; }, 0)),
     lancamentos: totais.lancamentos,
     por_categoria: emLista_(porCategoria),
     por_grupo: emLista_(porGrupo),
@@ -1378,7 +1569,7 @@ function lancamentosDoMesCru_(mes, col, aba, n) {
   var saida = [];
   aba.getRange(2, 1, n, ABAS.lancamentos.length).getValues().forEach(function (r) {
     if (r[col.status] !== STATUS.OK) return;
-    if (r[col.tipo] === 'receita') return;
+    if (r[col.tipo] !== TIPO.DESPESA) return;
     if (normalizarData_(r[col.data]).slice(0, 7) !== mes) return;
     saida.push({
       uuid: r[col.uuid],
@@ -1448,6 +1639,7 @@ function lancamentoDe_(r, col, data) {
     metodo: r[col.metodo] || '',
     fonte: r[col.fonte] || '',
     pessoa: r[col.pessoa] || '',
+    fatura_mes: normalizarMes_(r[col.fatura_mes]),
     parcela_atual: r[col.parcela_atual] || '',
     parcelas_total: r[col.parcelas_total] || '',
     texto_falado: r[col.texto_falado] || '',
@@ -1631,7 +1823,7 @@ function excluirLancamento_(pedido) {
 // que apontam para aquele nome — eles continuam fazendo sentido no histórico.
 
 var CADASTROS = {
-  contas:     { aba: 'contas',     campos: ['nome', 'tipo', 'pessoa', 'saldo_inicial', 'ativo'] },
+  contas:     { aba: 'contas',     campos: ['nome', 'tipo', 'pessoa', 'dia_fechamento', 'dia_vencimento', 'saldo_inicial', 'ativo'] },
   categorias: { aba: 'categorias', campos: ['categoria', 'grupo', 'tipo', 'palavras_chave', 'orcamento_mes', 'ativo'] },
   fontes:     { aba: 'fontes',     campos: ['nome', 'pessoa', 'tipo', 'ativo'] },
   pessoas:    { aba: 'pessoas',    campos: ['nome', 'ativo'] }
@@ -2047,6 +2239,7 @@ function atualizarResumo_() {
   var mapa = {};
   origem.getRange(2, 1, n, ABAS.lancamentos.length).getValues().forEach(function (r) {
     if (r[col.status] !== STATUS.OK) return;
+    if (r[col.tipo] === TIPO.FATURA) return; // pagamento de fatura não é gasto novo
     var mes = normalizarData_(r[col.data]).slice(0, 7);
     var cat = r[col.categoria] || 'Outros';
     var tipo = r[col.tipo] || 'despesa';

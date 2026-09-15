@@ -113,6 +113,7 @@ export const api = {
   excluirLancamento: (uuid) => chamar('excluir_lancamento', { uuid }),
   tornarMensal: (uuid, opcoes = {}) => chamar('tornar_mensal', { uuid, ...opcoes }),
   pagarFixa: (nome, mes, opcoes = {}) => chamar('pagar_fixa', { nome, mes, ...opcoes }),
+  pagarFatura: (cartao, mes, opcoes = {}) => chamar('pagar_fatura', { cartao, mes, ...opcoes }),
   painel: (mes) => chamar('painel', { mes }, { prazo: 40000 }),
   // A análise lê vários meses e chama o modelo grande: precisa de mais fôlego.
   perguntar: (pergunta) => chamar('perguntar', { pergunta }, { prazo: 90000 }),
