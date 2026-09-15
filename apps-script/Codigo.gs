@@ -414,7 +414,9 @@ function lancar_(pedido) {
     lista.forEach(function (l) {
       if (!l.uuid) { l.uuid = Utilities.getUuid(); }
       if (existentes[l.uuid]) { duplicados.push(l.uuid); return; }
-      existentes[l.uuid] = true;
+      // Quem marca o uuid como visto é o laço das parcelas, logo abaixo — a
+      // primeira parcela reusa o uuid da compra, e marcar aqui faria ela ser
+      // confundida com uma duplicata e nada seria gravado.
 
       // Compra no crédito já nasce sabendo em qual fatura vai cair. Guardar o
       // carimbo na linha faz o histórico continuar certo mesmo que você mude o
@@ -1559,6 +1561,7 @@ function pagarFatura_(pedido) {
   if (!lancamento.valor) return { ok: false, erro: 'valor_zerado' };
 
   var r = lancar_({ lancamentos: [lancamento] });
+  if (!r.gravados || !r.gravados.length) return { ok: false, erro: 'nao_gravou' };
   return { ok: true, gravados: r.gravados, lancamento: lancamento };
 }
 
@@ -1977,6 +1980,9 @@ function pagarFixa_(pedido) {
   };
 
   var r = lancar_({ lancamentos: [lancamento] });
+  // Se nada foi gravado, é erro — e erro tem que aparecer na tela, não sumir
+  // atrás de um "ok" que fecha o modal sem mudar nada.
+  if (!r.gravados || !r.gravados.length) return { ok: false, erro: 'nao_gravou' };
 
   // Pagou um valor diferente do combinado? Você decide o que isso significa:
   // foi só desta vez (exceção) ou a conta mudou de preço (nova vigência).
@@ -2272,6 +2278,7 @@ function mesSeguinte_(mes) {
 
 function lerRecorrentes_() {
   var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('recorrentes');
+  if (!aba) return [];
   var n = aba.getLastRow() - 1;
   if (n <= 0) return [];
   var c = colunasRecorrentes_();

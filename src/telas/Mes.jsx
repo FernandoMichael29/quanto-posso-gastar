@@ -644,6 +644,9 @@ const TRADUZ = {
   sem_rede: 'Sem internet. Esta tela lê os dados da planilha na hora.',
   token_invalido: 'O token não confere.',
   nao_encontrado: 'Esse lançamento não está mais na planilha.',
+  nao_gravou: 'A planilha não gravou o lançamento. Tente de novo.',
+  compromisso_nao_encontrado: 'Essa conta fixa não está mais cadastrada neste mês.',
+  valor_zerado: 'Sem valor, não dá para lançar.',
   api_fora: 'O script respondeu com erro.'
 };
 
