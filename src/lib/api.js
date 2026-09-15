@@ -71,6 +71,7 @@ export const api = {
   lancamentos: (mes) => chamar('lancamentos', { mes }),
   editarLancamento: (uuid, campos) => chamar('editar_lancamento', { uuid, campos }),
   excluirLancamento: (uuid) => chamar('excluir_lancamento', { uuid }),
+  tornarMensal: (uuid, opcoes = {}) => chamar('tornar_mensal', { uuid, ...opcoes }),
   painel: (mes) => chamar('painel', { mes }, { prazo: 40000 }),
   // A análise lê vários meses e chama o modelo grande: precisa de mais fôlego.
   perguntar: (pergunta) => chamar('perguntar', { pergunta }, { prazo: 90000 }),

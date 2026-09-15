@@ -12,6 +12,7 @@ export default function CartaoLancamento({
   aoConfirmar,
   aoCancelar,
   aoExcluir,
+  aoTornarMensal,
   ocupado = false
 }) {
   const l = valor;
@@ -128,6 +129,12 @@ export default function CartaoLancamento({
             {l.extras.map((e) => `${e.categoria} ${formatarBRL(e.valor)}`).join(' · ')}
           </span>
         </div>
+      )}
+
+      {modo === 'editar' && aoTornarMensal && (
+        <button type="button" className="btn repetir" onClick={aoTornarMensal} disabled={ocupado}>
+          ↻ Este gasto se repete todo mês
+        </button>
       )}
 
       {l.texto_falado && modo === 'editar' && (

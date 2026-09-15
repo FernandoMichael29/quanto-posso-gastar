@@ -314,6 +314,8 @@ function doPost(e) {
       case 'lancamentos':      return json_(lancamentosDoMes_(pedido));
       case 'editar_lancamento':  return json_(editarLancamento_(pedido));
       case 'excluir_lancamento': return json_(excluirLancamento_(pedido));
+      case 'tornar_mensal':      return json_(tornarMensal_(pedido));
+      case 'recorrentes':        return json_({ ok: true, recorrentes: recorrentesDoMes_(pedido.mes || mesAtual_()) });
       case 'painel':      return json_(painel_(pedido));
       default:            return json_({ ok: false, erro: 'acao_desconhecida' });
     }
@@ -666,7 +668,8 @@ function chamarClaude_(texto) {
     '"metodo":"pix|credito|debito|dinheiro|boleto|","fonte":string,"pessoa":string,' +
     '"parcela_atual":number|null,"parcelas_total":number|null}],\n' +
     ' "recorrentes":[{"nome":string,"acao":"definir|excecao|encerrar","valor":number,' +
-    '"tipo":"despesa|receita","categoria":string,"dia":number|null,"mes":"YYYY-MM"}],\n' +
+    '"tipo":"despesa|receita","categoria":string,"dia":number|null,"mes":"YYYY-MM",' +
+    '"mes_fim":"YYYY-MM"|null}],\n' +
     ' "memoria":[string],\n' +
     ' "cadastros":[{"tipo":"contas|categorias|fontes|pessoas","acao":"salvar|excluir",' +
     '"nome":string,"nome_antigo":string|null,"pessoa":string|null,' +
@@ -677,12 +680,19 @@ function chamarClaude_(texto) {
     '- "resumo" é uma frase curta em português dizendo o que você entendeu, para a pessoa confirmar.\n' +
     '- Use o mesmo "nome" de um compromisso já cadastrado quando a frase se referir a ele.\n' +
     '- Em "excecao", "mes" é o mês a que a frase se refere; se ela disser "esse mês", use ' + mes + '.\n' +
+    '- "mes" é SEMPRE quando a regra começa a valer — para "definir", use ' + mes + ' salvo\n' +
+    '  se a frase disser outra data de início. Prazo final vai em "mes_fim", nunca em "mes":\n' +
+    '  "todo mês até 10/03/2029" -> acao definir, mes ' + mes + ', dia 10, mes_fim "2029-03".\n' +
     '- Uma frase pode conter mais de um lançamento; devolva um item por lançamento.\n' +
     '- Em parcelamento, "valor" é o valor TOTAL da compra e parcelas_total o número de parcelas.\n' +
     '- Se a categoria não se encaixar em nenhuma da lista, use "Outros" (despesa) ou "Outras Entradas" (receita).\n' +
     '- Datas relativas ("ontem", "sexta passada") devem virar data absoluta.\n' +
-    '- "conta" é de onde o dinheiro saiu ou entrou. Case pelo nome falado, mesmo abreviado\n' +
-    '  ("nubank da May" -> "Nubank May", "vale" ou "alimentação" -> o cartão de benefício).\n' +
+    '- "conta" é de onde o dinheiro saiu ou entrou, e SÓ pode ser um nome da lista acima.\n' +
+    '  Case pelo nome falado, mesmo abreviado ("nubank da May" -> "Nubank May",\n' +
+    '  "vale" ou "alimentação" -> o cartão de benefício). Se a frase não identificar a conta,\n' +
+    '  deixe "" — nunca invente uma conta nova e nunca cadastre uma.\n' +
+    '- pix, crédito, débito, dinheiro e boleto são MÉTODO, jamais conta. "paguei no pix"\n' +
+    '  significa metodo "pix" e conta "".\n' +
     '- "fonte" só vale em receitas, e é de onde a renda vem. Deixe "" em despesas.\n' +
     '- "pessoa" é de quem é o gasto ou a renda. Se a frase não disser, deixe "" que eu\n' +
     '  deduzo pela conta.\n' +
@@ -1276,13 +1286,40 @@ function painel_(pedido) {
     });
   }
 
-  // O que ainda está previsto e não apareceu como lançamento neste mês.
-  var compromissos = recorrentesDoMes_(mes);
-  var jaLancado = {};
-  Object.keys(porCategoria).forEach(function (c) { jaLancado[chaveNome_(c)] = true; });
-  var previsto = compromissos.filter(function (c) {
-    return c.tipo !== 'receita' && !jaLancado[chaveNome_(c.nome)];
+  // Os compromissos fixos do mês, e quais deles já apareceram como lançamento.
+  //
+  // A versão anterior comparava o nome do compromisso com o nome da CATEGORIA
+  // já lançada. "Internet" casava por acaso e sumia; "Boleto mensal" não casava
+  // com nada e sumia junto, porque a lista só mostrava o que sobrasse do filtro.
+  // Agora nada some: a lista mostra tudo e marca o que já foi pago.
+  var compromissos = recorrentesDoMes_(mes).filter(function (c) {
+    return c.tipo !== 'receita';
   });
+
+  var assinaturas = lancamentosDoMesCru_(mes, col, aba, n).map(function (l) {
+    return {
+      descricao: chaveNome_(l.descricao),
+      categoria: chaveNome_(l.categoria),
+      valor: l.valor
+    };
+  });
+
+  var fixas = compromissos.map(function (c) {
+    var alvo = chaveNome_(c.nome);
+    var lancado = assinaturas.some(function (a) {
+      if (!alvo) return false;
+      if (a.descricao.indexOf(alvo) >= 0) return true;
+      if (a.categoria && a.categoria === alvo) return true;
+      // mesmo valor e mesma categoria também conta como pago
+      return a.categoria === chaveNome_(c.categoria) && Math.abs(a.valor - c.valor) < 0.01;
+    });
+    return {
+      nome: c.nome, valor: arred_(c.valor), dia: c.dia,
+      categoria: c.categoria, lancado: lancado
+    };
+  });
+
+  var previsto = fixas.filter(function (f) { return !f.lancado; });
 
   var orcamentos = {};
   lerCategorias_().forEach(function (c) {
@@ -1312,12 +1349,29 @@ function painel_(pedido) {
         saldo: arred_(serie[k].receitas - serie[k].despesas)
       };
     }),
-    previsto: previsto.map(function (c) {
-      return { nome: c.nome, valor: arred_(c.valor), dia: c.dia, categoria: c.categoria };
-    }),
+    fixas: fixas,
+    fixas_total: arred_(fixas.reduce(function (a, c) { return a + c.valor; }, 0)),
+    previsto: previsto,
     previsto_total: arred_(previsto.reduce(function (a, c) { return a + c.valor; }, 0)),
     orcamentos: orcamentos
   };
+}
+
+/** Lançamentos válidos do mês, para cruzar com os compromissos fixos. */
+function lancamentosDoMesCru_(mes, col, aba, n) {
+  if (n <= 0) return [];
+  var saida = [];
+  aba.getRange(2, 1, n, ABAS.lancamentos.length).getValues().forEach(function (r) {
+    if (r[col.status] !== STATUS.OK) return;
+    if (r[col.tipo] === 'receita') return;
+    if (normalizarData_(r[col.data]).slice(0, 7) !== mes) return;
+    saida.push({
+      descricao: String(r[col.descricao] || '') + ' ' + String(r[col.texto_falado] || ''),
+      categoria: String(r[col.categoria] || ''),
+      valor: Number(r[col.valor]) || 0
+    });
+  });
+  return saida;
 }
 
 function somar_(mapa, chave, valor) {
@@ -1432,6 +1486,41 @@ function editarLancamento_(pedido) {
   } finally {
     trava.releaseLock();
   }
+}
+
+/**
+ * Transforma um lançamento avulso num compromisso fixo.
+ *
+ * O gasto que já aconteceu continua lançado — ele é um fato. O que nasce daqui
+ * é a REGRA de que ele se repete, valendo deste mês em diante.
+ */
+function tornarMensal_(pedido) {
+  if (!pedido.uuid) return { ok: false, erro: 'uuid_faltando' };
+
+  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('lancamentos');
+  var linha = acharLinhaPorUuid_(aba, pedido.uuid);
+  if (!linha) return { ok: false, erro: 'nao_encontrado' };
+
+  var col = indiceColunas_();
+  var r = aba.getRange(linha, 1, 1, ABAS.lancamentos.length).getValues()[0];
+  var data = normalizarData_(r[col.data]);
+
+  var nome = String(pedido.nome || r[col.descricao] || r[col.categoria] || '').trim();
+  if (!nome) return { ok: false, erro: 'nome_vazio' };
+
+  var efeito = aplicarRecorrente_({
+    nome: nome,
+    acao: 'definir',
+    valor: Number(pedido.valor) || Number(r[col.valor]) || 0,
+    tipo: r[col.tipo] || 'despesa',
+    categoria: r[col.categoria] || 'Outros',
+    dia: Number(pedido.dia) || Number(data.slice(8, 10)) || '',
+    mes: pedido.mes || data.slice(0, 7),
+    mes_fim: pedido.mes_fim || '',
+    texto_falado: r[col.texto_falado] || ''
+  });
+
+  return { ok: true, recorrente: efeito, nome: nome };
 }
 
 /**
@@ -1664,13 +1753,35 @@ function lerRecorrentes_() {
       categoria: r[c.categoria] || '',
       valor: Number(r[c.valor]) || 0,
       dia: Number(r[c.dia]) || 0,
-      inicio: String(r[c.vigencia_inicio] || '').slice(0, 7),
-      fim: String(r[c.vigencia_fim] || '').slice(0, 7),
+      inicio: normalizarMes_(r[c.vigencia_inicio]),
+      fim: normalizarMes_(r[c.vigencia_fim]),
       escopo: r[c.escopo] || 'padrao',
       parcelas_total: Number(r[c.parcelas_total]) || 0,
       parcelas_restantes: Number(r[c.parcelas_restantes]) || 0
     };
   }).filter(function (r) { return r.nome; });
+}
+
+/**
+ * "2026-09" de qualquer coisa que o Sheets tenha guardado na célula.
+ *
+ * O Google Sheets converte "2026-09" em data sozinho dependendo do formato da
+ * coluna. Aí String(célula) vira "Tue Sep 01 2026..." e toda comparação de
+ * vigência quebra em silêncio — o compromisso existe mas some das contas.
+ */
+function normalizarMes_(v) {
+  if (!v && v !== 0) return '';
+  if (v instanceof Date) return Utilities.formatDate(v, fuso_(), 'yyyy-MM');
+  var t = String(v).trim();
+  var iso = t.match(/^(\d{4})-(\d{1,2})/);
+  if (iso) return iso[1] + '-' + (iso[2].length === 1 ? '0' + iso[2] : iso[2]);
+  var br = t.match(/^(\d{1,2})\/(\d{4})$/);           // 09/2026
+  if (br) return br[2] + '-' + (br[1].length === 1 ? '0' + br[1] : br[1]);
+  var brData = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); // 10/03/2029
+  if (brData) return brData[3] + '-' + (brData[2].length === 1 ? '0' + brData[2] : brData[2]);
+  var d = new Date(t);
+  if (!isNaN(d.getTime())) return Utilities.formatDate(d, fuso_(), 'yyyy-MM');
+  return t.slice(0, 7);
 }
 
 function chaveNome_(nome) {
@@ -1779,6 +1890,7 @@ function aplicarRecorrente_(d) {
     if (r.inicio === mes && acao === 'definir') {
       aba.getRange(r.linha, c.valor + 1).setValue(d.valor);
       if (d.dia) aba.getRange(r.linha, c.dia + 1).setValue(d.dia);
+      if (d.mes_fim) aba.getRange(r.linha, c.vigencia_fim + 1).setValue(normalizarMes_(d.mes_fim));
       r.corrigida = true;
     } else {
       aba.getRange(r.linha, c.vigencia_fim + 1)
@@ -1795,13 +1907,15 @@ function aplicarRecorrente_(d) {
   }
 
   var anterior = abertas[0];
+  // "todo mês até 10/03/2029" tem prazo: a vigência já nasce com fim.
+  var fim = d.mes_fim ? normalizarMes_(d.mes_fim) : '';
   aba.appendRow(linhaRecorrente_({
     nome: d.nome,
     tipo: d.tipo || (anterior && anterior.tipo) || 'despesa',
     categoria: d.categoria || (anterior && anterior.categoria) || 'Outros',
     valor: d.valor,
     dia: d.dia || (anterior && anterior.dia) || '',
-    inicio: mes, fim: '', escopo: 'padrao',
+    inicio: mes, fim: fim, escopo: 'padrao',
     parcelas_total: d.parcelas_total || '',
     parcelas_restantes: d.parcelas_restantes || d.parcelas_total || '',
     texto: d.texto_falado || ''
