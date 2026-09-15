@@ -16,16 +16,16 @@ export default function Ajustes({ aoSalvar }) {
     if (!enderecoPlausivel(url)) {
       setTeste({
         tom: 'ruim',
-        titulo: 'Esse endereço não parece um app da Web do Apps Script',
-        detalhe: 'Ele começa com https://script.google.com/macros/s/ e termina em /exec. Pegue em Implantar → Gerenciar implantações.'
+        titulo: 'Endereço inválido',
+        detalhe: 'Precisa ser o link do app da Web, terminando em /exec.'
       });
       return;
     }
     if (token.trim().length < 8) {
       setTeste({
         tom: 'ruim',
-        titulo: 'O token parece curto demais',
-        detalhe: 'É uma sequência longa de letras e números. Rode verToken() no Apps Script para vê-lo de novo.'
+        titulo: 'Token inválido',
+        detalhe: 'Rode verToken() no Apps Script para vê-lo de novo.'
       });
       return;
     }
@@ -42,8 +42,8 @@ export default function Ajustes({ aoSalvar }) {
         tom: 'bom',
         titulo: 'Conectado à sua planilha',
         detalhe: r.ia
-          ? 'A chave da IA também já está configurada no script.'
-          : 'Falta salvar a chave da API no script. Sem ela, as regras locais continuam funcionando e as frases difíceis ficam guardadas na fila.'
+          ? 'A chave da IA também já está configurada.'
+          : 'Falta a chave da API no script — sem ela, as frases difíceis ficam na fila.'
       });
       aoSalvar?.();
     } else {
@@ -51,7 +51,7 @@ export default function Ajustes({ aoSalvar }) {
       setTeste({
         tom: 'ruim',
         titulo: ERRO_TESTE[r.erro] || 'Não consegui conectar',
-        detalhe: r.detalhe || 'Confira se o endereço termina em /exec e se o script foi publicado com acesso para "Qualquer pessoa".'
+        detalhe: r.detalhe || 'Confira se a implantação está com acesso para "Qualquer pessoa".'
       });
     }
   }

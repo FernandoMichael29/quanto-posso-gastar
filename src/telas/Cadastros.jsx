@@ -8,7 +8,7 @@ import { api } from '../lib/api.js';
 const TIPOS = {
   contas: {
     rotulo: 'Contas e cartões',
-    ajuda: 'De onde o dinheiro sai: bancos, cartões, benefícios, espécie.',
+    ajuda: 'Com o que você paga: bancos, cartões, benefícios, espécie. O tipo aqui é o que diz se é crédito, débito ou dinheiro.',
     chave: 'nome',
     opcoes: ['conta corrente', 'credito', 'debito', 'beneficio', 'dinheiro', 'investimento'],
     campoTipo: 'tipo',

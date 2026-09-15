@@ -82,7 +82,7 @@ export default function CartaoLancamento({
           </select>
         </div>
         <div className="campo">
-          <label htmlFor="c-conta">{receita ? 'Entrou em' : 'Saiu de'}</label>
+          <label htmlFor="c-conta">{receita ? 'Caiu em' : 'Pago com'}</label>
           <select id="c-conta" value={l.conta || ''} onChange={mudar('conta')}>
             <option value="">—</option>
             {contas.map((c) => {
@@ -93,23 +93,13 @@ export default function CartaoLancamento({
         </div>
       </div>
 
-      <div className="linha">
-        {receita ? (
+      <div className={receita ? 'linha' : ''}>
+        {receita && (
           <div className="campo">
             <label htmlFor="c-fonte">Fonte da renda</label>
             <select id="c-fonte" value={l.fonte || ''} onChange={mudar('fonte')}>
               <option value="">—</option>
               {fontes.map((f) => <option key={f.nome} value={f.nome}>{f.nome}</option>)}
-            </select>
-          </div>
-        ) : (
-          <div className="campo">
-            <label htmlFor="c-metodo">Método</label>
-            <select id="c-metodo" value={l.metodo || ''} onChange={mudar('metodo')}>
-              <option value="">—</option>
-              {['pix', 'credito', 'debito', 'dinheiro', 'boleto'].map((m) => (
-                <option key={m} value={m}>{m}</option>
-              ))}
             </select>
           </div>
         )}
