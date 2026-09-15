@@ -605,6 +605,18 @@ button.item.sugestao:last-child { border-bottom: none; }
 
 .modal-corpo > .cartao + .cartao { margin-top: 12px; }
 
+/* a porta de entrada: nada de dado antes de falar com a planilha */
+.conteudo.porta { padding-top: 24px; gap: 16px; }
+
+button.aviso.clicavel {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+button.aviso.clicavel .ver-fila { font-weight: 600; opacity: .9; margin-top: 2px; }
+
 /* ---------- barras horizontais ---------- */
 
 .barras {

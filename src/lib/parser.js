@@ -1,3 +1,5 @@
+import { CATEGORIAS_PADRAO } from './categorias.js';
+
 // Interpretação local de frases faladas em português do Brasil.
 // Roda inteiro dentro do celular: sem rede, sem custo, instantâneo.
 // O que ele não consegue resolver com segurança, ele marca para a IA.
@@ -258,7 +260,9 @@ function acharCategoria(texto, categorias, tipo) {
  * }}
  */
 export function interpretar(fala, opcoes = {}) {
-  const categorias = opcoes.categorias || [];
+  // A lista padrão entra só como rede de segurança do reconhecimento local,
+  // nunca como cadastro do usuário: quem manda é sempre a aba `categorias`.
+  const categorias = opcoes.categorias?.length ? opcoes.categorias : CATEGORIAS_PADRAO;
   const hoje = opcoes.hoje || new Date();
   const original = String(fala || '').trim();
 

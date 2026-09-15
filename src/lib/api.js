@@ -15,9 +15,49 @@ export function lerConfig() {
 }
 
 export function salvarConfig(config) {
+  const antiga = lerConfig();
   localStorage.setItem(CHAVE_CONFIG, JSON.stringify(config));
+  // Trocou de endereço ou de token? A validação anterior não vale mais.
+  if (antiga.url !== config.url || antiga.token !== config.token) invalidarAcesso();
   // Espelha no IndexedDB para o service worker conseguir sincronizar sozinho.
   import('./db.js').then((db) => db.espelharConfig(config)).catch(() => {});
+}
+
+// ---------------------------------------------------------------------------
+// Acesso
+// ---------------------------------------------------------------------------
+//
+// O app não mostra nenhum dado antes de ter falado com a SUA planilha ao menos
+// uma vez neste aparelho. Sem isso, o que apareceria na tela seria cache velho
+// ou lista de exemplo — dado que parece seu e não é. Depois de validado, o app
+// pode trabalhar offline à vontade: aí o que está em cache veio mesmo da sua
+// planilha.
+
+const CHAVE_ACESSO = 'qpg.acesso';
+
+export function marcarAcessoValido() {
+  const { url, token } = lerConfig();
+  localStorage.setItem(CHAVE_ACESSO, JSON.stringify({ url, token, em: Date.now() }));
+}
+
+export function invalidarAcesso() {
+  localStorage.removeItem(CHAVE_ACESSO);
+}
+
+/** Este aparelho já conversou com a planilha configurada agora? */
+export function acessoValidado() {
+  try {
+    const a = JSON.parse(localStorage.getItem(CHAVE_ACESSO) || 'null');
+    const c = lerConfig();
+    return Boolean(a && c.url && c.token && a.url === c.url && a.token === c.token);
+  } catch {
+    return false;
+  }
+}
+
+/** O endereço tem cara de app da Web do Apps Script? */
+export function enderecoPlausivel(url) {
+  return /^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec\/?$/.test(String(url || '').trim());
 }
 
 export function configurado() {

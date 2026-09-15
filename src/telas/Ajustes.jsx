@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { api, lerConfig, salvarConfig } from '../lib/api.js';
+import { api, enderecoPlausivel, invalidarAcesso, lerConfig, marcarAcessoValido, salvarConfig } from '../lib/api.js';
 
 export default function Ajustes({ aoSalvar }) {
   const inicial = lerConfig();
@@ -10,6 +10,26 @@ export default function Ajustes({ aoSalvar }) {
 
   async function salvarETestar(e) {
     e.preventDefault();
+
+    // Erra cedo e com clareza: "0" não é um endereço, e esperar o servidor
+    // responder para descobrir isso só atrasa a correção.
+    if (!enderecoPlausivel(url)) {
+      setTeste({
+        tom: 'ruim',
+        titulo: 'Esse endereço não parece um app da Web do Apps Script',
+        detalhe: 'Ele começa com https://script.google.com/macros/s/ e termina em /exec. Pegue em Implantar → Gerenciar implantações.'
+      });
+      return;
+    }
+    if (token.trim().length < 8) {
+      setTeste({
+        tom: 'ruim',
+        titulo: 'O token parece curto demais',
+        detalhe: 'É uma sequência longa de letras e números. Rode verToken() no Apps Script para vê-lo de novo.'
+      });
+      return;
+    }
+
     salvarConfig({ url: url.trim(), token: token.trim() });
     setTestando(true);
     setTeste(null);
@@ -17,6 +37,7 @@ export default function Ajustes({ aoSalvar }) {
     setTestando(false);
 
     if (r.ok) {
+      marcarAcessoValido();
       setTeste({
         tom: 'bom',
         titulo: 'Conectado à sua planilha',
@@ -26,6 +47,7 @@ export default function Ajustes({ aoSalvar }) {
       });
       aoSalvar?.();
     } else {
+      invalidarAcesso();
       setTeste({
         tom: 'ruim',
         titulo: ERRO_TESTE[r.erro] || 'Não consegui conectar',
