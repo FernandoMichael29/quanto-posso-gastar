@@ -426,6 +426,25 @@ function lancar_(pedido) {
 
       novas.push(linhaDe_(l));
       gravados.push(l.uuid);
+
+      // Marcado como "repete todo mês" na hora de confirmar: além do gasto,
+      // nasce a regra. Evita ter que voltar depois para transformá-lo em fixo.
+      if (l.repete) {
+        try {
+          aplicarRecorrente_({
+            nome: l.descricao || l.categoria || 'Conta fixa',
+            acao: 'definir',
+            valor: Number(l.valor) || 0,
+            tipo: l.tipo || TIPO.DESPESA,
+            categoria: l.categoria || 'Outros',
+            dia: Number(String(l.data || hojeISO_()).slice(8, 10)) || '',
+            conta: l.conta || '',
+            pessoa: l.pessoa || '',
+            mes: String(l.data || hojeISO_()).slice(0, 7),
+            texto_falado: l.texto_falado || ''
+          });
+        } catch (err) { /* o gasto já está gravado; a regra pode ser criada à mão */ }
+      }
     });
 
     if (novas.length) {
@@ -1237,20 +1256,32 @@ function normalizarData_(v) {
   return String(v || '').slice(0, 10);
 }
 
-function lerCategorias_() {
+/**
+ * Todas as categorias, ativas e desativadas, com os campos crus (para a tela de
+ * cadastros poder editar e reativar) e os derivados (para quem interpreta fala).
+ */
+function categoriasTodas_() {
   var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('categorias');
+  if (!aba) return [];
   var n = aba.getLastRow() - 1;
   if (n <= 0) return [];
   return aba.getRange(2, 1, n, 6).getValues()
-    .filter(function (r) { return r[0] && r[5] !== 'não'; })
+    .filter(function (r) { return r[0]; })
     .map(function (r) {
       return {
         categoria: r[0], grupo: r[1], tipo: r[2],
+        palavras_chave: r[3],
+        orcamento_mes: r[4],
         palavras: String(r[3] || '').split(',').map(function (p) { return p.trim(); }).filter(Boolean),
         orcamento: Number(r[4]) || 0,
-        ativo: true
+        ativo: r[5] !== 'não' && r[5] !== false
       };
     });
+}
+
+/** Só as que estão valendo — é o que o parser e a IA podem sugerir. */
+function lerCategorias_() {
+  return categoriasTodas_().filter(function (c) { return c.ativo; });
 }
 
 // ---------------------------------------------------------------------------
@@ -1424,7 +1455,8 @@ function painel_(pedido) {
   var porDia = {};
 
   var grupoDe = {};
-  lerCategorias_().forEach(function (c) { grupoDe[chaveNome_(c.categoria)] = c.grupo || 'Outros'; });
+  // Inclui as desativadas: lançamento antigo continua no grupo em que nasceu.
+  categoriasTodas_().forEach(function (c) { grupoDe[chaveNome_(c.categoria)] = c.grupo || 'Outros'; });
 
   var contas = indiceContas_();
   var linhas = n > 0 ? aba.getRange(2, 1, n, ABAS.lancamentos.length).getValues() : [];
@@ -1477,6 +1509,18 @@ function painel_(pedido) {
 
   var faturas = faturasDoMes_(mes, contas, linhas, col);
   var faturasAbertas = faturas.filter(function (f) { return !f.pago; });
+
+  // Um cartão sem dia de vencimento não consegue formar fatura: as compras dele
+  // aparecem em "vai sair na fatura" e depois não achavam fatura nenhuma.
+  // Em vez de sumir com o dinheiro, o painel denuncia o cadastro incompleto.
+  var semCiclo = {};
+  linhas.forEach(function (r) {
+    if (r[col.status] !== STATUS.OK || r[col.tipo] !== TIPO.DESPESA) return;
+    if (normalizarData_(r[col.data]).slice(0, 7) !== mes) return;
+    var c = contas[chaveNome_(String(r[col.conta] || ''))];
+    if (!ehCartao_(c) || c.vencimento) return;
+    somar_(semCiclo, c.nome, Number(r[col.valor]) || 0);
+  });
 
   // Os compromissos fixos do mês, e quais deles já apareceram como lançamento.
   //
@@ -1538,6 +1582,7 @@ function painel_(pedido) {
     saldo_caixa: arred_(totais.receitas - totais.caixa),
     faturas: faturas,
     faturas_abertas: arred_(faturasAbertas.reduce(function (a, f) { return a + f.total; }, 0)),
+    cartoes_sem_ciclo: emLista_(semCiclo),
     lancamentos: totais.lancamentos,
     por_categoria: emLista_(porCategoria),
     por_grupo: emLista_(porGrupo),
@@ -1833,7 +1878,10 @@ var CADASTROS = {
 function cadastros_() {
   return {
     ok: true,
-    categorias: lerCategorias_(),
+    // Vai tudo, ativo e desativado, com a marca `ativo`: a tela de cadastros
+    // precisa listar o que está desativado para poder reativar; quem monta
+    // seletor filtra por `ativo` na hora de mostrar.
+    categorias: categoriasTodas_(),
     contas: lerCadastro_('contas'),
     fontes: lerCadastro_('fontes'),
     pessoas: lerCadastro_('pessoas'),

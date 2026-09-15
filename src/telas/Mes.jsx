@@ -231,6 +231,17 @@ export default function Mes({ cadastros, aoMudarDados }) {
             </>
           )}
 
+          {painel.cartoes_sem_ciclo?.length > 0 && (
+            <div className="aviso atencao">
+              <strong>Falta o ciclo de {painel.cartoes_sem_ciclo.map((c) => c.nome).join(', ')}</strong>
+              <span className="detalhe">
+                {formatarBRL(painel.cartoes_sem_ciclo.reduce((a, c) => a + c.total, 0))} em compras
+                sem fatura, porque o cartão não tem dia de vencimento.
+                Preencha em Ajustes → Contas.
+              </span>
+            </div>
+          )}
+
           {painel.faturas?.length > 0 && (
             <>
               <div className="secao-cabecalho">
