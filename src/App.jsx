@@ -8,6 +8,7 @@ import Cadastros from './telas/Cadastros.jsx';
 import { ESTADO, listar } from './lib/db.js';
 import { acessoValidado, api, configurado, marcarAcessoValido } from './lib/api.js';
 import { aoMudar, ligarSincronizacaoAutomatica } from './lib/sync.js';
+import { VERSAO_APP } from './lib/versao.js';
 
 const CACHE = 'qpg.cadastros';
 const VAZIO = { categorias: [], contas: [], fontes: [], pessoas: [] };
@@ -32,11 +33,17 @@ export default function App() {
   const [cadastros, setCadastros] = useState(cadastrosSalvos);
   const [resumo, setResumo] = useState(null);
   const [online, setOnline] = useState(navigator.onLine);
+  const [versaoScript, setVersaoScript] = useState(null);
 
   const recarregarFila = useCallback(async () => setFila(await listar()), []);
 
   const recarregarDados = useCallback(async () => {
     if (!configurado() || !navigator.onLine) return;
+
+    // Pergunta ao script em que versão ele está. É o que permite dizer na tela
+    // "isto aqui ainda é o código velho" em vez de você ficar procurando um bug
+    // que não existe.
+    api.ping().then((p) => { if (p.ok) setVersaoScript(p.versao || '?'); });
 
     const c = await api.cadastros();
     if (c.ok) marcarAcessoValido();
@@ -156,6 +163,18 @@ export default function App() {
       </header>
 
       <main className="conteudo">
+        {versaoScript && versaoScript !== VERSAO_APP && (
+          <div className="aviso atencao" role="status">
+            <strong>As duas metades estão em versões diferentes</strong>
+            <span className="detalhe">
+              O app é a {VERSAO_APP} e o script da planilha é a {versaoScript}.
+              {versaoScript < VERSAO_APP
+                ? ' Cole o Codigo.gs novo no Apps Script e implante com "Nova versão" — até lá, o que é novo não aparece.'
+                : ' O site ainda está com a versão antiga: espere o deploy do GitHub terminar e recarregue.'}
+            </span>
+          </div>
+        )}
+
         {aba === 'falar' && (
           <Falar cadastros={cadastros} resumo={resumo} aoMudarFila={tudo} aoIrParaFila={() => setAba('fila')} />
         )}

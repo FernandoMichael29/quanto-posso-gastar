@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api, enderecoPlausivel, invalidarAcesso, lerConfig, marcarAcessoValido, salvarConfig } from '../lib/api.js';
+import { VERSAO_APP } from '../lib/versao.js';
 
 export default function Ajustes({ aoSalvar }) {
   const inicial = lerConfig();
@@ -38,12 +39,15 @@ export default function Ajustes({ aoSalvar }) {
 
     if (r.ok) {
       marcarAcessoValido();
+      const versao = r.versao === VERSAO_APP
+        ? `Script na versão ${r.versao}, igual à do app.`
+        : `Atenção: o script está na versão ${r.versao || '?'} e o app na ${VERSAO_APP}.`;
       setTeste({
         tom: 'bom',
         titulo: 'Conectado à sua planilha',
-        detalhe: r.ia
-          ? 'A chave da IA também já está configurada.'
-          : 'Falta a chave da API no script — sem ela, as frases difíceis ficam na fila.'
+        detalhe: (r.ia
+          ? 'A chave da IA também já está configurada. '
+          : 'Falta a chave da API no script — sem ela, as frases difíceis ficam na fila. ') + versao
       });
       aoSalvar?.();
     } else {

@@ -10,7 +10,9 @@
 // Configuração
 // ---------------------------------------------------------------------------
 
-var VERSAO = '1.2.0';
+// Suba junto com VERSAO_APP em src/lib/versao.js — o app compara as duas e
+// avisa na tela quando só uma das metades foi publicada.
+var VERSAO = '1.5.0';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -859,7 +861,11 @@ function chamarClaude_(texto) {
 
     'Regras:\n' +
     '- "resumo" é uma frase curta em português dizendo o que você entendeu, para a pessoa confirmar.\n' +
-    '- Use o mesmo "nome" de um compromisso já cadastrado quando a frase se referir a ele.\n' +
+    '- Em "recorrentes", "nome" é o nome que a PESSOA usou na frase: "Caju" vira "Caju",\n' +
+    '  não "Vale Alimentação"; "consórcio" vira "Consórcio", não "Financiamento". Nunca\n' +
+    '  troque por sinônimo, categoria ou marca equivalente. Reusar o nome de um compromisso\n' +
+    '  já cadastrado SOBRESCREVE o valor dele, então só faça isso quando a frase falar\n' +
+    '  claramente do mesmo compromisso da lista. Na dúvida, nome novo.\n' +
     '- Em "excecao", "mes" é o mês a que a frase se refere; se ela disser "esse mês", use ' + mes + '.\n' +
     '- "mes" é SEMPRE quando a regra começa a valer — para "definir", use ' + mes + ' salvo\n' +
     '  se a frase disser outra data de início. Prazo final vai em "mes_fim", nunca em "mes":\n' +
@@ -1675,43 +1681,23 @@ function painel_(pedido) {
   // já lançada. "Internet" casava por acaso e sumia; "Boleto mensal" não casava
   // com nada e sumia junto, porque a lista só mostrava o que sobrasse do filtro.
   // Agora nada some: a lista mostra tudo e marca o que já foi pago.
-  var compromissos = recorrentesDoMes_(mes).filter(function (c) {
-    return c.tipo !== 'receita';
-  });
+  var todosCompromissos = recorrentesDoMes_(mes);
 
-  var assinaturas = lancamentosDoMesCru_(mes, col, aba, n).map(function (l) {
-    return {
-      uuid: l.uuid,
-      descricao: chaveNome_(l.descricao),
-      categoria: chaveNome_(l.categoria),
-      valor: l.valor
-    };
-  });
+  var fixas = cruzarCompromissos_(
+    todosCompromissos.filter(function (c) { return c.tipo !== 'receita'; }),
+    lancamentosDoMesCru_(mes, col, aba, n, TIPO.DESPESA)
+  );
 
-  var fixas = compromissos.map(function (c) {
-    var alvo = chaveNome_(c.nome);
-    var pagou = null;
-    for (var i = 0; i < assinaturas.length && alvo; i++) {
-      var a = assinaturas[i];
-      if (a.descricao.indexOf(alvo) >= 0 ||
-          (a.categoria && a.categoria === alvo) ||
-          (a.categoria === chaveNome_(c.categoria) && Math.abs(a.valor - c.valor) < 0.01)) {
-        pagou = a;
-        break;
-      }
-    }
-    return {
-      nome: c.nome, valor: arred_(c.valor), dia: c.dia,
-      categoria: c.categoria,
-      conta: c.conta, metodo: c.metodo, pessoa: c.pessoa,
-      lancado: !!pagou,
-      // o uuid fecha o ciclo: tocar numa conta já paga abre o lançamento dela
-      uuid_lancamento: pagou ? pagou.uuid : '',
-      valor_lancado: pagou ? arred_(pagou.valor) : null
-    };
-  });
+  // Renda que entra todo mês é compromisso igual — só que a favor. Sem isto ela
+  // ficava guardada na aba `recorrentes` e não aparecia em lugar nenhum: o mês
+  // dizia "Recebi R$ 0,00" com o vale-alimentação cadastrado do lado.
+  var rendas = cruzarCompromissos_(
+    todosCompromissos.filter(function (c) { return c.tipo === 'receita'; }),
+    lancamentosDoMesCru_(mes, col, aba, n, TIPO.RECEITA)
+  );
 
   var previsto = fixas.filter(function (f) { return !f.lancado; });
+  var aReceber = rendas.filter(function (r) { return !r.lancado; });
 
   var orcamentos = {};
   lerCategorias_().forEach(function (c) {
@@ -1751,17 +1737,61 @@ function painel_(pedido) {
     fixas_total: arred_(fixas.reduce(function (a, c) { return a + c.valor; }, 0)),
     previsto: previsto,
     previsto_total: arred_(previsto.reduce(function (a, c) { return a + c.valor; }, 0)),
+    rendas: rendas,
+    rendas_total: arred_(rendas.reduce(function (a, c) { return a + c.valor; }, 0)),
+    a_receber: aReceber,
+    a_receber_total: arred_(aReceber.reduce(function (a, c) { return a + c.valor; }, 0)),
     orcamentos: orcamentos
   };
 }
 
-/** Lançamentos válidos do mês, para cruzar com os compromissos fixos. */
-function lancamentosDoMesCru_(mes, col, aba, n) {
+/**
+ * Cruza os compromissos do mês com o que já foi lançado, e marca cada um como
+ * lançado ou não. Serve para conta fixa e para renda mensal — a pergunta é a
+ * mesma ("isso já aconteceu este mês?"), só muda o sinal do dinheiro.
+ */
+function cruzarCompromissos_(compromissos, lancamentos) {
+  var feitos = lancamentos.map(function (l) {
+    return {
+      uuid: l.uuid,
+      descricao: chaveNome_(l.descricao),
+      categoria: chaveNome_(l.categoria),
+      valor: l.valor
+    };
+  });
+
+  return compromissos.map(function (c) {
+    var alvo = chaveNome_(c.nome);
+    var feito = null;
+    for (var i = 0; i < feitos.length && alvo; i++) {
+      var a = feitos[i];
+      if (a.descricao.indexOf(alvo) >= 0 ||
+          (a.categoria && a.categoria === alvo) ||
+          (a.categoria === chaveNome_(c.categoria) && Math.abs(a.valor - c.valor) < 0.01)) {
+        feito = a;
+        break;
+      }
+    }
+    return {
+      nome: c.nome, valor: arred_(c.valor), dia: c.dia,
+      tipo: c.tipo || TIPO.DESPESA,
+      categoria: c.categoria,
+      conta: c.conta, metodo: c.metodo, pessoa: c.pessoa,
+      lancado: !!feito,
+      // o uuid fecha o ciclo: tocar num item já lançado abre o lançamento dele
+      uuid_lancamento: feito ? feito.uuid : '',
+      valor_lancado: feito ? arred_(feito.valor) : null
+    };
+  });
+}
+
+/** Lançamentos válidos do mês, para cruzar com os compromissos. */
+function lancamentosDoMesCru_(mes, col, aba, n, tipo) {
   if (n <= 0) return [];
   var saida = [];
   aba.getRange(2, 1, n, ABAS.lancamentos.length).getValues().forEach(function (r) {
     if (r[col.status] !== STATUS.OK) return;
-    if (r[col.tipo] !== TIPO.DESPESA) return;
+    if (r[col.tipo] !== (tipo || TIPO.DESPESA)) return;
     if (normalizarData_(r[col.data]).slice(0, 7) !== mes) return;
     saida.push({
       uuid: r[col.uuid],
@@ -2013,9 +2043,10 @@ function pagarFixa_(pedido) {
     descricao: pedido.descricao || nome,
     conta: pedido.conta || compromisso.conta || '',
     metodo: pedido.metodo || compromisso.metodo || '',
+    fonte: pedido.fonte || '',
     pessoa: pedido.pessoa || compromisso.pessoa || '',
     texto_falado: '',
-    origem: 'conta fixa',
+    origem: compromisso.tipo === TIPO.RECEITA ? 'renda mensal' : 'conta fixa',
     confianca: 'fixa',
     status: STATUS.OK
   };
