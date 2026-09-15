@@ -10,7 +10,7 @@
 // Configuração
 // ---------------------------------------------------------------------------
 
-var VERSAO = '1.2.0';
+var VERSAO = '1.2.4';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -315,6 +315,7 @@ function doPost(e) {
       case 'editar_lancamento':  return json_(editarLancamento_(pedido));
       case 'excluir_lancamento': return json_(excluirLancamento_(pedido));
       case 'tornar_mensal':      return json_(tornarMensal_(pedido));
+      case 'pagar_fixa':         return json_(pagarFixa_(pedido));
       case 'recorrentes':        return json_({ ok: true, recorrentes: recorrentesDoMes_(pedido.mes || mesAtual_()) });
       case 'painel':      return json_(painel_(pedido));
       default:            return json_({ ok: false, erro: 'acao_desconhecida' });
@@ -1486,6 +1487,51 @@ function editarLancamento_(pedido) {
   } finally {
     trava.releaseLock();
   }
+}
+
+/**
+ * Registra o pagamento de uma conta fixa: vira um lançamento de verdade.
+ *
+ * O app nunca cria isto sozinho. Uma conta fixa é previsão até você dizer que
+ * pagou — assim a planilha só guarda dinheiro que se moveu, e o saldo do mês
+ * nunca afirma algo que não aconteceu.
+ */
+function pagarFixa_(pedido) {
+  var nome = String(pedido.nome || '').trim();
+  if (!nome) return { ok: false, erro: 'nome_vazio' };
+
+  var mes = normalizarMes_(pedido.mes) || mesAtual_();
+  var compromisso = recorrentesDoMes_(mes).filter(function (c) {
+    return chaveNome_(c.nome) === chaveNome_(nome);
+  })[0];
+
+  if (!compromisso) return { ok: false, erro: 'compromisso_nao_encontrado' };
+
+  // A data do pagamento: o dia do vencimento daquele mês, sem passar de hoje.
+  var dia = Number(pedido.dia) || compromisso.dia || 1;
+  var ultimoDia = new Date(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)), 0).getDate();
+  if (dia > ultimoDia) dia = ultimoDia;
+  var data = pedido.data || (mes + '-' + (dia < 10 ? '0' + dia : String(dia)));
+  if (data > hojeISO_()) data = hojeISO_();
+
+  var lancamento = {
+    uuid: pedido.uuid || Utilities.getUuid(),
+    data: data,
+    tipo: compromisso.tipo || 'despesa',
+    valor: Number(pedido.valor) || compromisso.valor,
+    categoria: compromisso.categoria || 'Outros',
+    descricao: nome,
+    conta: pedido.conta || '',
+    metodo: pedido.metodo || '',
+    pessoa: pedido.pessoa || '',
+    texto_falado: '',
+    origem: 'conta fixa',
+    confianca: 'fixa',
+    status: STATUS.OK
+  };
+
+  var r = lancar_({ lancamentos: [lancamento] });
+  return { ok: true, gravados: r.gravados, lancamento: lancamento };
 }
 
 /**

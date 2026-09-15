@@ -590,6 +590,7 @@ button.item.sugestao:last-child { border-bottom: none; }
 .item.fixa .num { color: var(--ink-2); }
 .item.fixa.paga { opacity: .62; }
 .item.fixa.paga .num { text-decoration: line-through; }
+.item.fixa .meta.atrasada { color: var(--crit); font-weight: 600; }
 
 /* ---------- barras horizontais ---------- */
 

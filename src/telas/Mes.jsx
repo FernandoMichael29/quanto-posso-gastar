@@ -23,6 +23,7 @@ export default function Mes({ cadastros, aoMudarDados }) {
   const [salvando, setSalvando] = useState(false);
   const [filtroPessoa, setFiltroPessoa] = useState('');
   const [virandoMensal, setVirandoMensal] = useState(null);
+  const [pagando, setPagando] = useState(null);
 
   const carregar = useCallback(async (alvo) => {
     if (!configurado()) { setErro('Configure o app nos Ajustes primeiro.'); return; }
@@ -63,6 +64,14 @@ export default function Mes({ cadastros, aoMudarDados }) {
     } else setErro(traduzir(r.erro));
   }
 
+  async function pagarFixa(f) {
+    setPagando(f.nome);
+    const r = await api.pagarFixa(f.nome, mes, { dia: f.dia });
+    setPagando(null);
+    if (r.ok) { carregar(mes); aoMudarDados?.(); }
+    else setErro(traduzir(r.erro));
+  }
+
   async function excluirEdicao() {
     setSalvando(true);
     const r = await api.excluirLancamento(editando.uuid);
@@ -77,6 +86,13 @@ export default function Mes({ cadastros, aoMudarDados }) {
     : lista;
 
   const dadosCorte = painel?.[CORTES.find((c) => c.id === corte).campo] || [];
+
+  // Uma conta fixa que não virou lançamento pode estar em dois estados muito
+  // diferentes: ainda vai vencer, ou já venceu e ninguém registrou. Chamar as
+  // duas de "previsto" escondia a segunda, que é justamente a que precisa de você.
+  const fixas = (painel?.fixas || []).map((f) => ({ ...f, ...situacaoDa(f, painel.mes) }));
+  const atrasadas = resumirFixas(fixas.filter((f) => f.situacao === 'erro'));
+  const aVencer = resumirFixas(fixas.filter((f) => f.situacao === 'pendente'));
 
   return (
     <>
@@ -100,7 +116,7 @@ export default function Mes({ cadastros, aoMudarDados }) {
             </div>
           </div>
 
-          {painel.fixas?.length > 0 && (
+          {fixas.length > 0 && (
             <>
               <div className="secao-cabecalho">
                 <p className="secao-titulo" style={{ margin: 0 }}>Contas fixas do mês</p>
@@ -109,27 +125,43 @@ export default function Mes({ cadastros, aoMudarDados }) {
                 </span>
               </div>
               <div className="lista">
-                {painel.fixas.map((f) => (
+                {fixas.map((f) => (
                   <div className={`item fixa ${f.lancado ? 'paga' : ''}`} key={f.nome}>
-                    <span className={`ponto ${f.lancado ? 'sincronizado' : 'pendente'}`} aria-hidden="true" />
+                    <span className={`ponto ${f.situacao}`} aria-hidden="true" />
                     <span className="corpo">
                       <span className="titulo">{f.nome}</span>
-                      <span className="meta">
-                        {f.lancado ? 'já lançado' : 'ainda não apareceu'}
-                        {f.dia ? ` · vence dia ${f.dia}` : ''}
-                        {f.categoria ? ` · ${f.categoria}` : ''}
+                      <span className={`meta ${f.situacao === 'erro' ? 'atrasada' : ''}`}>
+                        {f.rotulo}{f.categoria ? ` · ${f.categoria}` : ''}
                       </span>
                     </span>
                     <span className="num">{formatarBRL(f.valor)}</span>
+                    {!f.lancado && (
+                      <button
+                        className="btn discreto pequeno"
+                        onClick={() => pagarFixa(f)}
+                        disabled={pagando === f.nome}
+                      >
+                        {pagando === f.nome ? '…' : 'paguei'}
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
-              {painel.previsto_total > 0 && (
-                <div className="aviso atencao">
-                  <strong>Ainda vai sair: {formatarBRL(painel.previsto_total)}</strong>
+
+              {atrasadas.total > 0 && (
+                <div className="aviso ruim">
+                  <strong>Venceu e não foi lançado: {formatarBRL(atrasadas.total)}</strong>
                   <span className="detalhe">
-                    Contando só o que ainda não apareceu como lançamento.
-                    Sobra projetada: {formatarBRL(painel.saldo - painel.previsto_total)}.
+                    {atrasadas.nomes.join(' · ')} — se já pagou, toque em &ldquo;paguei&rdquo;.
+                  </span>
+                </div>
+              )}
+
+              {aVencer.total > 0 && (
+                <div className="aviso atencao">
+                  <strong>Ainda vai vencer: {formatarBRL(aVencer.total)}</strong>
+                  <span className="detalhe">
+                    Sobra projetada no fim do mês: {formatarBRL(painel.saldo - painel.previsto_total)}.
                   </span>
                 </div>
               )}
@@ -305,6 +337,38 @@ function SeletorMes({ mes, aoMudar }) {
       >›</button>
     </div>
   );
+}
+
+/** Em que pé está uma conta fixa, comparando o vencimento com hoje. */
+function situacaoDa(f, mesPainel) {
+  if (f.lancado) return { situacao: 'sincronizado', rotulo: 'já lançado' };
+  if (!f.dia) return { situacao: 'pendente', rotulo: 'sem dia definido' };
+
+  const hoje = new Date();
+  const mesHoje = mesDeHoje();
+
+  if (mesPainel > mesHoje) return { situacao: 'pendente', rotulo: `vence dia ${f.dia}` };
+  if (mesPainel < mesHoje) return { situacao: 'erro', rotulo: `venceu dia ${f.dia} e não foi lançado` };
+
+  const diasAte = f.dia - hoje.getDate();
+  if (diasAte > 0) {
+    return {
+      situacao: 'pendente',
+      rotulo: diasAte === 1 ? 'vence amanhã' : `vence em ${diasAte} dias`
+    };
+  }
+  if (diasAte === 0) return { situacao: 'pendente', rotulo: 'vence hoje' };
+  return {
+    situacao: 'erro',
+    rotulo: `venceu há ${-diasAte} dia${diasAte < -1 ? 's' : ''} e não foi lançado`
+  };
+}
+
+function resumirFixas(lista) {
+  return {
+    total: lista.reduce((a, f) => a + f.valor, 0),
+    nomes: lista.map((f) => f.nome)
+  };
 }
 
 function mesDeHoje() {
