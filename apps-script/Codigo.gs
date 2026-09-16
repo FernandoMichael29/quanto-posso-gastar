@@ -12,7 +12,7 @@
 
 // Suba junto com VERSAO_APP em src/lib/versao.js — o app compara as duas e
 // avisa na tela quando só uma das metades foi publicada.
-var VERSAO = '1.5.0';
+var VERSAO = '1.6.0';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -327,6 +327,10 @@ function doPost(e) {
       case 'lancamentos':      return json_(lancamentosDoMes_(pedido));
       case 'editar_lancamento':  return json_(editarLancamento_(pedido));
       case 'excluir_lancamento': return json_(excluirLancamento_(pedido));
+      case 'recorrentes':        return json_(recorrentes_(pedido));
+      case 'salvar_recorrente':  return json_(salvarRecorrente_(pedido));
+      case 'excluir_recorrente': return json_(excluirRecorrente_(pedido));
+      case 'encerrar_recorrente':return json_(encerrarRecorrente_(pedido));
       case 'tornar_mensal':      return json_(tornarMensal_(pedido));
       case 'pagar_fixa':         return json_(pagarFixa_(pedido));
       case 'pagar_fatura':       return json_(pagarFatura_(pedido));
@@ -2372,7 +2376,109 @@ function lerRecorrentes_() {
       parcelas_total: Number(r[c.parcelas_total]) || 0,
       parcelas_restantes: Number(r[c.parcelas_restantes]) || 0
     };
-  }).filter(function (r) { return r.nome; });
+  }).filter(function (r) {
+    // Apagado não é apagado de verdade: a linha fica na planilha para o
+    // histórico não mentir, mas some de tudo que calcula o mês.
+    return r.nome && r.escopo !== ESCOPO_APAGADO;
+  });
+}
+
+var ESCOPO_APAGADO = 'apagado';
+
+/** As regras mensais de um mês, com o que a tela precisa para editar. */
+function recorrentes_(pedido) {
+  var mes = normalizarMes_(pedido && pedido.mes) || mesAtual_();
+  return {
+    ok: true,
+    mes: mes,
+    recorrentes: recorrentesDoMes_(mes).map(function (r) {
+      return {
+        nome: r.nome, tipo: r.tipo, valor: r.valor, dia: r.dia,
+        categoria: r.categoria, conta: r.conta, metodo: r.metodo,
+        pessoa: r.pessoa, excecao: r.excecao
+      };
+    })
+  };
+}
+
+/**
+ * Corrige uma regra mensal: o que ela é (nome, entrada ou saída) vale para
+ * todas as vigências dela; o que ela custa neste momento (valor, dia, conta)
+ * vale para a vigência deste mês.
+ *
+ * Existe porque uma regra nascida de uma frase mal-entendida — "adiantamento da
+ * Mayara" virando despesa quando era o salário dela — não tinha conserto
+ * nenhum: não dava para editar, nem apagar, e ela voltava todo mês.
+ */
+function salvarRecorrente_(pedido) {
+  var nome = String(pedido.nome || '').trim();
+  if (!nome) return { ok: false, erro: 'nome_vazio' };
+
+  var mes = normalizarMes_(pedido.mes) || mesAtual_();
+  var campos = pedido.campos || {};
+  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('recorrentes');
+  var c = colunasRecorrentes_();
+  var todos = lerRecorrentes_();
+  var alvo = chaveNome_(nome);
+
+  var daRegra = todos.filter(function (r) { return chaveNome_(r.nome) === alvo; });
+  if (!daRegra.length) return { ok: false, erro: 'compromisso_nao_encontrado' };
+
+  // Nome e tipo são a identidade da regra: mudam em todas as linhas dela.
+  var novoNome = campos.nome !== undefined ? String(campos.nome).trim() : '';
+  if (novoNome && chaveNome_(novoNome) !== alvo) {
+    daRegra.forEach(function (r) { aba.getRange(r.linha, c.nome + 1).setValue(novoNome); });
+  }
+  if (campos.tipo === TIPO.RECEITA || campos.tipo === TIPO.DESPESA) {
+    daRegra.forEach(function (r) { aba.getRange(r.linha, c.tipo + 1).setValue(campos.tipo); });
+  }
+
+  // O resto vale para a vigência que manda neste mês.
+  var atual = valorNoMes_(todos, nome, mes);
+  var linha = atual ? atual.registro.linha : daRegra[daRegra.length - 1].linha;
+
+  if (campos.valor !== undefined) aba.getRange(linha, c.valor + 1).setValue(Number(campos.valor) || 0);
+  if (campos.dia !== undefined) aba.getRange(linha, c.dia + 1).setValue(Number(campos.dia) || '');
+  if (campos.categoria !== undefined) aba.getRange(linha, c.categoria + 1).setValue(campos.categoria);
+  if (campos.conta !== undefined) aba.getRange(linha, c.conta + 1).setValue(campos.conta);
+  if (campos.pessoa !== undefined) aba.getRange(linha, c.pessoa + 1).setValue(campos.pessoa);
+  if (campos.mes_fim !== undefined) {
+    aba.getRange(linha, c.vigencia_fim + 1).setValue(campos.mes_fim ? normalizarMes_(campos.mes_fim) : '');
+  }
+
+  return { ok: true, nome: novoNome || nome, mes: mes };
+}
+
+/**
+ * Apaga uma regra mensal inteira — todas as vigências e exceções dela.
+ * Para "não tenho mais isso a partir de agora", o certo é encerrar (aplicar
+ * com acao 'encerrar'), que preserva os meses em que a conta existiu.
+ */
+function excluirRecorrente_(pedido) {
+  var nome = String(pedido.nome || '').trim();
+  if (!nome) return { ok: false, erro: 'nome_vazio' };
+
+  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('recorrentes');
+  var c = colunasRecorrentes_();
+  var alvo = chaveNome_(nome);
+  var apagadas = 0;
+
+  lerRecorrentes_().forEach(function (r) {
+    if (chaveNome_(r.nome) !== alvo) return;
+    aba.getRange(r.linha, c.escopo + 1).setValue(ESCOPO_APAGADO);
+    apagadas++;
+  });
+
+  if (!apagadas) return { ok: false, erro: 'compromisso_nao_encontrado' };
+  return { ok: true, nome: nome, apagadas: apagadas };
+}
+
+/** Encerra a regra: ela vale até o mês informado e não volta depois. */
+function encerrarRecorrente_(pedido) {
+  var nome = String(pedido.nome || '').trim();
+  if (!nome) return { ok: false, erro: 'nome_vazio' };
+  var mes = normalizarMes_(pedido.mes) || mesAtual_();
+  return aplicarRecorrente_({ nome: nome, acao: 'encerrar', mes: mes, valor: 0 });
 }
 
 /**

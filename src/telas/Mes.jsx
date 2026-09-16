@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Barras from '../componentes/Barras.jsx';
 import GraficoEvolucao from '../componentes/GraficoEvolucao.jsx';
 import CartaoLancamento from '../componentes/CartaoLancamento.jsx';
+import Compromissos from '../componentes/Compromissos.jsx';
+import Sanfona from '../componentes/Sanfona.jsx';
 import { api, configurado } from '../lib/api.js';
-import { formatarBRL } from '../lib/parser.js';
+import { formatarBRL, semAcento } from '../lib/parser.js';
 
 const CORTES = [
   { id: 'categoria', rotulo: 'Categoria', campo: 'por_categoria' },
@@ -25,6 +27,14 @@ export default function Mes({ cadastros, aoMudarDados }) {
   const [virandoMensal, setVirandoMensal] = useState(null);
   const [pagandoFixa, setPagandoFixa] = useState(null);
   const [pagandoFatura, setPagandoFatura] = useState(null);
+  const [busca, setBusca] = useState('');
+  const [pagina, setPagina] = useState(1);
+  const [porPagina, setPorPagina] = useState(10);
+  const listaTopo = useRef(null);
+
+  // Mudou o mês, a busca ou o filtro de pessoa: a página 4 do resultado antigo
+  // não quer dizer nada no novo.
+  useEffect(() => { setPagina(1); }, [mes, busca, filtroPessoa]);
 
   const carregar = useCallback(async (alvo) => {
     if (!configurado()) { setErro('Configure o app nos Ajustes primeiro.'); return; }
@@ -136,9 +146,32 @@ export default function Mes({ cadastros, aoMudarDados }) {
   }
 
   const pessoas = (cadastros.pessoas || []).filter((p) => p.ativo !== false);
-  const visiveis = filtroPessoa
-    ? lista.filter((l) => l.pessoa === filtroPessoa)
-    : lista;
+
+  // Busca sem acento e sem caixa, em tudo que aparece na linha: quem procura
+  // "oculos" espera achar "Óculos", e quem procura "nubank" espera achar pela
+  // conta, não só pela descrição.
+  const alvo = semAcento(busca.trim());
+  const visiveis = lista.filter((l) => {
+    if (filtroPessoa && l.pessoa !== filtroPessoa) return false;
+    if (!alvo) return true;
+    return semAcento(
+      [l.descricao, l.categoria, l.conta, l.pessoa, l.metodo, l.texto_falado].filter(Boolean).join(' ')
+    ).includes(alvo);
+  });
+
+  const totalPaginas = Math.max(1, Math.ceil(visiveis.length / porPagina));
+  const paginaAtual = Math.min(pagina, totalPaginas);
+  const inicio = (paginaAtual - 1) * porPagina;
+  const daPagina = visiveis.slice(inicio, inicio + porPagina);
+  const primeiroDaPagina = visiveis.length ? inicio + 1 : 0;
+  const ultimoDaPagina = inicio + daPagina.length;
+
+  function irPara(n) {
+    const destino = Math.min(Math.max(1, n), totalPaginas);
+    setPagina(destino);
+    // Trocar de página sem voltar ao topo da lista deixa você no meio do nada.
+    listaTopo.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 
   const dadosCorte = painel?.[CORTES.find((c) => c.id === corte).campo] || [];
 
@@ -186,71 +219,25 @@ export default function Mes({ cadastros, aoMudarDados }) {
           )}
 
           {/* Renda mensal vem antes das contas: é com ela que você paga o resto. */}
-          {rendas.length > 0 && (
-            <>
-              <div className="secao-cabecalho">
-                <p className="secao-titulo" style={{ margin: 0 }}>Rendas do mês</p>
-                <span className="ajuda" style={{ margin: 0 }}>
-                  {painel.a_receber_total > 0
-                    ? `${formatarBRL(painel.a_receber_total)} a receber`
-                    : 'tudo recebido'}
-                </span>
-              </div>
-              <div className="lista">
-                {rendas.map((r) => (
-                  <button
-                    type="button"
-                    className={`item fixa clicavel ${r.lancado ? 'paga' : ''}`}
-                    key={r.nome}
-                    onClick={() => abrirFixa(r)}
-                  >
-                    <span className={`ponto ${r.situacao}`} aria-hidden="true" />
-                    <span className="corpo">
-                      <span className="titulo">{r.nome}</span>
-                      <span className={`meta ${r.situacao === 'erro' ? 'atrasada' : ''}`}>
-                        {r.rotulo}{r.conta ? ` · ${r.conta}` : ''}
-                      </span>
-                    </span>
-                    <span className="num receita">
-                      {formatarBRL(r.lancado && r.valor_lancado != null ? r.valor_lancado : r.valor)}
-                    </span>
-                    <span className="seta" aria-hidden="true">›</span>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
+          <Compromissos
+            titulo="Rendas do mês"
+            resumo={painel.a_receber_total > 0
+              ? `${formatarBRL(painel.a_receber_total)} a receber`
+              : 'tudo recebido'}
+            itens={rendas}
+            aoAbrir={abrirFixa}
+            rotuloFeitos={{ um: 'já recebida', varios: 'já recebidas' }}
+          />
 
           {fixas.length > 0 && (
             <>
-              <div className="secao-cabecalho">
-                <p className="secao-titulo" style={{ margin: 0 }}>Contas fixas do mês</p>
-                <span className="ajuda" style={{ margin: 0 }}>
-                  {formatarBRL(painel.fixas_total)} no total
-                </span>
-              </div>
-              <div className="lista">
-                {fixas.map((f) => (
-                  <button
-                    type="button"
-                    className={`item fixa clicavel ${f.lancado ? 'paga' : ''}`}
-                    key={f.nome}
-                    onClick={() => abrirFixa(f)}
-                  >
-                    <span className={`ponto ${f.situacao}`} aria-hidden="true" />
-                    <span className="corpo">
-                      <span className="titulo">{f.nome}</span>
-                      <span className={`meta ${f.situacao === 'erro' ? 'atrasada' : ''}`}>
-                        {f.rotulo}{f.categoria ? ` · ${f.categoria}` : ''}
-                      </span>
-                    </span>
-                    <span className="num">
-                      {formatarBRL(f.lancado && f.valor_lancado != null ? f.valor_lancado : f.valor)}
-                    </span>
-                    <span className="seta" aria-hidden="true">›</span>
-                  </button>
-                ))}
-              </div>
+              <Compromissos
+                titulo="Contas fixas do mês"
+                resumo={`${formatarBRL(painel.fixas_total)} no total`}
+                itens={fixas}
+                aoAbrir={abrirFixa}
+                rotuloFeitos={{ um: 'já lançada', varios: 'já lançadas' }}
+              />
 
               {atrasadas.total > 0 && (
                 <div className="aviso ruim">
@@ -325,34 +312,38 @@ export default function Mes({ cadastros, aoMudarDados }) {
 
           <GraficoEvolucao evolucao={painel.evolucao} mesAtual={painel.mes} />
 
-          <div className="abas">
-            {CORTES.map((c) => (
-              <button
-                key={c.id}
-                className={corte === c.id ? 'ativa' : ''}
-                onClick={() => setCorte(c.id)}
-              >
-                {c.rotulo}
-              </button>
-            ))}
-          </div>
+          {/* Fechada por padrão: é a seção mais alta da tela e a que menos
+              exige ação. O cabeçalho já entrega o essencial — quem lidera. */}
+          <Sanfona titulo="Para onde foi o dinheiro" resumo={lider(painel.por_categoria)}>
+            <div className="abas">
+              {CORTES.map((c) => (
+                <button
+                  key={c.id}
+                  className={corte === c.id ? 'ativa' : ''}
+                  onClick={() => setCorte(c.id)}
+                >
+                  {c.rotulo}
+                </button>
+              ))}
+            </div>
 
-          <Barras
-            dados={dadosCorte}
-            orcamentos={corte === 'categoria' ? painel.orcamentos : {}}
-            vazio="Nenhuma saída registrada neste mês."
-          />
+            <Barras
+              dados={dadosCorte}
+              orcamentos={corte === 'categoria' ? painel.orcamentos : {}}
+              vazio="Nenhuma saída registrada neste mês."
+            />
 
-          {painel.por_fonte?.length > 0 && (
-            <>
-              <p className="secao-titulo">De onde veio a renda</p>
-              <Barras dados={painel.por_fonte} vazio="Nenhuma entrada registrada." />
-            </>
-          )}
+            {painel.por_fonte?.length > 0 && (
+              <>
+                <p className="secao-titulo">De onde veio a renda</p>
+                <Barras dados={painel.por_fonte} vazio="Nenhuma entrada registrada." />
+              </>
+            )}
+          </Sanfona>
         </>
       )}
 
-      <div className="secao-cabecalho">
+      <div className="secao-cabecalho" ref={listaTopo}>
         <p className="secao-titulo" style={{ margin: 0 }}>
           Lançamentos{visiveis.length ? ` · ${visiveis.length}` : ''}
         </p>
@@ -369,13 +360,40 @@ export default function Mes({ cadastros, aoMudarDados }) {
         )}
       </div>
 
-      {carregando && !painel ? (
+      {/* O X só aparece quando há o que apagar, e o campo reserva o espaço dele
+          o tempo todo — assim o texto nunca corre por baixo do botão. */}
+      <div className="busca">
+        <input
+          type="search"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Procurar por descrição, categoria, conta…"
+          aria-label="Procurar nos lançamentos"
+          autoComplete="off"
+        />
+        {busca && (
+          <button
+            type="button"
+            className="busca-limpar"
+            onClick={() => setBusca('')}
+            aria-label="Limpar a busca"
+          >
+            ×
+          </button>
+        )}
+      </div>
+
+      {carregando ? (
         <div className="cartao pensando"><span className="girando" aria-hidden="true" /><span>Carregando o mês…</span></div>
       ) : visiveis.length === 0 ? (
-        <div className="lista"><p className="vazio">Nenhum lançamento neste mês.</p></div>
+        <div className="lista">
+          <p className="vazio">
+            {busca ? `Nada encontrado para “${busca}”.` : 'Nenhum lançamento neste mês.'}
+          </p>
+        </div>
       ) : (
         <div className="lista">
-          {visiveis.map((l) => (
+          {daPagina.map((l) => (
             <button type="button" className="item clicavel" key={l.uuid} onClick={() => setEditando({ ...l })}>
               <span className="corpo">
                 <span className="titulo">{l.descricao || l.categoria || '(sem descrição)'}</span>
@@ -394,6 +412,45 @@ export default function Mes({ cadastros, aoMudarDados }) {
               </span>
             </button>
           ))}
+        </div>
+      )}
+
+      {visiveis.length > 0 && (
+        <div className="paginacao">
+          <div className="paginas">
+            <button
+              type="button"
+              className="btn discreto pequeno"
+              onClick={() => irPara(paginaAtual - 1)}
+              disabled={paginaAtual === 1}
+              aria-label="Página anterior"
+            >
+              ‹
+            </button>
+            <span>
+              {primeiroDaPagina}–{ultimoDaPagina} de {visiveis.length}
+            </span>
+            <button
+              type="button"
+              className="btn discreto pequeno"
+              onClick={() => irPara(paginaAtual + 1)}
+              disabled={paginaAtual >= totalPaginas}
+              aria-label="Próxima página"
+            >
+              ›
+            </button>
+          </div>
+
+          <label className="por-pagina">
+            por página
+            <select
+              className="filtro"
+              value={porPagina}
+              onChange={(e) => { setPorPagina(Number(e.target.value)); setPagina(1); }}
+            >
+              {[10, 30, 50].map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </label>
         </div>
       )}
 
@@ -511,7 +568,17 @@ export default function Mes({ cadastros, aoMudarDados }) {
               ocupado={salvando}
               aoConfirmar={confirmarPagamento}
               aoCancelar={() => setPagandoFixa(null)}
+              rotuloCancelar="Fechar"
             />
+
+            {/* Aqui só se registra o que aconteceu. Consertar a regra em si —
+                virar entrada, mudar o dia, apagar — é em Ajustes, e sem este
+                aviso não havia como descobrir isso. */}
+            <p className="ajuda">
+              Errado? {pagandoFixa.receita ? 'Esta renda' : 'Esta conta'} se conserta ou se apaga
+              em <strong>Ajustes → Contas fixas e rendas mensais</strong>. Fechar aqui só
+              fecha a janela.
+            </p>
 
             {Math.abs(pagandoFixa.lancamento.valor - pagandoFixa.valorCombinado) >= 0.01 && (
               <div className="cartao">
@@ -672,6 +739,12 @@ function situacaoDa(f, mesPainel) {
   if (diasAte > 0) return { situacao: 'pendente', rotulo: p.emDias(diasAte) };
   if (diasAte === 0) return { situacao: 'pendente', rotulo: p.hoje };
   return { situacao: 'erro', rotulo: p.atrasado(-diasAte) };
+}
+
+/** "Transporte lidera com R$ 1.935,32" — o resumo da sanfona fechada. */
+function lider(porCategoria) {
+  const topo = (porCategoria || [])[0];
+  return topo ? `${topo.nome} lidera com ${formatarBRL(topo.total)}` : '';
 }
 
 function resumirFixas(lista) {

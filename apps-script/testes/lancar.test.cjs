@@ -106,3 +106,27 @@ console.log('registrar recebimento:', rec.ok, '| tipo', rec.lancamento && rec.la
 pnl = painel_({ mes: '2026-09' });
 console.log('depois: lancado', pnl.rendas[0].lancado, '| a receber', pnl.a_receber_total, '| recebi', pnl.receitas);
 console.log('fixas não viraram renda:', pnl.fixas.every(f => f.tipo !== 'receita'));
+
+// 11. o caso do "Adiantamento da Mayara": regra nasceu despesa, era entrada
+abas.recorrentes.dados.push(['Adiantamento da Mayara','despesa','Outros',800,20,'','','Mayara','2026-09','','padrao','','','adiantamento da mayara 800','2026-09-16']);
+let pa = painel_({ mes: '2026-09' });
+console.log('antes: fixas', pa.fixas.map(f => f.nome).join(', '), '| rendas', pa.rendas.map(r => r.nome).join(', '));
+
+let ed = salvarRecorrente_({ nome: 'Adiantamento da Mayara', mes: '2026-09', campos: {
+  nome: 'Vale dia 20 da Mayara', tipo: 'receita', valor: 800, dia: 20,
+  categoria: 'Outras Entradas', conta: 'Nubank Fernando', pessoa: 'Mayara'
+}});
+console.log('corrigida:', ed.ok, ed.nome);
+pa = painel_({ mes: '2026-09' });
+console.log('depois: fixas', pa.fixas.map(f => f.nome).join(', '), '| rendas', pa.rendas.map(r => r.nome + ' ' + r.valor + ' dia ' + r.dia).join(', '));
+
+// apagar de vez
+console.log('apagar:', JSON.stringify(excluirRecorrente_({ nome: 'Vale dia 20 da Mayara' })));
+pa = painel_({ mes: '2026-09' });
+console.log('sumiu das duas listas:', !pa.rendas.some(r => r.nome.indexOf('Vale dia 20') === 0) && !pa.fixas.some(f => f.nome.indexOf('Vale dia 20') === 0));
+console.log('linhas continuam na planilha:', abas.recorrentes.dados.length - 1, '| listadas:', recorrentes_({ mes: '2026-09' }).recorrentes.length);
+
+// encerrar preserva o mês corrente e some no seguinte
+console.log('encerrar Caju:', encerrarRecorrente_({ nome: 'Caju', mes: '2026-09' }).acao);
+console.log('  set:', recorrentes_({mes:'2026-09'}).recorrentes.some(r => r.nome === 'Caju'),
+            '| out:', recorrentes_({mes:'2026-10'}).recorrentes.some(r => r.nome === 'Caju'));
