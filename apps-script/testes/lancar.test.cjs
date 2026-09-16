@@ -221,3 +221,16 @@ pp.evolucao.forEach(e => {
   if (e.receitas || e.despesas || e.receitas_previstas || e.despesas_previstas)
     console.log(`  ${e.mes}${e.futuro ? ' (futuro)' : ''}: entrou ${e.receitas} + previsto ${e.receitas_previstas} | saiu ${e.despesas} + previsto ${e.despesas_previstas}`);
 });
+
+// 20. parcelas importadas (imp-...) agrupam como uma compra só
+['04','05','06'].forEach((n, i) => {
+  abas.lancamentos.dados.push(['imp-teste-' + n, `2026-${String(9+i).padStart(2,'0')}-28`, new Date('2026-09-16T10:00:00'),
+    'despesa', 173.69, 'Compras', 'Monitor de teste', 'Itaú cartão', 'credito', '', 'Fernando',
+    `2026-${String(10+i).padStart(2,'0')}`, 3+i+1, 18, '', 'importado', 'manual', 'ok', '', '']);
+});
+const imp = painel_({ mes: '2026-09' }).parceladas.find(p => p.nome === 'Monitor de teste');
+console.log('importada agrupada:', imp
+  ? `parcela ${imp.parcela_atual}/${imp.parcelas_total} | faltam ${imp.parcelas_restantes} (${imp.falta_pagar}) até ${imp.ultima}`
+  : 'NÃO ACHOU');
+console.log('grupo do uuid importado:', grupoDoUuid_('imp-monitor-04'), '| do uuid do app:', grupoDoUuid_('abc-def-p12'));
+console.log('irmãs reconhecidas:', ehDoGrupo_('imp-teste-06', 'imp-teste'), ehDoGrupo_('abc-p2', 'abc'), '| falso positivo:', ehDoGrupo_('abcd', 'abc'));

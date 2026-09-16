@@ -12,7 +12,7 @@
 
 // Suba junto com VERSAO_APP em src/lib/versao.js — o app compara as duas e
 // avisa na tela quando só uma das metades foi publicada.
-var VERSAO = '1.12.0';
+var VERSAO = '1.13.0';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -528,12 +528,17 @@ function expandirParcelas_(l) {
 
 /** Todas as parcelas de uma compra compartilham este prefixo. */
 function grupoDoUuid_(uuid) {
-  return String(uuid || '').replace(/-p\d+$/, '');
+  var u = String(uuid || '');
+  // A importação de compras antigas numera as parcelas de outro jeito
+  // ("imp-monitor-04" em vez de "<uuid>-p4"). Sem reconhecer os dois formatos,
+  // cada parcela importada virava uma compra sozinha: o monitor em 18x
+  // aparecia como dezoito compras de uma parcela, todas dizendo "falta 1".
+  if (u.indexOf('imp-') === 0) return u.replace(/-\d+$/, '');
+  return u.replace(/-p\d+$/, '');
 }
 
 function ehDoGrupo_(uuid, base) {
-  var u = String(uuid || '');
-  return u === base || u.indexOf(base + '-p') === 0;
+  return grupoDoUuid_(uuid) === base;
 }
 
 /** "2026-11" três meses depois de "2026-08"; aceita n negativo. */

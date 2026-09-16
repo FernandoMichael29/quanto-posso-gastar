@@ -386,12 +386,11 @@ export default function Mes({ cadastros, aoMudarDados }) {
               parcelas ficam espalhadas no meio dos lançamentos soltos. */}
           {painel.parceladas?.length > 0 && (
             <>
-              <div className="secao-cabecalho">
-                <p className="secao-titulo" style={{ margin: 0 }}>Contas parceladas</p>
-                <span className="ajuda" style={{ margin: 0 }}>
-                  {formatarBRL(painel.parceladas.reduce((a, p) => a + p.valor, 0))} neste mês
-                </span>
-              </div>
+              <p className="secao-titulo">Contas parceladas</p>
+              <Sanfona
+                titulo={`${painel.parceladas.length} compras parceladas`}
+                resumo={`${formatarBRL(painel.parceladas.reduce((a, p) => a + p.valor, 0))} neste mês`}
+              >
               <div className="lista">
                 {painel.parceladas.map((p) => (
                   <button
@@ -420,6 +419,7 @@ export default function Mes({ cadastros, aoMudarDados }) {
                   </button>
                 ))}
               </div>
+              </Sanfona>
             </>
           )}
 
