@@ -54,10 +54,18 @@ export default function CartaoLancamento({
     ? Number(l.valor) / quantas
     : Number(l.valor);
 
+  // Os três números conversam: total, vezes e parcela. Você mexe em qualquer um
+  // e os outros se ajustam — porque às vezes a etiqueta diz "10x de 89,90" e
+  // às vezes diz "899,00 em 10x", e fazer a conta de cabeça é trabalho do app.
+  const [parcelaTexto, setParcelaTexto] = useState(
+    () => textoDe(dividir(valor.valor, valor.parcelas_total))
+  );
+
   function marcarParcelado(marcado) {
     setParcelar(marcado);
     const n = marcado ? (nVezes > 1 ? nVezes : 2) : 0;
     if (marcado && nVezes < 2) setVezes('2');
+    setParcelaTexto(marcado ? textoDe(dividir(l.valor, n)) : '');
     aoMudar({
       ...l,
       parcelas_total: marcado ? n : null,
@@ -69,6 +77,9 @@ export default function CartaoLancamento({
     const limpo = texto.replace(/\D/g, '').slice(0, 2);
     setVezes(limpo);
     const n = Number(limpo);
+    // Mexer no número de vezes recalcula a parcela, nunca o total: o que você
+    // combinou com a loja foi o preço da compra.
+    setParcelaTexto(textoDe(dividir(l.valor, n)));
     // Enquanto o número ainda não faz sentido, o lançamento fica sem
     // parcelamento — mas a caixa continua marcada e o campo, aberto.
     aoMudar({
@@ -82,8 +93,30 @@ export default function CartaoLancamento({
   function arrumarVezes() {
     const n = Math.min(60, Math.max(2, Number(vezes) || 2));
     setVezes(String(n));
+    setParcelaTexto(textoDe(dividir(l.valor, n)));
     aoMudar({ ...l, parcelas_total: n, parcela_atual: 1 });
   }
+
+  /** Mexeu no total: a parcela é consequência. */
+  function digitarTotal(texto) {
+    aoMudar({ ...l, valor: texto });
+    if (parcelar) setParcelaTexto(textoDe(dividir(texto, nVezes)));
+  }
+
+  /** Mexeu na parcela: o total é consequência. */
+  function digitarParcela(texto) {
+    setParcelaTexto(texto);
+    const p = Number(String(texto).replace(',', '.'));
+    if (nVezes > 1 && p) aoMudar({ ...l, valor: arredondar(p * nVezes) });
+  }
+
+  // Nem todo total divide certinho: 100 em 3x dá 33,33 com um centavo sobrando.
+  // Quem fica com ele é a primeira parcela, como o cartão faz — e é melhor
+  // dizer isso do que deixar você conferir a conta e achar que o app errou.
+  const parcelaExibida = Number(String(parcelaTexto).replace(',', '.')) || 0;
+  const sobra = parcelado && nVezes > 1
+    ? arredondar(Number(l.valor) - parcelaExibida * nVezes)
+    : 0;
 
   // Confirmar com "1 vez" digitado gravaria uma compra sem parcelamento sem
   // você perceber. Melhor segurar o botão e dizer o porquê.
@@ -149,7 +182,7 @@ export default function CartaoLancamento({
             id="c-valor" type="number" inputMode="decimal" step="0.01"
             value={l.valor ?? ''}
             placeholder="0,00"
-            onChange={(e) => aoMudar({ ...l, valor: e.target.value })}
+            onChange={(e) => digitarTotal(e.target.value)}
           />
         </div>
         <div className="campo">
@@ -191,12 +224,24 @@ export default function CartaoLancamento({
                 />
               </div>
               <div className="campo">
-                <label>Cada parcela</label>
-                <p className="valor-calculado">
-                  {nVezes > 1 ? formatarBRL(valorParcela) : 'de 2 a 60'}
-                </p>
+                <label htmlFor="c-parcela">Cada parcela</label>
+                <input
+                  id="c-parcela" type="number" inputMode="decimal" step="0.01"
+                  value={parcelaTexto}
+                  placeholder={nVezes > 1 ? '0,00' : 'de 2 a 60 vezes'}
+                  disabled={nVezes < 2}
+                  onChange={(e) => digitarParcela(e.target.value)}
+                />
               </div>
             </div>
+          )}
+
+          {Math.abs(sobra) >= 0.01 && (
+            <p className="ajuda" style={{ margin: 0 }}>
+              {sobra > 0
+                ? `Não divide exato: a primeira parcela fica ${formatarBRL(parcelaExibida + sobra)}.`
+                : `Assim o total vira ${formatarBRL(parcelaExibida * nVezes)}.`}
+            </p>
           )}
         </div>
       )}
@@ -316,3 +361,19 @@ export default function CartaoLancamento({
 }
 
 const ROTULO_OK = { novo: 'Adicionar', confirmar: 'Confirmar', editar: 'Salvar' };
+
+/** Divide o total pelas vezes, com duas casas. Sem vezes válidas, dá vazio. */
+function dividir(total, vezes) {
+  const t = Number(String(total ?? '').replace(',', '.'));
+  const n = Number(vezes);
+  if (!t || !n || n < 2) return null;
+  return arredondar(t / n);
+}
+
+function arredondar(v) {
+  return Math.round((Number(v) || 0) * 100) / 100;
+}
+
+function textoDe(v) {
+  return v == null ? '' : String(v);
+}
