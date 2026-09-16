@@ -7,4 +7,4 @@
 // para responder isso na tela.
 //
 // Suba junto com VERSAO no Codigo.gs, sempre.
-export const VERSAO_APP = '1.10.0';
+export const VERSAO_APP = '1.11.0';

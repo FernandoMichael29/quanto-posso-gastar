@@ -214,9 +214,10 @@ export default function CartaoLancamento({
         </div>
       )}
 
-      {/* Sempre visível e sempre desmarcado. Um palpite do app sobre o que é
-          conta fixa erraria justamente nos casos ambíguos; um toque não erra. */}
-      {modo !== 'editar' && !receita && !parcelado && (
+      {/* Sempre visível e sempre desmarcado. Um palpite do app sobre o que se
+          repete erraria justamente nos casos ambíguos; um toque não erra.
+          Vale para os dois lados: salário também é coisa que volta todo mês. */}
+      {modo !== 'editar' && !parcelado && (
         <label className="repete-linha">
           <input
             type="checkbox"
@@ -224,15 +225,19 @@ export default function CartaoLancamento({
             onChange={(e) => aoMudar({ ...l, repete: e.target.checked })}
           />
           <span>
-            Repete todo mês
-            <em>vira conta fixa, e o app passa a cobrar você dela</em>
+            {receita ? 'Recebo todo mês' : 'Repete todo mês'}
+            <em>
+              {receita
+                ? 'vira renda mensal, e o app passa a esperar por ela'
+                : 'vira conta fixa, e o app passa a cobrar você dela'}
+            </em>
           </span>
         </label>
       )}
 
       {modo === 'editar' && aoTornarMensal && !parcelado && (
         <button type="button" className="btn repetir" onClick={aoTornarMensal} disabled={ocupado}>
-          ↻ Este gasto se repete todo mês
+          ↻ {receita ? 'Esta renda entra todo mês' : 'Este gasto se repete todo mês'}
         </button>
       )}
 

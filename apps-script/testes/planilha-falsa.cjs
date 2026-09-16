@@ -3,6 +3,9 @@ function Aba(cabecalho) {
   this.dados = [cabecalho.slice()];
 }
 Aba.prototype.getLastRow = function () { return this.dados.length; };
+Aba.prototype.appendRow = function (linha) {
+  this.dados.push(linha.slice());
+};
 Aba.prototype.getRange = function (l, c, nl, nc) {
   var aba = this;
   nl = nl || 1; nc = nc || 1;

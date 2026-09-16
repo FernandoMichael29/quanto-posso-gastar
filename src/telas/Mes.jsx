@@ -609,6 +609,7 @@ export default function Mes({ cadastros, aoMudarDados }) {
               aoExcluir={excluirEdicao}
               aoTornarMensal={() => setVirandoMensal({
                 uuid: editando.uuid,
+                receita: editando.tipo === 'receita',
                 nome: editando.descricao || editando.categoria || '',
                 dia: Number(String(editando.data).slice(8, 10)) || '',
                 mes_fim: ''
@@ -752,10 +753,15 @@ export default function Mes({ cadastros, aoMudarDados }) {
           <div className="modal-fundo" onClick={() => !salvando && setVirandoMensal(null)} />
           <div className="modal-corpo">
             <div className="cartao destaque">
-              <p className="secao-titulo" style={{ margin: 0 }}>Repetir todo mês</p>
+              <p className="secao-titulo" style={{ margin: 0 }}>
+                {virandoMensal.receita ? 'Receber todo mês' : 'Repetir todo mês'}
+              </p>
               <p className="ajuda">
-                O gasto que você já registrou continua onde está. O que nasce aqui é a regra
-                de que ele se repete — a partir deste mês, até você dizer o contrário.
+                O {virandoMensal.receita ? 'recebimento' : 'gasto'} que você já registrou continua
+                onde está. O que nasce aqui é a regra de que ele se repete — a partir deste mês,
+                até você dizer o contrário.
+                {virandoMensal.receita &&
+                  ' A renda aparece como "a receber" todo mês, e você confirma quando cair.'}
               </p>
 
               <div className="campo">
@@ -769,7 +775,7 @@ export default function Mes({ cadastros, aoMudarDados }) {
 
               <div className="linha">
                 <div className="campo">
-                  <label htmlFor="m-dia">Vence dia</label>
+                  <label htmlFor="m-dia">{virandoMensal.receita ? 'Cai dia' : 'Vence dia'}</label>
                   <input
                     id="m-dia" type="number" min="1" max="31" inputMode="numeric"
                     value={virandoMensal.dia}
@@ -791,7 +797,7 @@ export default function Mes({ cadastros, aoMudarDados }) {
                   Cancelar
                 </button>
                 <button className="btn principal" onClick={confirmarMensal} disabled={salvando || !virandoMensal.nome.trim()}>
-                  {salvando ? 'Salvando…' : 'Repetir todo mês'}
+                  {salvando ? 'Salvando…' : (virandoMensal.receita ? 'Receber todo mês' : 'Repetir todo mês')}
                 </button>
               </div>
             </div>
