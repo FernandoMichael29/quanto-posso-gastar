@@ -113,6 +113,8 @@ export const api = {
   excluirLancamento: (uuid) => chamar('excluir_lancamento', { uuid }),
   tornarMensal: (uuid, opcoes = {}) => chamar('tornar_mensal', { uuid, ...opcoes }),
 
+  confirmarRecebimento: (uuid, opcoes = {}) => chamar('confirmar_recebimento', { uuid, ...opcoes }),
+
   // Regras mensais: contas fixas e rendas que se repetem
   recorrentes: (mes) => chamar('recorrentes', { mes }),
   salvarRecorrente: (nome, mes, campos) => chamar('salvar_recorrente', { nome, mes, campos }),

@@ -56,7 +56,7 @@ function Linhas({ itens, aoAbrir }) {
         >
           <span className={`ponto ${i.situacao}`} aria-hidden="true" />
           <span className="corpo">
-            <span className="titulo">{i.nome}</span>
+            <span className="titulo">{i.nome_visivel || i.nome}</span>
             <span className={`meta ${i.situacao === 'erro' ? 'atrasada' : ''}`}>
               {i.rotulo}
               {i.tipo === 'receita'

@@ -130,3 +130,33 @@ console.log('linhas continuam na planilha:', abas.recorrentes.dados.length - 1, 
 console.log('encerrar Caju:', encerrarRecorrente_({ nome: 'Caju', mes: '2026-09' }).acao);
 console.log('  set:', recorrentes_({mes:'2026-09'}).recorrentes.some(r => r.nome === 'Caju'),
             '| out:', recorrentes_({mes:'2026-10'}).recorrentes.some(r => r.nome === 'Caju'));
+
+// 12. renda com data futura nasce agendada e só conta quando confirmada
+abas.recorrentes.dados.push(['Salário Mayara dia 20','receita','Salário',800,20,'Nubank May','','Mayara','2026-09','','padrao','','','salário Maiara dia 20 800','2026-09-16']);
+let rr = lancar_({ lancamentos: [{ uuid: 'fut1', data: '2026-09-20', tipo: 'receita', valor: 800,
+  categoria: 'Salário', descricao: 'Salário Mayara dia 20', conta: 'Nubank May', pessoa: 'Mayara' }] });
+const colx = indiceColunas_();
+const linhaFut = abas.lancamentos.dados.slice(1).find(l => l[colx.uuid] === 'fut1');
+console.log('status ao nascer:', linhaFut[colx.status]);
+
+let pv = painel_({ mes: '2026-09' });
+const linha20 = pv.rendas.find(r => r.nome.indexOf('Salário Mayara') === 0);
+console.log('na lista:', linha20.lancado ? 'JÁ RECEBIDO (errado)' : 'a receber', '| uuid agendado:', linha20.uuid_agendado);
+console.log('recebi:', pv.receitas, '| ainda entra:', pv.previsao.ainda_entra, '| previsão de sobra:', pv.previsao.sobra);
+
+// editar o nome não promove
+editarLancamento_({ uuid: 'fut1', campos: { descricao: 'Salário da Mayara (dia 20)' } });
+pv = painel_({ mes: '2026-09' });
+console.log('depois de editar → status', abas.lancamentos.dados.slice(1).find(l => l[colx.uuid]==='fut1')[colx.status],
+            '| nome na lista:', pv.rendas.find(r => r.uuid_agendado === 'fut1').nome_lancado);
+
+// confirmar promove e passa a contar
+console.log('confirmar:', JSON.stringify(confirmarRecebimento_({ uuid: 'fut1', data: '2026-09-20' })));
+pv = painel_({ mes: '2026-09' });
+console.log('depois de confirmar → recebi', pv.receitas, '| ainda entra', pv.previsao.ainda_entra,
+            '| lancado', pv.rendas.find(r => r.nome.indexOf('Salário Mayara') === 0).lancado);
+
+// despesa com data futura continua contando normalmente
+lancar_({ lancamentos: [{ uuid: 'fut2', data: '2026-09-28', tipo: 'despesa', valor: 100, categoria: 'Compras', descricao: 'parcela futura', conta: 'Itaú cartão' }] });
+console.log('despesa futura → status', abas.lancamentos.dados.slice(1).find(l => l[colx.uuid]==='fut2')[colx.status],
+            '| entrou no gastei:', painel_({ mes: '2026-09' }).despesas > pv.despesas);
