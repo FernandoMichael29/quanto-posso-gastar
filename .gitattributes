@@ -1,0 +1,4 @@
+# O projeto inteiro usa quebra de linha LF.
+# Sem isto, um editor no Windows salva com CRLF e o git mostra o arquivo
+# inteiro como alterado, escondendo a mudança de verdade no meio do ruído.
+* text=auto eol=lf
