@@ -12,7 +12,7 @@
 
 // Suba junto com VERSAO_APP em src/lib/versao.js — o app compara as duas e
 // avisa na tela quando só uma das metades foi publicada.
-var VERSAO = '1.13.0';
+var VERSAO = '2.1.0';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -1708,11 +1708,15 @@ function painel_(pedido) {
   // cair, contas que se repetem, salários que costumam entrar. São duas coisas
   // diferentes e por isso viajam em campos separados, para a tela poder
   // desenhar cada uma do seu jeito.
+  // A janela vai muito além do que cabe na tela de propósito: o gráfico mostra
+  // doze meses por vez e o usuário caminha com as setas, sem esperar a planilha
+  // de novo a cada passo. Dezoito meses à frente cobrem o parcelamento mais
+  // longo que existe hoje.
   var meses = [];
   var m = mes;
-  for (var i = 0; i < 6; i++) { meses.unshift(m); m = mesAnterior_(m); }
+  for (var i = 0; i < 12; i++) { meses.unshift(m); m = mesAnterior_(m); }
   m = mes;
-  for (var f = 0; f < 6; f++) { m = mesSeguinte_(m); meses.push(m); }
+  for (var f = 0; f < 18; f++) { m = mesSeguinte_(m); meses.push(m); }
 
   var serie = {};
   meses.forEach(function (k) {

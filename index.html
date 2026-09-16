@@ -12,6 +12,14 @@
   </head>
   <body>
     <div id="raiz"></div>
+    <script>
+      // Antes de qualquer pixel: se o app pisca no tema errado e corrige
+      // depois, a correção é o que a pessoa vê. Por isso aqui e não no React.
+      try {
+        var t = localStorage.getItem('qpg.tema');
+        if (t && t !== 'auto') document.documentElement.dataset.tema = t;
+      } catch (e) { /* modo privado: fica no automático */ }
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

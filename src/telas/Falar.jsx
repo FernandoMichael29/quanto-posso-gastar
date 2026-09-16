@@ -239,9 +239,9 @@ export default function Falar({ cadastros, resumo, aoMudarFila, aoIrParaFila }) 
         <>
           <p className="secao-titulo">Este mês</p>
           <div className="resumo">
-            <div><span className="r">Recebi</span><span className="v pos">{formatarBRL(resumo.receitas)}</span></div>
-            <div><span className="r">Gastei</span><span className="v">{formatarBRL(resumo.despesas)}</span></div>
-            <div><span className="r">Sobrou</span><span className={`v ${resumo.saldo >= 0 ? 'pos' : 'neg'}`}>{formatarBRL(resumo.saldo)}</span></div>
+            <div><span className="r">Recebi</span><span className="v pos">{semSimbolo(resumo.receitas)}</span></div>
+            <div><span className="r">Gastei</span><span className="v">{semSimbolo(resumo.despesas)}</span></div>
+            <div><span className="r">Sobrou</span><span className={`v ${resumo.saldo >= 0 ? 'pos' : 'neg'}`}>{semSimbolo(resumo.saldo)}</span></div>
           </div>
         </>
       )}
@@ -279,6 +279,10 @@ const MOTIVO_TELA = {
   nada_entendido: 'Não achei um valor na frase. Dá uma olhada na fila e corrija se quiser.',
   teto_diario: 'Bateu o teto diário de interpretações por IA. Sua frase está guardada e é interpretada amanhã sozinha.'
 };
+
+function semSimbolo(v) {
+  return formatarBRL(v).replace('R$', '').trim();
+}
 
 function hojeISO() {
   const d = new Date();
