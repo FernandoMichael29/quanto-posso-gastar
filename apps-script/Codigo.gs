@@ -12,7 +12,7 @@
 
 // Suba junto com VERSAO_APP em src/lib/versao.js — o app compara as duas e
 // avisa na tela quando só uma das metades foi publicada.
-var VERSAO = '1.6.0';
+var VERSAO = '1.7.0';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -71,8 +71,19 @@ var STATUS = {
   OK: 'ok',                       // interpretado e confirmado
   AGUARDANDO_IA: 'aguardando_ia', // texto salvo, esperando a IA conseguir interpretar
   ERRO: 'erro',                   // a IA falhou de um jeito que precisa de você
-  EXCLUIDO: 'excluido'            // você apagou pelo app: sai de tudo, mas a linha fica
+  EXCLUIDO: 'excluido',           // você apagou pelo app: sai de tudo, mas a linha fica
+  AGENDADO: 'agendado'            // renda marcada para uma data futura: não conta até você confirmar
 };
+
+// Gasto com data à frente conta no mês em que foi feito — a parcela de
+// dezembro é gasto de dezembro, e isso não depende de nada acontecer.
+// Dinheiro que entra é outra história: salário prometido não é salário
+// recebido. Então receita com data futura nasce agendada e só vira dinheiro
+// quando você diz que caiu.
+function nasceAgendado_(l) {
+  return (l.tipo || TIPO.DESPESA) === TIPO.RECEITA &&
+         normalizarData_(l.data || hojeISO_()) > hojeISO_();
+}
 
 // ---------------------------------------------------------------------------
 // Instalação — rode uma vez
@@ -327,6 +338,7 @@ function doPost(e) {
       case 'lancamentos':      return json_(lancamentosDoMes_(pedido));
       case 'editar_lancamento':  return json_(editarLancamento_(pedido));
       case 'excluir_lancamento': return json_(excluirLancamento_(pedido));
+      case 'confirmar_recebimento': return json_(confirmarRecebimento_(pedido));
       case 'recorrentes':        return json_(recorrentes_(pedido));
       case 'salvar_recorrente':  return json_(salvarRecorrente_(pedido));
       case 'excluir_recorrente': return json_(excluirRecorrente_(pedido));
@@ -619,7 +631,7 @@ function linhaDe_(l) {
     l.texto_falado || '',
     l.origem || 'voz',
     l.confianca || '',
-    l.status || STATUS.OK,
+    l.status || (nasceAgendado_(l) ? STATUS.AGENDADO : STATUS.OK),
     l.revisar ? 'sim' : '',
     l.erro || ''
   ];
@@ -1695,13 +1707,31 @@ function painel_(pedido) {
   // Renda que entra todo mês é compromisso igual — só que a favor. Sem isto ela
   // ficava guardada na aba `recorrentes` e não aparecia em lugar nenhum: o mês
   // dizia "Recebi R$ 0,00" com o vale-alimentação cadastrado do lado.
+  var receitasAgendadas = lancamentosDoMesCru_(mes, col, aba, n, TIPO.RECEITA, STATUS.AGENDADO);
+
   var rendas = cruzarCompromissos_(
     todosCompromissos.filter(function (c) { return c.tipo === 'receita'; }),
-    lancamentosDoMesCru_(mes, col, aba, n, TIPO.RECEITA)
+    lancamentosDoMesCru_(mes, col, aba, n, TIPO.RECEITA),
+    receitasAgendadas
   );
 
   var previsto = fixas.filter(function (f) { return !f.lancado; });
   var aReceber = rendas.filter(function (r) { return !r.lancado; });
+
+  // Renda agendada que não pertence a nenhuma regra mensal entra na previsão
+  // por conta própria — senão um salário avulso marcado para o dia 25 sumiria
+  // da conta de "quanto ainda entra".
+  var presos = {};
+  rendas.forEach(function (r) { if (r.uuid_agendado) presos[r.uuid_agendado] = true; });
+  var agendadosSoltos = receitasAgendadas.filter(function (a) { return !presos[a.uuid]; });
+
+  var aReceberTotal = arred_(
+    aReceber.reduce(function (s, r) {
+      return s + (r.valor_agendado != null ? r.valor_agendado : r.valor);
+    }, 0) +
+    agendadosSoltos.reduce(function (s, a) { return s + a.valor; }, 0)
+  );
+  var previstoTotal = arred_(previsto.reduce(function (a, c) { return a + c.valor; }, 0));
 
   var orcamentos = {};
   lerCategorias_().forEach(function (c) {
@@ -1740,11 +1770,24 @@ function painel_(pedido) {
     fixas: fixas,
     fixas_total: arred_(fixas.reduce(function (a, c) { return a + c.valor; }, 0)),
     previsto: previsto,
-    previsto_total: arred_(previsto.reduce(function (a, c) { return a + c.valor; }, 0)),
+    previsto_total: previstoTotal,
     rendas: rendas,
     rendas_total: arred_(rendas.reduce(function (a, c) { return a + c.valor; }, 0)),
     a_receber: aReceber,
-    a_receber_total: arred_(aReceber.reduce(function (a, c) { return a + c.valor; }, 0)),
+    a_receber_total: aReceberTotal,
+    agendados_soltos: agendadosSoltos.map(function (a) {
+      return { uuid: a.uuid, nome: a.nome, valor: arred_(a.valor) };
+    }),
+
+    // A pergunta que o app existe para responder: com o que ainda entra e o que
+    // ainda sai, sobra quanto no fim do mês? Fatos e previsão ficam separados
+    // de propósito — "Recebi" é dinheiro que caiu, isto aqui é aposta.
+    previsao: {
+      ja_sobrou: arred_(totais.receitas - totais.despesas),
+      ainda_entra: aReceberTotal,
+      ainda_sai: previstoTotal,
+      sobra: arred_(totais.receitas - totais.despesas + aReceberTotal - previstoTotal)
+    },
     orcamentos: orcamentos
   };
 }
@@ -1754,28 +1797,41 @@ function painel_(pedido) {
  * lançado ou não. Serve para conta fixa e para renda mensal — a pergunta é a
  * mesma ("isso já aconteceu este mês?"), só muda o sinal do dinheiro.
  */
-function cruzarCompromissos_(compromissos, lancamentos) {
-  var feitos = lancamentos.map(function (l) {
-    return {
-      uuid: l.uuid,
-      descricao: chaveNome_(l.descricao),
-      categoria: chaveNome_(l.categoria),
-      valor: l.valor
-    };
-  });
+function cruzarCompromissos_(compromissos, lancamentos, agendados) {
+  var preparar = function (lista) {
+    return (lista || []).map(function (l) {
+      return {
+        uuid: l.uuid,
+        nome: l.nome || l.descricao,
+        descricao: chaveNome_(l.descricao),
+        categoria: chaveNome_(l.categoria),
+        valor: l.valor
+      };
+    });
+  };
 
-  return compromissos.map(function (c) {
-    var alvo = chaveNome_(c.nome);
-    var feito = null;
-    for (var i = 0; i < feitos.length && alvo; i++) {
-      var a = feitos[i];
+  var feitos = preparar(lancamentos);
+  var marcados = preparar(agendados);
+
+  var procurar = function (lista, c, alvo) {
+    for (var i = 0; i < lista.length && alvo; i++) {
+      var a = lista[i];
       if (a.descricao.indexOf(alvo) >= 0 ||
           (a.categoria && a.categoria === alvo) ||
           (a.categoria === chaveNome_(c.categoria) && Math.abs(a.valor - c.valor) < 0.01)) {
-        feito = a;
-        break;
+        return a;
       }
     }
+    return null;
+  };
+
+  return compromissos.map(function (c) {
+    var alvo = chaveNome_(c.nome);
+    var feito = procurar(feitos, c, alvo);
+    // Não achou nada que aconteceu? Talvez exista um lançamento já marcado
+    // para uma data à frente — ele não é dinheiro ainda, mas é a previsão.
+    var marcado = feito ? null : procurar(marcados, c, alvo);
+
     return {
       nome: c.nome, valor: arred_(c.valor), dia: c.dia,
       tipo: c.tipo || TIPO.DESPESA,
@@ -1784,21 +1840,29 @@ function cruzarCompromissos_(compromissos, lancamentos) {
       lancado: !!feito,
       // o uuid fecha o ciclo: tocar num item já lançado abre o lançamento dele
       uuid_lancamento: feito ? feito.uuid : '',
-      valor_lancado: feito ? arred_(feito.valor) : null
+      valor_lancado: feito ? arred_(feito.valor) : null,
+      // e num item agendado, confirma aquele lançamento em vez de criar outro
+      uuid_agendado: marcado ? marcado.uuid : '',
+      valor_agendado: marcado ? arred_(marcado.valor) : null,
+      // o nome que está escrito no lançamento manda, porque é o que você edita
+      nome_lancado: (feito && feito.nome) || (marcado && marcado.nome) || ''
     };
   });
 }
 
-/** Lançamentos válidos do mês, para cruzar com os compromissos. */
-function lancamentosDoMesCru_(mes, col, aba, n, tipo) {
+/** Lançamentos de um tipo e status no mês, para cruzar com os compromissos. */
+function lancamentosDoMesCru_(mes, col, aba, n, tipo, status) {
   if (n <= 0) return [];
   var saida = [];
   aba.getRange(2, 1, n, ABAS.lancamentos.length).getValues().forEach(function (r) {
-    if (r[col.status] !== STATUS.OK) return;
+    if (r[col.status] !== (status || STATUS.OK)) return;
     if (r[col.tipo] !== (tipo || TIPO.DESPESA)) return;
     if (normalizarData_(r[col.data]).slice(0, 7) !== mes) return;
     saida.push({
       uuid: r[col.uuid],
+      // `nome` é o que aparece na tela; `descricao` inclui o texto falado só
+      // para o cruzamento achar o compromisso pelo que você disse.
+      nome: String(r[col.descricao] || ''),
       descricao: String(r[col.descricao] || '') + ' ' + String(r[col.texto_falado] || ''),
       categoria: String(r[col.categoria] || ''),
       valor: Number(r[col.valor]) || 0
@@ -1943,7 +2007,11 @@ function editarLancamento_(pedido) {
 
     // Corrigir uma linha à mão resolve a dúvida que marcou ela para revisão.
     valores[col.revisar] = '';
-    if (valores[col.status] !== STATUS.OK) valores[col.status] = STATUS.OK;
+    // Agendado não vira ok por ter sido editado: mexer no nome de um salário
+    // que ainda não caiu não faz ele cair. Quem confirma é você, no botão.
+    if (valores[col.status] !== STATUS.OK && valores[col.status] !== STATUS.AGENDADO) {
+      valores[col.status] = STATUS.OK;
+    }
 
     // Trocar a conta troca a fatura em que a compra cai. Sem recalcular aqui, a
     // linha continuaria carimbada com a fatura do cartão antigo.
@@ -2447,6 +2515,65 @@ function salvarRecorrente_(pedido) {
   }
 
   return { ok: true, nome: novoNome || nome, mes: mes };
+}
+
+/**
+ * "Caiu": promove um lançamento agendado a dinheiro de verdade. É o único
+ * caminho — nem editar, nem esperar a data chegar fazem isso sozinhos, porque
+ * a data prometida chegar não significa que o dinheiro entrou.
+ */
+function confirmarRecebimento_(pedido) {
+  if (!pedido.uuid) return { ok: false, erro: 'uuid_faltando' };
+
+  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('lancamentos');
+  var linha = acharLinhaPorUuid_(aba, pedido.uuid);
+  if (!linha) return { ok: false, erro: 'nao_encontrado' };
+
+  var col = indiceColunas_();
+  var faixa = aba.getRange(linha, 1, 1, ABAS.lancamentos.length);
+  var v = faixa.getValues()[0];
+
+  if (v[col.status] !== STATUS.AGENDADO) return { ok: false, erro: 'nao_agendado' };
+
+  if (pedido.valor !== undefined && Number(pedido.valor)) v[col.valor] = Number(pedido.valor);
+  // Caiu hoje, e não no dia que estava previsto? A data real é a que vale.
+  if (pedido.data) v[col.data] = pedido.data;
+  v[col.status] = STATUS.OK;
+  faixa.setValues([v]);
+
+  atualizarResumo_();
+  return { ok: true, uuid: pedido.uuid, valor: Number(v[col.valor]) || 0 };
+}
+
+/**
+ * Conserta as receitas com data futura que foram gravadas antes de existir o
+ * estado "agendado" — elas estão contando como recebidas sem ter caído.
+ * Rode uma vez, à mão, no editor. Rodar de novo não faz mal.
+ */
+function marcarReceitasFuturasComoAgendadas() {
+  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('lancamentos');
+  var n = aba.getLastRow() - 1;
+  if (n <= 0) return 'Planilha vazia.';
+
+  var col = indiceColunas_();
+  var dados = aba.getRange(2, 1, n, ABAS.lancamentos.length).getValues();
+  var hoje = hojeISO_();
+  var mexidas = [];
+
+  for (var i = 0; i < dados.length; i++) {
+    if (dados[i][col.status] !== STATUS.OK) continue;
+    if (dados[i][col.tipo] !== TIPO.RECEITA) continue;
+    if (normalizarData_(dados[i][col.data]) <= hoje) continue;
+    aba.getRange(i + 2, col.status + 1).setValue(STATUS.AGENDADO);
+    mexidas.push(dados[i][col.descricao] + ' (' + normalizarData_(dados[i][col.data]) + ')');
+  }
+
+  if (mexidas.length) atualizarResumo_();
+  var texto = mexidas.length
+    ? mexidas.length + ' receitas futuras viraram agendadas:\n' + mexidas.join('\n')
+    : 'Nenhuma receita futura para ajustar.';
+  Logger.log(texto);
+  return texto;
 }
 
 /**

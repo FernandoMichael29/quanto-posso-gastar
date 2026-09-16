@@ -27,6 +27,7 @@ export default function Mes({ cadastros, aoMudarDados }) {
   const [virandoMensal, setVirandoMensal] = useState(null);
   const [pagandoFixa, setPagandoFixa] = useState(null);
   const [pagandoFatura, setPagandoFatura] = useState(null);
+  const [confirmandoRenda, setConfirmandoRenda] = useState(null);
   const [busca, setBusca] = useState('');
   const [pagina, setPagina] = useState(1);
   const [porPagina, setPorPagina] = useState(10);
@@ -75,13 +76,24 @@ export default function Mes({ cadastros, aoMudarDados }) {
     } else setErro(traduzir(r.erro));
   }
 
-  /** Tocar numa conta fixa: se já foi paga, abre o lançamento; se não, o pagamento. */
+  async function confirmarAgendado(item) {
+    setSalvando(true);
+    const r = await api.confirmarRecebimento(item.uuid_agendado, { data: hojeISO() });
+    setSalvando(false);
+    if (r.ok) { setConfirmandoRenda(null); carregar(mes); aoMudarDados?.(); }
+    else setErro(traduzir(r.erro));
+  }
+
+  /** Tocar num compromisso: já feito abre o lançamento; agendado pergunta se caiu. */
   function abrirFixa(f) {
     if (f.lancado) {
       const lancamento = lista.find((l) => l.uuid === f.uuid_lancamento);
       if (lancamento) setEditando({ ...lancamento });
       return;
     }
+    // Já existe uma linha marcada para a frente: confirmar é promover aquela,
+    // nunca criar outra — senão o mesmo salário entraria duas vezes.
+    if (f.uuid_agendado) { setConfirmandoRenda(f); return; }
     const receita = f.tipo === 'receita';
     setPagandoFixa({
       nome: f.nome,
@@ -178,9 +190,28 @@ export default function Mes({ cadastros, aoMudarDados }) {
   // Uma conta fixa que não virou lançamento pode estar em dois estados muito
   // diferentes: ainda vai vencer, ou já venceu e ninguém registrou. Chamar as
   // duas de "previsto" escondia a segunda, que é justamente a que precisa de você.
-  const fixas = (painel?.fixas || []).map((f) => ({ ...f, ...situacaoDa(f, painel.mes) }));
-  const rendas = (painel?.rendas || []).map((r) => ({
-    ...r, tipo: 'receita', ...situacaoDa({ ...r, tipo: 'receita' }, painel.mes)
+  // O nome que aparece é o do lançamento quando ele já existe — é o que você
+  // edita, e ver o nome antigo depois de corrigir parece que nada foi salvo.
+  const comNome = (c) => ({ ...c, nome_visivel: c.nome_lancado || c.nome });
+
+  const fixas = (painel?.fixas || []).map((f) => comNome({ ...f, ...situacaoDa(f, painel.mes) }));
+  const rendas = (painel?.rendas || []).map((r) => {
+    const base = { ...r, tipo: 'receita' };
+    return comNome({ ...base, ...situacaoDa(base, painel.mes) });
+  });
+
+  // Renda marcada para uma data à frente que não pertence a regra nenhuma:
+  // entra na lista como item a confirmar, senão ela só existiria no total.
+  const soltos = (painel?.agendados_soltos || []).map((a) => ({
+    nome: a.nome,
+    nome_visivel: a.nome,
+    valor: a.valor,
+    tipo: 'receita',
+    lancado: false,
+    uuid_agendado: a.uuid,
+    valor_agendado: a.valor,
+    situacao: 'pendente',
+    rotulo: 'agendado, confirme quando cair'
   }));
   const atrasadas = resumirFixas(fixas.filter((f) => f.situacao === 'erro'));
   const aVencer = resumirFixas(fixas.filter((f) => f.situacao === 'pendente'));
@@ -207,6 +238,35 @@ export default function Mes({ cadastros, aoMudarDados }) {
             </div>
           </div>
 
+          {/* A pergunta do app: dá para comprar aquilo? O quadro acima é o que
+              já aconteceu; este é o que o mês promete. Separados de propósito —
+              misturar os dois é como um app de finanças começa a mentir. */}
+          {painel.previsao && (painel.previsao.ainda_entra > 0 || painel.previsao.ainda_sai > 0) && (
+            <div className="previsao">
+              <div className="previsao-topo">
+                <span className="r">Se tudo acontecer, sobra</span>
+                <strong className={painel.previsao.sobra >= 0 ? 'pos' : 'neg'}>
+                  {formatarBRL(painel.previsao.sobra)}
+                </strong>
+              </div>
+              <div className="previsao-contas">
+                <span>
+                  sobrou até agora <strong>{formatarBRL(painel.previsao.ja_sobrou)}</strong>
+                </span>
+                {painel.previsao.ainda_entra > 0 && (
+                  <span className="mais">
+                    ainda entra <strong>{formatarBRL(painel.previsao.ainda_entra)}</strong>
+                  </span>
+                )}
+                {painel.previsao.ainda_sai > 0 && (
+                  <span className="menos">
+                    ainda sai <strong>{formatarBRL(painel.previsao.ainda_sai)}</strong>
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Gastar no crédito não é o mesmo que o dinheiro sair da conta.
               Sem esta linha, o "sobra" acima parece menos do que você tem. */}
           {(painel.no_credito > 0 || painel.saiu_caixa !== painel.despesas) && (
@@ -224,7 +284,7 @@ export default function Mes({ cadastros, aoMudarDados }) {
             resumo={painel.a_receber_total > 0
               ? `${formatarBRL(painel.a_receber_total)} a receber`
               : 'tudo recebido'}
-            itens={rendas}
+            itens={rendas.concat(soltos)}
             aoAbrir={abrirFixa}
             rotuloFeitos={{ um: 'já recebida', varios: 'já recebidas' }}
           />
@@ -394,7 +454,12 @@ export default function Mes({ cadastros, aoMudarDados }) {
       ) : (
         <div className="lista">
           {daPagina.map((l) => (
-            <button type="button" className="item clicavel" key={l.uuid} onClick={() => setEditando({ ...l })}>
+            <button
+              type="button"
+              className={`item clicavel ${l.status === 'agendado' ? 'agendado' : ''}`}
+              key={l.uuid}
+              onClick={() => setEditando({ ...l })}
+            >
               <span className="corpo">
                 <span className="titulo">{l.descricao || l.categoria || '(sem descrição)'}</span>
                 <span className="meta">
@@ -406,6 +471,9 @@ export default function Mes({ cadastros, aoMudarDados }) {
                   ].filter(Boolean).join(' · ')} · {diaDe(l.data)}
                   {l.revisar ? ' · confira' : ''}
                 </span>
+                {l.status === 'agendado' && (
+                  <span className="marca-agendado">agendado · ainda não conta</span>
+                )}
               </span>
               <span className={`num ${l.tipo === 'receita' ? 'receita' : ''}`}>
                 {l.tipo === 'receita' ? '+' : '−'}{formatarBRL(l.valor).replace('R$', '').trim()}
@@ -451,6 +519,33 @@ export default function Mes({ cadastros, aoMudarDados }) {
               {[10, 30, 50].map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
           </label>
+        </div>
+      )}
+
+      {confirmandoRenda && (
+        <div className="modal" role="dialog" aria-modal="true" aria-label="Confirmar recebimento">
+          <div className="modal-fundo" onClick={() => !salvando && setConfirmandoRenda(null)} />
+          <div className="modal-corpo">
+            <div className="cartao destaque">
+              <div className="valor-linha">
+                <span className="valor receita">{formatarBRL(confirmandoRenda.valor_agendado ?? confirmandoRenda.valor)}</span>
+                <span className="etiqueta receita">agendado</span>
+              </div>
+              <p className="secao-titulo" style={{ margin: 0 }}>{confirmandoRenda.nome_visivel || confirmandoRenda.nome}</p>
+              <p className="ajuda">
+                Esse dinheiro está previsto, mas ainda não conta como recebido.
+                Caiu mesmo? Registro com a data de hoje.
+              </p>
+              <div className="botoes">
+                <button className="btn discreto" onClick={() => setConfirmandoRenda(null)} disabled={salvando}>
+                  Ainda não
+                </button>
+                <button className="btn principal" onClick={() => confirmarAgendado(confirmandoRenda)} disabled={salvando}>
+                  {salvando ? 'Registrando…' : 'Caiu, pode contar'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -757,6 +852,12 @@ function resumirFixas(lista) {
 function mesDeHoje() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function hojeISO() {
+  const d = new Date();
+  const z = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`;
 }
 
 function somarMes(mes, n) {
