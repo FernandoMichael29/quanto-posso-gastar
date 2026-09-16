@@ -213,6 +213,14 @@ export default function Mes({ cadastros, aoMudarDados }) {
     situacao: 'pendente',
     rotulo: 'agendado, confirme quando cair'
   }));
+  // A fatura só é conta a pagar depois que fecha. Antes disso ela ainda aceita
+  // compras — vencer neste mês não quer dizer que já dá para pagar.
+  const faturasAPagar = (painel?.faturas || []).filter((f) => !f.aberta);
+  const fechando = (painel?.faturas || []).filter((f) => f.aberta)
+    .concat(painel?.faturas_em_formacao || [])
+    .sort((a, b) => (a.fecha_em || '').localeCompare(b.fecha_em || ''));
+  const totalFechando = fechando.reduce((a, f) => a + f.total, 0);
+
   const atrasadas = resumirFixas(fixas.filter((f) => f.situacao === 'erro'));
   const aVencer = resumirFixas(fixas.filter((f) => f.situacao === 'pendente'));
 
@@ -334,10 +342,10 @@ export default function Mes({ cadastros, aoMudarDados }) {
             </div>
           )}
 
-          {painel.faturas?.length > 0 && (
+          {faturasAPagar.length > 0 && (
             <>
               <div className="secao-cabecalho">
-                <p className="secao-titulo" style={{ margin: 0 }}>Faturas que vencem neste mês</p>
+                <p className="secao-titulo" style={{ margin: 0 }}>Faturas a pagar</p>
                 {painel.faturas_abertas > 0 && (
                   <span className="ajuda" style={{ margin: 0 }}>
                     {formatarBRL(painel.faturas_abertas)} em aberto
@@ -345,7 +353,7 @@ export default function Mes({ cadastros, aoMudarDados }) {
                 )}
               </div>
               <div className="lista">
-                {painel.faturas.map((f) => (
+                {faturasAPagar.map((f) => (
                   <button
                     type="button"
                     className={`item fatura clicavel ${f.pago ? 'paga' : ''}`}
@@ -373,23 +381,24 @@ export default function Mes({ cadastros, aoMudarDados }) {
           {/* O que você comprou no crédito e ainda não virou fatura para pagar.
               Sem isto, comprar no Itaú hoje não aparece em lugar nenhum: a
               fatura só vence mês que vem, mas o dinheiro já está comprometido. */}
-          {painel.faturas_em_formacao?.length > 0 && (
+          {fechando.length > 0 && (
             <>
               <div className="secao-cabecalho">
                 <p className="secao-titulo" style={{ margin: 0 }}>Faturas que ainda estão fechando</p>
                 <span className="ajuda" style={{ margin: 0 }}>
-                  {formatarBRL(painel.faturas_em_formacao_total)} já comprometidos
+                  {formatarBRL(totalFechando)} já comprometidos
                 </span>
               </div>
               <div className="lista">
-                {painel.faturas_em_formacao.map((f) => (
+                {fechando.map((f) => (
                   <div className="item fatura" key={`${f.cartao}-${f.mes}`}>
                     <span className="ponto" aria-hidden="true" />
                     <span className="corpo">
                       <span className="titulo">{f.cartao}</span>
                       <span className="meta">
-                        {f.lancamentos} compra{f.lancamentos === 1 ? '' : 's'} ·
-                        {' '}vence em {mesCurto(f.mes)}{f.dia ? `, dia ${f.dia}` : ''}
+                        {f.lancamentos} compra{f.lancamentos === 1 ? '' : 's'}
+                        {f.fecha_em ? ` · fecha ${diaDe(f.fecha_em)}` : ''}
+                        {f.dia ? ` · vence ${mesCurto(f.mes)}, dia ${f.dia}` : ''}
                         {f.pessoa ? ` · ${f.pessoa}` : ''}
                       </span>
                     </span>
@@ -700,6 +709,7 @@ export default function Mes({ cadastros, aoMudarDados }) {
               aoConfirmar={confirmarPagamento}
               aoCancelar={() => setPagandoFixa(null)}
               rotuloCancelar="Fechar"
+              permiteParcelar={false}
             />
 
             {/* Aqui só se registra o que aconteceu. Consertar a regra em si —

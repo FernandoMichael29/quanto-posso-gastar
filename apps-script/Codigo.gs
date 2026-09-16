@@ -12,7 +12,7 @@
 
 // Suba junto com VERSAO_APP em src/lib/versao.js — o app compara as duas e
 // avisa na tela quando só uma das metades foi publicada.
-var VERSAO = '1.8.0';
+var VERSAO = '1.10.0';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -704,7 +704,10 @@ function capturar_(pedido) {
     var l = pedido.lancamento;
     l.uuid = uuid;
     if (!l.texto_falado) l.texto_falado = pedido.texto || '';
-    l.status = STATUS.OK;
+    // Confirmado por você, então não fica esperando IA — mas renda marcada para
+    // uma data à frente continua agendada, porque confirmar o lançamento não é
+    // o mesmo que o dinheiro ter caído.
+    l.status = nasceAgendado_(l) ? STATUS.AGENDADO : STATUS.OK;
     return lancar_({ lancamentos: [l] });
   }
 
@@ -1550,6 +1553,10 @@ function faturasDoMes_(mes, contas, linhas, col) {
     .map(function (k) {
       var f = porCartao[k];
       f.total = arred_(f.total);
+      f.mes = mes;
+      f.fecha_em = fechamentoDaFatura_(contas[chaveNome_(f.cartao)], mes);
+      // Fatura paga é fatura fechada, não importa o calendário.
+      f.aberta = !f.pago && Boolean(f.fecha_em) && f.fecha_em > hojeISO_();
       return f;
     })
     .filter(function (f) { return f.total > 0 || f.pago; })
@@ -1582,7 +1589,9 @@ function faturasEmFormacao_(mes, contas, linhas, col) {
     if (!porChave[k]) {
       porChave[k] = {
         cartao: conta.nome, mes: mesFatura, dia: conta.vencimento,
-        pessoa: conta.pessoa, total: 0, lancamentos: 0
+        pessoa: conta.pessoa, total: 0, lancamentos: 0,
+        aberta: true, pago: false,
+        fecha_em: fechamentoDaFatura_(conta, mesFatura)
       };
     }
     porChave[k].total += Number(r[col.valor]) || 0;
@@ -1607,8 +1616,35 @@ function faturasEmFormacao_(mes, contas, linhas, col) {
 function novaFatura_(cartao) {
   return {
     cartao: cartao, total: 0, lancamentos: 0, dia: 0, pessoa: '',
-    pago: false, valor_pago: 0, uuid_pagamento: '', pago_em: ''
+    pago: false, valor_pago: 0, uuid_pagamento: '', pago_em: '',
+    aberta: false, fecha_em: ''
   };
+}
+
+/**
+ * O dia em que a fatura de um mês fecha.
+ *
+ * Enquanto não fecha, ela ainda aceita compras — não é uma conta a pagar, é uma
+ * conta crescendo. A do Santander vence dia 30 mas fecha dia 24: no dia 16 ela
+ * está no mesmo estado das faturas de outubro, e mostrá-la como "a pagar" só
+ * porque vence neste mês diz que existe uma dívida fechada que ainda não existe.
+ */
+function fechamentoDaFatura_(cartao, mesFatura) {
+  if (!cartao || !mesFatura) return '';
+  var F = cartao.fechamento;
+
+  // Sem dia de fechamento, a regra do app é: fecha no fim do mês anterior.
+  if (!F) {
+    var anterior = mesAnterior_(mesFatura);
+    var ultimo = new Date(Number(anterior.slice(0, 4)), Number(anterior.slice(5, 7)), 0).getDate();
+    return anterior + '-' + ultimo;
+  }
+
+  // Vencimento depois do fechamento: fecha no próprio mês da fatura.
+  var mes = cartao.vencimento > F ? mesFatura : mesAnterior_(mesFatura);
+  var ultimoDia = new Date(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)), 0).getDate();
+  var dia = Math.min(F, ultimoDia);
+  return mes + '-' + (dia < 10 ? '0' + dia : String(dia));
 }
 
 /**
@@ -1726,7 +1762,9 @@ function painel_(pedido) {
 
   var faturas = faturasDoMes_(mes, contas, linhas, col);
   var emFormacao = faturasEmFormacao_(mes, contas, linhas, col);
-  var faturasAbertas = faturas.filter(function (f) { return !f.pago; });
+  // "Em aberto" é o que você pode pagar hoje: fatura fechada e não paga.
+  // A que ainda está fechando não é dívida a pagar, é conta crescendo.
+  var faturasAbertas = faturas.filter(function (f) { return !f.pago && !f.aberta; });
 
   // Um cartão sem dia de vencimento não consegue formar fatura: as compras dele
   // aparecem em "vai sair na fatura" e depois não achavam fatura nenhuma.
