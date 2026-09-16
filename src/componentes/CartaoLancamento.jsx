@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { formatarBRL } from '../lib/parser.js';
 import { paraSelecionar } from '../lib/cadastros.js';
 
@@ -28,18 +29,65 @@ export default function CartaoLancamento({
     l.categoria,
     'categoria'
   );
-  // Antes de gravar, `valor` é o total da compra; depois de gravada, cada linha
-  // já é uma parcela. Por isso o rótulo muda entre os dois momentos.
-  const parcelado = Number(l.parcelas_total) > 1;
-  const jaGravado = modo === 'editar' && Boolean(l.parcela_atual);
-  const valorParcela = parcelado
-    ? (jaGravado ? Number(l.valor) : Number(l.valor) / l.parcelas_total)
-    : Number(l.valor);
-
   // Parcelar só faz sentido antes de existir: depois de gravado, o parcelamento
   // já virou N linhas na planilha, e mexer no número aqui deixaria as irmãs
   // desencontradas. Para mudar, exclui a compra e lança de novo.
   const podeParcelar = permiteParcelar && !receita && modo !== 'editar';
+
+  // O "quantas vezes" é digitado, e digitar passa por estados inválidos: para
+  // escrever 10 você digita 1 antes. Se o campo corrigir a cada tecla, o 1 vira
+  // 2 e o 0 seguinte vira 20 — foi o que acontecia. Então o texto cru mora aqui,
+  // e o conserto só acontece quando você sai do campo.
+  const [parcelar, setParcelar] = useState(() => Number(valor.parcelas_total) > 1);
+  const [vezes, setVezes] = useState(
+    () => (Number(valor.parcelas_total) > 1 ? String(valor.parcelas_total) : '2')
+  );
+
+  const nVezes = Number(vezes) || 0;
+  const parcelado = podeParcelar ? (parcelar && nVezes > 1) : Number(l.parcelas_total) > 1;
+  const jaGravado = modo === 'editar' && Boolean(l.parcela_atual);
+  const quantas = podeParcelar ? nVezes : Number(l.parcelas_total) || 0;
+
+  // Antes de gravar, `valor` é o total da compra; depois de gravada, cada linha
+  // já é uma parcela. Por isso o rótulo muda entre os dois momentos.
+  const valorParcela = parcelado && !jaGravado && quantas > 1
+    ? Number(l.valor) / quantas
+    : Number(l.valor);
+
+  function marcarParcelado(marcado) {
+    setParcelar(marcado);
+    const n = marcado ? (nVezes > 1 ? nVezes : 2) : 0;
+    if (marcado && nVezes < 2) setVezes('2');
+    aoMudar({
+      ...l,
+      parcelas_total: marcado ? n : null,
+      parcela_atual: marcado ? 1 : null
+    });
+  }
+
+  function digitarVezes(texto) {
+    const limpo = texto.replace(/\D/g, '').slice(0, 2);
+    setVezes(limpo);
+    const n = Number(limpo);
+    // Enquanto o número ainda não faz sentido, o lançamento fica sem
+    // parcelamento — mas a caixa continua marcada e o campo, aberto.
+    aoMudar({
+      ...l,
+      parcelas_total: n > 1 ? n : null,
+      parcela_atual: n > 1 ? 1 : null
+    });
+  }
+
+  /** Só aqui o número é ajustado para a faixa válida. */
+  function arrumarVezes() {
+    const n = Math.min(60, Math.max(2, Number(vezes) || 2));
+    setVezes(String(n));
+    aoMudar({ ...l, parcelas_total: n, parcela_atual: 1 });
+  }
+
+  // Confirmar com "1 vez" digitado gravaria uma compra sem parcelamento sem
+  // você perceber. Melhor segurar o botão e dizer o porquê.
+  const parcelamentoIncompleto = podeParcelar && parcelar && nVezes < 2;
 
   const contas = paraSelecionar(cadastros.contas, l.conta);
   const fontes = paraSelecionar(cadastros.fontes, l.fonte);
@@ -66,7 +114,7 @@ export default function CartaoLancamento({
           <span className="etiqueta">
             {jaGravado
               ? `parcela ${l.parcela_atual} de ${l.parcelas_total}`
-              : `${l.parcelas_total}× de ${formatarBRL(valorParcela)}`}
+              : `${quantas}× de ${formatarBRL(valorParcela)}`}
           </span>
         )}
       </div>
@@ -77,7 +125,7 @@ export default function CartaoLancamento({
           inteira neste mês, ela vira uma parcela por mês. */}
       {parcelado && modo !== 'editar' && (
         <p className="ajuda">
-          Vira {l.parcelas_total} lançamentos de {formatarBRL(valorParcela)}, um por mês —
+          Vira {quantas} lançamentos de {formatarBRL(valorParcela)}, um por mês —
           este mês conta só a primeira.
         </p>
       )}
@@ -99,8 +147,9 @@ export default function CartaoLancamento({
           <label htmlFor="c-valor">{parcelado && !jaGravado ? 'Valor total' : 'Valor'}</label>
           <input
             id="c-valor" type="number" inputMode="decimal" step="0.01"
-            value={l.valor}
-            onChange={(e) => aoMudar({ ...l, valor: Number(e.target.value) })}
+            value={l.valor ?? ''}
+            placeholder="0,00"
+            onChange={(e) => aoMudar({ ...l, valor: e.target.value })}
           />
         </div>
         <div className="campo">
@@ -117,12 +166,8 @@ export default function CartaoLancamento({
           <label className="repete-linha">
             <input
               type="checkbox"
-              checked={parcelado}
-              onChange={(e) => aoMudar({
-                ...l,
-                parcelas_total: e.target.checked ? 2 : null,
-                parcela_atual: e.target.checked ? 1 : null
-              })}
+              checked={parcelar}
+              onChange={(e) => marcarParcelado(e.target.checked)}
             />
             <span>
               Parcelado
@@ -130,23 +175,26 @@ export default function CartaoLancamento({
             </span>
           </label>
 
-          {parcelado && (
+          {parcelar && (
             <div className="linha">
               <div className="campo">
                 <label htmlFor="c-parcelas">Em quantas vezes</label>
                 <input
-                  id="c-parcelas" type="number" min="2" max="60" inputMode="numeric"
-                  value={l.parcelas_total}
-                  onChange={(e) => aoMudar({
-                    ...l,
-                    parcelas_total: Math.max(2, Math.min(60, Number(e.target.value) || 2)),
-                    parcela_atual: 1
-                  })}
+                  id="c-parcelas"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={vezes}
+                  onChange={(e) => digitarVezes(e.target.value)}
+                  onBlur={arrumarVezes}
+                  onFocus={(e) => e.target.select()}
                 />
               </div>
               <div className="campo">
                 <label>Cada parcela</label>
-                <p className="valor-calculado">{formatarBRL(valorParcela)}</p>
+                <p className="valor-calculado">
+                  {nVezes > 1 ? formatarBRL(valorParcela) : 'de 2 a 60'}
+                </p>
               </div>
             </div>
           )}
@@ -258,7 +306,7 @@ export default function CartaoLancamento({
           type="button"
           className="btn principal"
           onClick={aoConfirmar}
-          disabled={ocupado || !Number(l.valor)}
+          disabled={ocupado || !Number(l.valor) || parcelamentoIncompleto}
         >
           {ocupado ? 'Salvando…' : ROTULO_OK[modo] || 'Confirmar'}
         </button>
