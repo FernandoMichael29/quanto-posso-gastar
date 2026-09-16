@@ -9,7 +9,7 @@ import Mensais from './telas/Mensais.jsx';
 import { ESTADO, listar } from './lib/db.js';
 import { acessoValidado, api, configurado, marcarAcessoValido } from './lib/api.js';
 import { aoMudar, ligarSincronizacaoAutomatica } from './lib/sync.js';
-import { VERSAO_APP } from './lib/versao.js';
+import { VERSAO_APP, menorQue } from './lib/versao.js';
 
 const CACHE = 'qpg.cadastros';
 const VAZIO = { categorias: [], contas: [], fontes: [], pessoas: [] };
@@ -169,7 +169,7 @@ export default function App() {
             <strong>As duas metades estão em versões diferentes</strong>
             <span className="detalhe">
               O app é a {VERSAO_APP} e o script da planilha é a {versaoScript}.
-              {versaoScript < VERSAO_APP
+              {menorQue(versaoScript, VERSAO_APP)
                 ? ' Cole o Codigo.gs novo no Apps Script e implante com "Nova versão" — até lá, o que é novo não aparece.'
                 : ' O site ainda está com a versão antiga: espere o deploy do GitHub terminar e recarregue.'}
             </span>

@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "teste": "node testes/parser.test.mjs"
+    "teste": "node testes/parser.test.mjs",
+    "teste:script": "node apps-script/testes/lancar.test.cjs"
   },
   "dependencies": {
     "react": "^18.3.1",
