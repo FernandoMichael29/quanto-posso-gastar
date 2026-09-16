@@ -12,7 +12,7 @@
 
 // Suba junto com VERSAO_APP em src/lib/versao.js — o app compara as duas e
 // avisa na tela quando só uma das metades foi publicada.
-var VERSAO = '1.11.0';
+var VERSAO = '1.12.0';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -1698,12 +1698,23 @@ function painel_(pedido) {
   var n = aba.getLastRow() - 1;
   var col = indiceColunas_();
 
-  // Seis meses terminando no mês pedido, para a evolução.
+  // A linha do tempo: seis meses para trás e seis para a frente. O passado é o
+  // que aconteceu; o futuro é o que já está comprometido — parcelas que vão
+  // cair, contas que se repetem, salários que costumam entrar. São duas coisas
+  // diferentes e por isso viajam em campos separados, para a tela poder
+  // desenhar cada uma do seu jeito.
   var meses = [];
   var m = mes;
   for (var i = 0; i < 6; i++) { meses.unshift(m); m = mesAnterior_(m); }
+  m = mes;
+  for (var f = 0; f < 6; f++) { m = mesSeguinte_(m); meses.push(m); }
+
   var serie = {};
-  meses.forEach(function (k) { serie[k] = { mes: k, receitas: 0, despesas: 0 }; });
+  meses.forEach(function (k) {
+    serie[k] = { mes: k, receitas: 0, despesas: 0, receitas_previstas: 0, despesas_previstas: 0 };
+  });
+
+  var mesHoje = mesAtual_();
 
   var totais = { receitas: 0, despesas: 0, lancamentos: 0, credito: 0, caixa: 0 };
   var porCategoria = {}, porConta = {}, porPessoa = {}, porFonte = {}, porGrupo = {};
@@ -1716,22 +1727,37 @@ function painel_(pedido) {
   var contas = indiceContas_();
   var linhas = n > 0 ? aba.getRange(2, 1, n, ABAS.lancamentos.length).getValues() : [];
 
-  linhas.forEach(function (r) {
-    if (r[col.status] !== STATUS.OK) return;
+  var agendadosPorMes = {};
 
+  linhas.forEach(function (r) {
     var data = normalizarData_(r[col.data]);
     var mesLinha = data.slice(0, 7);
     var valor = Number(r[col.valor]) || 0;
     var tipo = r[col.tipo];
+
+    // Renda agendada é previsão, não caixa: entra na linha pontilhada do gráfico.
+    if (r[col.status] === STATUS.AGENDADO) {
+      if (tipo === TIPO.RECEITA) {
+        if (serie[mesLinha]) serie[mesLinha].receitas_previstas += valor;
+        if (!agendadosPorMes[mesLinha]) agendadosPorMes[mesLinha] = [];
+        agendadosPorMes[mesLinha].push(chaveNome_(r[col.descricao]));
+      }
+      return;
+    }
+
+    if (r[col.status] !== STATUS.OK) return;
     var conta = contas[chaveNome_(String(r[col.conta] || ''))];
     var noCredito = tipo === TIPO.DESPESA && ehCartao_(conta);
 
-    // A evolução compara meses pelo que saiu do bolso: é o fluxo de caixa,
-    // o número que responde "sobrou dinheiro naquele mês".
+    // No passado a evolução compara meses pelo que saiu do bolso: é o fluxo de
+    // caixa, o número que responde "sobrou dinheiro naquele mês". No futuro não
+    // existe fatura paga ainda, então a parcela do cartão já conta como
+    // compromisso — senão um mês inteiro de parcelas apareceria vazio.
     if (serie[mesLinha]) {
+      var futuro = mesLinha > mesHoje;
       if (tipo === TIPO.RECEITA) serie[mesLinha].receitas += valor;
       else if (tipo === TIPO.FATURA) serie[mesLinha].despesas += valor;
-      else if (!noCredito) serie[mesLinha].despesas += valor;
+      else if (!noCredito || futuro) serie[mesLinha].despesas += valor;
     }
 
     if (mesLinha !== mes) return;
@@ -1786,7 +1812,26 @@ function painel_(pedido) {
   // já lançada. "Internet" casava por acaso e sumia; "Boleto mensal" não casava
   // com nada e sumia junto, porque a lista só mostrava o que sobrasse do filtro.
   // Agora nada some: a lista mostra tudo e marca o que já foi pago.
-  var todosCompromissos = recorrentesDoMes_(mes);
+  // O que se repete, nos meses à frente: é isso que transforma "gastos que já
+  // caíram" em "quanto ainda vai entrar e sair". Sem isso, um mês futuro
+  // aparece só com as parcelas e parece que você vai passar fome.
+  var regras = lerRecorrentes_();
+  meses.forEach(function (k) {
+    if (k <= mesHoje) return;
+    var jaAgendados = agendadosPorMes[k] || [];
+    compromissosDoMes_(regras, k).forEach(function (c) {
+      if (c.tipo === TIPO.RECEITA) {
+        // Se já existe um lançamento agendado dessa renda no mês, ele já contou.
+        var alvo = chaveNome_(c.nome);
+        var repetido = jaAgendados.some(function (d) { return d.indexOf(alvo) >= 0; });
+        if (!repetido) serie[k].receitas_previstas += c.valor;
+      } else {
+        serie[k].despesas_previstas += c.valor;
+      }
+    });
+  });
+
+  var todosCompromissos = compromissosDoMes_(regras, mes);
 
   var fixas = cruzarCompromissos_(
     todosCompromissos.filter(function (c) { return c.tipo !== 'receita'; }),
@@ -1822,6 +1867,14 @@ function painel_(pedido) {
   );
   var previstoTotal = arred_(previsto.reduce(function (a, c) { return a + c.valor; }, 0));
 
+  // O mês aberto já tem uma conta de previsão bem mais fina que a dos meses
+  // futuros — ela sabe o que já foi pago e o que ainda falta. O gráfico usa a
+  // mesma, senão a barra deste mês contaria história diferente do quadro acima.
+  if (serie[mes]) {
+    serie[mes].receitas_previstas = aReceberTotal;
+    serie[mes].despesas_previstas = previstoTotal;
+  }
+
   var orcamentos = {};
   lerCategorias_().forEach(function (c) {
     if (c.orcamento > 0) orcamentos[c.categoria] = c.orcamento;
@@ -1851,13 +1904,18 @@ function painel_(pedido) {
       return { dia: d, total: arred_(porDia[d]) };
     }),
     evolucao: meses.map(function (k) {
+      var s = serie[k];
       return {
         mes: k,
-        receitas: arred_(serie[k].receitas),
-        despesas: arred_(serie[k].despesas),
-        saldo: arred_(serie[k].receitas - serie[k].despesas)
+        futuro: k > mesHoje,
+        receitas: arred_(s.receitas),
+        despesas: arred_(s.despesas),
+        receitas_previstas: arred_(s.receitas_previstas),
+        despesas_previstas: arred_(s.despesas_previstas),
+        saldo: arred_(s.receitas + s.receitas_previstas - s.despesas - s.despesas_previstas)
       };
     }),
+    parceladas: parceladasDoMes_(mes, linhas, col),
     fixas: fixas,
     fixas_total: arred_(fixas.reduce(function (a, c) { return a + c.valor; }, 0)),
     previsto: previsto,
@@ -1939,6 +1997,60 @@ function cruzarCompromissos_(compromissos, lancamentos, agendados) {
       nome_lancado: (feito && feito.nome) || (marcado && marcado.nome) || ''
     };
   });
+}
+
+/**
+ * As compras parceladas que pesam neste mês, uma linha por compra — não por
+ * parcela. Cartão e boleto juntos: o que define é o parcelamento, não onde
+ * você paga. Serve para responder "de quanto eu já devo todo mês e por quanto
+ * tempo ainda", que a lista de lançamentos solta não responde.
+ */
+function parceladasDoMes_(mes, linhas, col) {
+  var grupos = {};
+
+  linhas.forEach(function (r) {
+    if (r[col.status] !== STATUS.OK) return;
+    if (r[col.tipo] !== TIPO.DESPESA) return;
+    if (Math.round(Number(r[col.parcelas_total]) || 0) < 2) return;
+
+    var chave = grupoDoUuid_(r[col.uuid]);
+    if (!grupos[chave]) {
+      grupos[chave] = {
+        nome: '', categoria: '', conta: '', pessoa: '',
+        parcelas_total: Math.round(Number(r[col.parcelas_total]) || 0),
+        parcela_atual: 0, valor: 0, uuid: '',
+        falta_pagar: 0, parcelas_restantes: 0, ultima: ''
+      };
+    }
+
+    var g = grupos[chave];
+    var data = normalizarData_(r[col.data]);
+    var valor = Number(r[col.valor]) || 0;
+    var numero = Math.round(Number(r[col.parcela_atual]) || 0);
+
+    // Da parcela deste mês vêm os dados que a linha mostra.
+    if (data.slice(0, 7) === mes) {
+      g.nome = r[col.descricao];
+      g.categoria = r[col.categoria];
+      g.conta = r[col.conta];
+      g.pessoa = r[col.pessoa];
+      g.parcela_atual = numero;
+      g.valor = arred_(valor);
+      g.uuid = r[col.uuid];
+    }
+
+    // Do mês em diante é o que ainda falta pagar.
+    if (data.slice(0, 7) >= mes) {
+      g.falta_pagar = arred_(g.falta_pagar + valor);
+      g.parcelas_restantes++;
+      if (data > g.ultima) g.ultima = data;
+    }
+  });
+
+  return Object.keys(grupos)
+    .map(function (k) { return grupos[k]; })
+    .filter(function (g) { return g.uuid; })   // só as que têm parcela neste mês
+    .sort(function (a, b) { return b.valor - a.valor; });
 }
 
 /** Lançamentos de um tipo e status no mês, para cruzar com os compromissos. */
@@ -2768,7 +2880,11 @@ function valorNoMes_(recorrentes, nome, mes) {
 
 /** Todos os compromissos ativos num mês, já resolvidos. */
 function recorrentesDoMes_(mes) {
-  var todos = lerRecorrentes_();
+  return compromissosDoMes_(lerRecorrentes_(), mes);
+}
+
+/** A mesma coisa, com as regras já lidas — para não reler a aba 12 vezes. */
+function compromissosDoMes_(todos, mes) {
   var nomes = {};
   todos.forEach(function (r) { nomes[chaveNome_(r.nome)] = r.nome; });
 

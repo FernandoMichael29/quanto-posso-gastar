@@ -381,6 +381,48 @@ export default function Mes({ cadastros, aoMudarDados }) {
           {/* O que você comprou no crédito e ainda não virou fatura para pagar.
               Sem isto, comprar no Itaú hoje não aparece em lugar nenhum: a
               fatura só vence mês que vem, mas o dinheiro já está comprometido. */}
+          {/* Uma linha por compra, não por parcela: o que você quer saber é
+              "devo quanto por mês, e até quando", e isso some quando as
+              parcelas ficam espalhadas no meio dos lançamentos soltos. */}
+          {painel.parceladas?.length > 0 && (
+            <>
+              <div className="secao-cabecalho">
+                <p className="secao-titulo" style={{ margin: 0 }}>Contas parceladas</p>
+                <span className="ajuda" style={{ margin: 0 }}>
+                  {formatarBRL(painel.parceladas.reduce((a, p) => a + p.valor, 0))} neste mês
+                </span>
+              </div>
+              <div className="lista">
+                {painel.parceladas.map((p) => (
+                  <button
+                    type="button"
+                    className="item clicavel"
+                    key={p.uuid}
+                    onClick={() => {
+                      const l = lista.find((x) => x.uuid === p.uuid);
+                      if (l) setEditando({ ...l });
+                    }}
+                  >
+                    <span className="corpo">
+                      <span className="titulo">{p.nome}</span>
+                      <span className="meta">
+                        parcela {p.parcela_atual} de {p.parcelas_total}
+                        {p.conta ? ` · ${p.conta}` : ''}
+                        {p.pessoa ? ` · ${p.pessoa}` : ''}
+                      </span>
+                      <span className="meta">
+                        faltam {p.parcelas_restantes} ({formatarBRL(p.falta_pagar)})
+                        {p.ultima ? ` · até ${mesCurto(p.ultima.slice(0, 7))}` : ''}
+                      </span>
+                    </span>
+                    <span className="num">{formatarBRL(p.valor)}</span>
+                    <span className="seta" aria-hidden="true">›</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
           {fechando.length > 0 && (
             <>
               <div className="secao-cabecalho">

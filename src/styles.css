@@ -983,3 +983,16 @@ button.item.clicavel:last-child { border-bottom: none; }
   border: 1px solid var(--line-soft);
   border-radius: 9px;
 }
+
+/* ---------- previsão no gráfico ---------- */
+
+/* O que ainda não aconteceu aparece apagado: o olho vê que é a mesma série,
+   e vê também que aquilo ainda é aposta. */
+.gr-barra.previsto { opacity: .34; }
+.gr-grupo:hover .gr-barra.previsto,
+.gr-grupo.ativo .gr-barra.previsto { opacity: .5; }
+
+.gr-corte { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 4; opacity: .6; }
+
+.gr-legenda i.previsto { background: var(--muted); opacity: .45; }
+@media (prefers-color-scheme: dark) { .gr-legenda i.previsto { background: var(--muted); opacity: .5; } }

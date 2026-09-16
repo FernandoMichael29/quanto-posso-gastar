@@ -209,3 +209,15 @@ const linhaEmp = pe.rendas.find(r => r.nome === 'Salário empresa 2');
 console.log('em setembro:', linhaEmp.lancado ? 'já recebido' : 'a receber', '| confirma o agendado:', Boolean(linhaEmp.uuid_agendado));
 console.log('outubro herda a regra:', recorrentes_({ mes: '2026-10' }).recorrentes.some(r => r.nome === 'Salário empresa 2'),
             '| e aparece como a receber:', painel_({ mes: '2026-10' }).rendas.some(r => r.nome === 'Salário empresa 2' && !r.lancado));
+
+// 18. contas parceladas do mês, agrupadas por compra
+const pp = painel_({ mes: '2026-09' });
+console.log('parceladas de setembro:');
+pp.parceladas.forEach(p => console.log(`  ${p.nome} — parcela ${p.parcela_atual}/${p.parcelas_total} de ${p.valor} | faltam ${p.parcelas_restantes} (${p.falta_pagar}) até ${p.ultima}`));
+
+// 19. o gráfico enxerga o futuro
+console.log('\nevolução:');
+pp.evolucao.forEach(e => {
+  if (e.receitas || e.despesas || e.receitas_previstas || e.despesas_previstas)
+    console.log(`  ${e.mes}${e.futuro ? ' (futuro)' : ''}: entrou ${e.receitas} + previsto ${e.receitas_previstas} | saiu ${e.despesas} + previsto ${e.despesas_previstas}`);
+});
