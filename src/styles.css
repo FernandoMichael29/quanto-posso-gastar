@@ -786,3 +786,100 @@ button.item.clicavel:last-child { border-bottom: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ---------- sanfona ---------- */
+
+.sanfona { display: flex; flex-direction: column; gap: 10px; }
+
+.sanfona-topo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--raio);
+  color: var(--ink);
+  text-align: left;
+}
+
+.sanfona-seta {
+  flex: none;
+  color: var(--muted);
+  font-size: 19px;
+  line-height: 1;
+  transition: transform .18s ease;
+}
+
+.sanfona.aberta .sanfona-seta { transform: rotate(90deg); }
+
+.sanfona-titulo { flex: 1; font-size: 14px; font-weight: 500; }
+
+.sanfona-resumo {
+  font-size: 12.5px;
+  color: var(--muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.sanfona-corpo { display: flex; flex-direction: column; gap: 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .sanfona-seta { transition: none; }
+}
+
+/* ---------- busca na lista ---------- */
+
+.busca { position: relative; display: flex; }
+
+.busca input {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  /* o espaço da direita é reservado sempre, para o texto nunca correr por
+     baixo do X quando ele aparece */
+  padding: 10px 40px 10px 13px;
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.busca input::placeholder { color: var(--muted); }
+.busca input::-webkit-search-cancel-button { display: none; }
+
+.busca-limpar {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px; height: 32px;
+  display: grid; place-items: center;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+  border-radius: 999px;
+}
+
+.busca-limpar:active { background: var(--surface-2); }
+
+/* ---------- paginação ---------- */
+
+.paginacao {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.paginas { display: flex; align-items: center; gap: 4px; }
+.paginas span { font-variant-numeric: tabular-nums; min-width: 12ch; text-align: center; }
+.paginas .btn { font-size: 19px; line-height: 1; padding: 4px 12px; }
+
+.por-pagina { display: flex; align-items: center; gap: 7px; }
+.por-pagina .filtro { padding: 4px 7px; }

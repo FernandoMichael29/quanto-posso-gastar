@@ -5,6 +5,7 @@ import Perguntar from './telas/Perguntar.jsx';
 import Pendentes from './telas/Pendentes.jsx';
 import Ajustes from './telas/Ajustes.jsx';
 import Cadastros from './telas/Cadastros.jsx';
+import Mensais from './telas/Mensais.jsx';
 import { ESTADO, listar } from './lib/db.js';
 import { acessoValidado, api, configurado, marcarAcessoValido } from './lib/api.js';
 import { aoMudar, ligarSincronizacaoAutomatica } from './lib/sync.js';
@@ -190,6 +191,9 @@ export default function App() {
         )}
         {aba === 'ajustes' && (
           <>
+            <p className="secao-titulo">Contas fixas e rendas mensais</p>
+            <Mensais cadastros={cadastros} mes={resumo?.mes} aoMudar={tudo} />
+            <hr className="divisor" />
             <Cadastros cadastros={cadastros} aoMudar={recarregarDados} />
             <hr className="divisor" />
             <p className="secao-titulo">Conexão com a planilha</p>

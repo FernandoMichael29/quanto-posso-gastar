@@ -14,6 +14,7 @@ export default function CartaoLancamento({
   aoCancelar,
   aoExcluir,
   aoTornarMensal,
+  rotuloCancelar,
   ocupado = false
 }) {
   const l = valor;
@@ -194,7 +195,7 @@ export default function CartaoLancamento({
           </button>
         )}
         <button type="button" className="btn discreto" onClick={aoCancelar} disabled={ocupado}>
-          {modo === 'editar' ? 'Fechar' : 'Descartar'}
+          {rotuloCancelar || (modo === 'editar' ? 'Fechar' : 'Descartar')}
         </button>
         <button type="button" className="btn principal" onClick={aoConfirmar} disabled={ocupado}>
           {ocupado ? 'Salvando…' : (modo === 'editar' ? 'Salvar' : 'Confirmar')}
