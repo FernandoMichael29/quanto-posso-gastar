@@ -949,3 +949,37 @@ button.item.clicavel:last-child { border-bottom: none; }
 }
 
 .item.fatura .ponto { background: var(--muted); }
+
+/* ---------- adicionar à mão / parcelamento no formulário ---------- */
+
+.btn.adicionar {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px dashed var(--line);
+  color: var(--accent);
+  font-size: 14.5px;
+}
+
+.parcelar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 11px 13px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+}
+
+.parcelar .repete-linha { background: none; border: none; padding: 0; }
+
+.valor-calculado {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+}

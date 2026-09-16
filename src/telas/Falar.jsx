@@ -21,6 +21,7 @@ export default function Falar({ cadastros, resumo, aoMudarFila, aoIrParaFila }) 
   const [ouvindo, setOuvindo] = useState(false);
   const [texto, setTexto] = useState('');
   const [rascunho, setRascunho] = useState(null);
+  const [novo, setNovo] = useState(null);
   const [esperandoIA, setEsperandoIA] = useState(false);
   const [recado, setRecado] = useState(null);
   const sessao = useRef(null);
@@ -36,7 +37,7 @@ export default function Falar({ cadastros, resumo, aoMudarFila, aoIrParaFila }) 
       setRecado({
         tom: 'atencao',
         titulo: 'Sem internet para reconhecer a voz',
-        detalhe: 'Digite no campo abaixo usando o microfone do seu teclado — ele funciona offline.'
+        detalhe: 'Use "Adicionar à mão" — o microfone do seu teclado funciona offline dentro do formulário.'
       });
       return;
     }
@@ -116,6 +117,35 @@ export default function Falar({ cadastros, resumo, aoMudarFila, aoIrParaFila }) 
     });
   }
 
+  /** Um lançamento em branco, com o que dá para presumir sem chutar. */
+  function comecarNovo() {
+    setRecado(null);
+    setRascunho(null);
+    setNovo({
+      tipo: 'despesa',
+      valor: '',
+      categoria: '',
+      descricao: '',
+      data: hojeISO(),
+      conta: '',
+      pessoa: ''
+    });
+  }
+
+  async function salvarNovo() {
+    const { motivo, ...limpo } = novo;
+    await enfileirar({
+      uuid: novoId(),
+      estado: ESTADO.PENDENTE,
+      texto: '',
+      lancamento: { ...limpo, valor: Number(limpo.valor) || 0, origem: 'manual' }
+    });
+    setNovo(null);
+    aoMudarFila?.();
+    setRecado({ tom: 'bom', titulo: 'Guardado' });
+    sincronizar().then(() => aoMudarFila?.());
+  }
+
   async function confirmar() {
     const lista = [rascunho, ...(rascunho.extras || [])];
     for (const l of lista) {
@@ -151,7 +181,7 @@ export default function Falar({ cadastros, resumo, aoMudarFila, aoIrParaFila }) 
         )
       )}
 
-      {!rascunho && (
+      {!rascunho && !novo && (
         <div className="captura">
           <div className="mic-area">
             <button
@@ -174,23 +204,24 @@ export default function Falar({ cadastros, resumo, aoMudarFila, aoIrParaFila }) 
             <p className="dica">Exemplos: &ldquo;mercado 120 reais&rdquo;, &ldquo;recebi meu salário de 3000&rdquo;, &ldquo;fone em 10x de 89,90&rdquo;</p>
           )}
 
-          <div className="campo" style={{ width: '100%' }}>
-            <label htmlFor="digitar">Ou escreva (o microfone do teclado funciona offline)</label>
-            <input
-              id="digitar"
-              value={texto}
-              placeholder="uber 23 reais"
-              onChange={(e) => setTexto(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && texto.trim()) processar(texto.trim()); }}
-            />
-          </div>
-
-          {texto.trim() && !ouvindo && (
-            <button className="btn principal" onClick={() => processar(texto.trim())} disabled={esperandoIA}>
-              Interpretar
-            </button>
-          )}
+          {/* A saída para quando falar não serve: sem internet, com barulho, ou
+              quando é mais rápido preencher do que explicar. */}
+          <button type="button" className="btn adicionar" onClick={comecarNovo} disabled={esperandoIA}>
+            + Adicionar à mão
+          </button>
         </div>
+      )}
+
+      {novo && (
+        <CartaoLancamento
+          valor={novo}
+          aoMudar={setNovo}
+          cadastros={cadastros}
+          modo="novo"
+          aoConfirmar={salvarNovo}
+          aoCancelar={() => setNovo(null)}
+          rotuloCancelar="Cancelar"
+        />
       )}
 
       {rascunho && (
@@ -248,6 +279,12 @@ const MOTIVO_TELA = {
   nada_entendido: 'Não achei um valor na frase. Dá uma olhada na fila e corrija se quiser.',
   teto_diario: 'Bateu o teto diário de interpretações por IA. Sua frase está guardada e é interpretada amanhã sozinha.'
 };
+
+function hojeISO() {
+  const d = new Date();
+  const z = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`;
+}
 
 function formatarData(iso) {
   if (!iso) return '';

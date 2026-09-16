@@ -174,3 +174,26 @@ console.log('em formação:', JSON.stringify(pf.faturas_em_formacao.map(f => [f.
             '| total', pf.faturas_em_formacao_total);
 console.log('fim da lista (futuro por último, mais próximo primeiro):\n  ' +
   lancamentosDoMes_({ mes: '2026-09' }).lancamentos.slice(-5).map(l => `${l.data} ${l.descricao || l.categoria}`).join('\n  '));
+
+// 15. fatura que vence neste mês mas ainda não fechou é "ainda fechando"
+abas.contas.dados.push(['Santander','credito','Fernando',24,30,0,'sim']);
+lancar_({ lancamentos: [{ uuid: 'sant1', data: '2026-09-02', tipo: 'despesa', valor: 958.60,
+  categoria: 'Transporte', descricao: 'compra santander', conta: 'Santander' }] });
+const ps = painel_({ mes: '2026-09' });
+ps.faturas.forEach(f => console.log('fatura de setembro:', f.cartao, '| fecha', f.fecha_em, '| aberta:', f.aberta, '| total', f.total));
+console.log('a pagar agora (faturas_abertas):', ps.faturas_abertas);
+console.log('em formação:', ps.faturas_em_formacao.map(f => `${f.cartao} ${f.mes} fecha ${f.fecha_em}`).join(' | '));
+
+// 16. lançamento manual: parcelado pelo formulário, e renda futura pela captura
+const man = capturar_({ uuid: 'man1', texto: '', lancamento: { data: '2026-09-16', tipo: 'despesa',
+  valor: 900, parcelas_total: 3, categoria: 'Casa', descricao: 'Sofá', conta: 'Itaú cartão', origem: 'manual' } });
+console.log('manual parcelado: gravados', man.gravados.length,
+  '|', abas.lancamentos.dados.slice(1).filter(l => String(l[colx.uuid]).startsWith('man1'))
+        .map(l => `${l[colx.parcela_atual]}/${l[colx.parcelas_total]} ${l[colx.valor]} fat ${l[colx.fatura_mes]}`).join(' · '));
+
+capturar_({ uuid: 'man2', texto: '', lancamento: { data: '2026-09-30', tipo: 'receita', valor: 500,
+  categoria: 'Freela', descricao: 'Freela fim do mês', conta: 'Itaú', origem: 'manual' } });
+console.log('renda futura manual → status',
+  abas.lancamentos.dados.slice(1).find(l => l[colx.uuid] === 'man2')[colx.status]);
+const pm = painel_({ mes: '2026-09' });
+console.log('não entrou no recebi, entrou na previsão: ainda entra', pm.previsao.ainda_entra);
