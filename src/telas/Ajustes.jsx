@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api, enderecoPlausivel, invalidarAcesso, lerConfig, marcarAcessoValido, salvarConfig } from '../lib/api.js';
 import { VERSAO_APP } from '../lib/versao.js';
+import EscolherTema from '../componentes/EscolherTema.jsx';
 
 export default function Ajustes({ aoSalvar }) {
   const inicial = lerConfig();
@@ -62,6 +63,8 @@ export default function Ajustes({ aoSalvar }) {
 
   return (
     <form onSubmit={salvarETestar} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <EscolherTema />
+
       <div className="cartao">
         <div className="campo">
           <label htmlFor="url">Endereço do Apps Script</label>

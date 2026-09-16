@@ -4,6 +4,7 @@ import GraficoEvolucao from '../componentes/GraficoEvolucao.jsx';
 import CartaoLancamento from '../componentes/CartaoLancamento.jsx';
 import Compromissos from '../componentes/Compromissos.jsx';
 import Sanfona from '../componentes/Sanfona.jsx';
+import Esqueleto from '../componentes/Esqueleto.jsx';
 import { api, configurado } from '../lib/api.js';
 import { formatarBRL, semAcento } from '../lib/parser.js';
 
@@ -221,6 +222,10 @@ export default function Mes({ cadastros, aoMudarDados }) {
     .sort((a, b) => (a.fecha_em || '').localeCompare(b.fecha_em || ''));
   const totalFechando = fechando.reduce((a, f) => a + f.total, 0);
 
+  // Um mês que ainda está correndo tem previsão; um mês fechado só tem fato.
+  const aberto = Boolean(painel) && painel.mes >= mesDeHoje();
+  const livre = aberto && painel?.previsao ? painel.previsao.sobra : (painel?.saldo || 0);
+
   const atrasadas = resumirFixas(fixas.filter((f) => f.situacao === 'erro'));
   const aVencer = resumirFixas(fixas.filter((f) => f.situacao === 'pendente'));
 
@@ -235,32 +240,33 @@ export default function Mes({ cadastros, aoMudarDados }) {
         </div>
       )}
 
+      {!painel && carregando && <Esqueleto />}
+
       {painel && (
         <>
-          <div className="resumo">
-            <div><span className="r">Recebi</span><span className="v pos">{formatarBRL(painel.receitas)}</span></div>
-            <div><span className="r">Gastei</span><span className="v">{formatarBRL(painel.despesas)}</span></div>
+          {/* A resposta primeiro, a prova depois.
+              O app se chama "quanto posso gastar" e essa era exatamente a conta
+              que a tela não fazia: dava três números do mesmo tamanho e deixava
+              a soma com você. Agora o número que responde a pergunta abre a
+              tela, e recebi/gastei/sobrou viram o rodapé que o sustenta. */}
+          <div className="resposta">
             <div>
-              <span className="r">Sobrou</span>
-              <span className={`v ${painel.saldo >= 0 ? 'pos' : 'neg'}`}>{formatarBRL(painel.saldo)}</span>
+              <p className="resposta-rotulo">{aberto ? 'Livre para gastar' : 'Sobrou no mês'}</p>
+              <p className={`resposta-numero ${livre < 0 ? 'neg' : ''}`}>{formatarBRL(livre)}</p>
+              <p className="resposta-nota">{notaDaResposta(painel, aberto, livre)}</p>
             </div>
-          </div>
 
-          {/* A pergunta do app: dá para comprar aquilo? O quadro acima é o que
-              já aconteceu; este é o que o mês promete. Separados de propósito —
-              misturar os dois é como um app de finanças começa a mentir. */}
-          {painel.previsao && (painel.previsao.ainda_entra > 0 || painel.previsao.ainda_sai > 0) && (
-            <div className="previsao">
-              <div className="previsao-topo">
-                <span className="r">Se tudo acontecer, sobra</span>
-                <strong className={painel.previsao.sobra >= 0 ? 'pos' : 'neg'}>
-                  {formatarBRL(painel.previsao.sobra)}
-                </strong>
+            <div className="resumo">
+              <div><span className="r">Recebi</span><span className="v pos">{soNumero(painel.receitas)}</span></div>
+              <div><span className="r">Gastei</span><span className="v">{soNumero(painel.despesas)}</span></div>
+              <div>
+                <span className="r">Sobrou</span>
+                <span className={`v ${painel.saldo >= 0 ? 'pos' : 'neg'}`}>{soNumero(painel.saldo)}</span>
               </div>
+            </div>
+
+            {aberto && (painel.previsao?.ainda_entra > 0 || painel.previsao?.ainda_sai > 0) && (
               <div className="previsao-contas">
-                <span>
-                  sobrou até agora <strong>{formatarBRL(painel.previsao.ja_sobrou)}</strong>
-                </span>
                 {painel.previsao.ainda_entra > 0 && (
                   <span className="mais">
                     ainda entra <strong>{formatarBRL(painel.previsao.ainda_entra)}</strong>
@@ -272,8 +278,8 @@ export default function Mes({ cadastros, aoMudarDados }) {
                   </span>
                 )}
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Gastar no crédito não é o mesmo que o dinheiro sair da conta.
               Sem esta linha, o "sobra" acima parece menos do que você tem. */}
@@ -426,7 +432,7 @@ export default function Mes({ cadastros, aoMudarDados }) {
           {fechando.length > 0 && (
             <>
               <div className="secao-cabecalho">
-                <p className="secao-titulo" style={{ margin: 0 }}>Faturas que ainda estão fechando</p>
+                <p className="secao-titulo" style={{ margin: 0 }}>Faturas fechando</p>
                 <span className="ajuda" style={{ margin: 0 }}>
                   {formatarBRL(totalFechando)} já comprometidos
                 </span>
@@ -455,7 +461,7 @@ export default function Mes({ cadastros, aoMudarDados }) {
 
           {/* Fechada por padrão: é a seção mais alta da tela e a que menos
               exige ação. O cabeçalho já entrega o essencial — quem lidera. */}
-          <Sanfona titulo="Para onde foi o dinheiro" resumo={lider(painel.por_categoria)}>
+          <Sanfona titulo="Para onde foi" resumo={lider(painel.por_categoria)}>
             <div className="abas">
               {CORTES.map((c) => (
                 <button
@@ -525,11 +531,13 @@ export default function Mes({ cadastros, aoMudarDados }) {
       </div>
 
       {carregando ? (
-        <div className="cartao pensando"><span className="girando" aria-hidden="true" /><span>Carregando o mês…</span></div>
+        <Esqueleto modo="lista" />
       ) : visiveis.length === 0 ? (
         <div className="lista">
           <p className="vazio">
-            {busca ? `Nada encontrado para “${busca}”.` : 'Nenhum lançamento neste mês.'}
+            {busca
+              ? `Nada encontrado para “${busca}”.`
+              : 'Nada registrado neste mês ainda. Toque em Falar e diga um gasto, ou use "Adicionar à mão".'}
           </p>
         </div>
       ) : (
@@ -933,7 +941,12 @@ function situacaoDa(f, mesPainel) {
 /** "Transporte lidera com R$ 1.935,32" — o resumo da sanfona fechada. */
 function lider(porCategoria) {
   const topo = (porCategoria || [])[0];
-  return topo ? `${topo.nome} lidera com ${formatarBRL(topo.total)}` : '';
+  return topo ? `${topo.nome} · ${formatarBRL(topo.total)}` : '';
+}
+
+/** O número sem o "R$": num trio apertado, o símbolo repetido só rouba espaço. */
+function soNumero(v) {
+  return formatarBRL(v).replace('R$', '').trim();
 }
 
 function resumirFixas(lista) {
@@ -946,6 +959,27 @@ function resumirFixas(lista) {
 function mesDeHoje() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/**
+ * A frase embaixo do número. Ela existe para o número nunca ser lido como
+ * promessa: diz de onde ele veio e o que ainda depende de acontecer.
+ */
+function notaDaResposta(painel, aberto, livre) {
+  if (!aberto) return 'O mês já fechou: é o que entrou menos o que saiu.';
+
+  const p = painel.previsao || {};
+  const partes = [];
+  if (p.ainda_entra > 0) partes.push('o que ainda entra');
+  if (p.ainda_sai > 0) partes.push('as contas que faltam pagar');
+
+  if (livre < 0) {
+    return partes.length
+      ? `Contando ${partes.join(' e ')}, o mês fecha no vermelho.`
+      : 'O mês já está no vermelho.';
+  }
+  if (!partes.length) return 'Tudo do mês já aconteceu — é o que sobrou de verdade.';
+  return `Já contando ${partes.join(' e ')}. Não inclui o que você ainda não registrou.`;
 }
 
 /** "2026-10" vira "outubro". */
