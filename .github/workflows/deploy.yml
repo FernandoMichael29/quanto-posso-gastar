@@ -26,6 +26,7 @@ jobs:
 
       - run: npm install
       - run: npm run teste
+      - run: npm run teste:script
       - run: npm run build
         env:
           BASE: /${{ github.event.repository.name }}/
