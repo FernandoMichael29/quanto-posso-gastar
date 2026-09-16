@@ -935,3 +935,17 @@ button.item.clicavel:last-child { border-bottom: none; }
   text-transform: uppercase;
   color: var(--warn);
 }
+
+/* separa, dentro da lista, o que já aconteceu do que ainda vai acontecer */
+.divisor-lista {
+  margin: 0;
+  padding: 7px 15px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line-soft);
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.item.fatura .ponto { background: var(--muted); }

@@ -160,3 +160,17 @@ console.log('depois de confirmar → recebi', pv.receitas, '| ainda entra', pv.p
 lancar_({ lancamentos: [{ uuid: 'fut2', data: '2026-09-28', tipo: 'despesa', valor: 100, categoria: 'Compras', descricao: 'parcela futura', conta: 'Itaú cartão' }] });
 console.log('despesa futura → status', abas.lancamentos.dados.slice(1).find(l => l[colx.uuid]==='fut2')[colx.status],
             '| entrou no gastei:', painel_({ mes: '2026-09' }).despesas > pv.despesas);
+
+// 13. compra de hoje vem antes do que ainda vai acontecer
+lancar_({ lancamentos: [{ uuid: 'hoje1', data: '2026-09-16', tipo: 'despesa', valor: 137.90,
+  parcelas_total: 5, categoria: 'Compras', descricao: 'Compra parcelada', conta: 'Itaú cartão' }] });
+const ordem2 = lancamentosDoMes_({ mes: '2026-09' }).lancamentos.map(l => `${l.data} ${l.descricao || l.categoria}`);
+console.log('ordem:\n  ' + ordem2.slice(0, 6).join('\n  '));
+
+// 14. a fatura que ainda está fechando aparece
+const pf = painel_({ mes: '2026-09' });
+console.log('faturas de setembro:', JSON.stringify(pf.faturas.map(f => [f.cartao, f.total])));
+console.log('em formação:', JSON.stringify(pf.faturas_em_formacao.map(f => [f.cartao, f.mes, f.total, f.lancamentos])),
+            '| total', pf.faturas_em_formacao_total);
+console.log('fim da lista (futuro por último, mais próximo primeiro):\n  ' +
+  lancamentosDoMes_({ mes: '2026-09' }).lancamentos.slice(-5).map(l => `${l.data} ${l.descricao || l.categoria}`).join('\n  '));

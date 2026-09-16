@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import Barras from '../componentes/Barras.jsx';
 import GraficoEvolucao from '../componentes/GraficoEvolucao.jsx';
 import CartaoLancamento from '../componentes/CartaoLancamento.jsx';
@@ -370,6 +370,36 @@ export default function Mes({ cadastros, aoMudarDados }) {
             </>
           )}
 
+          {/* O que você comprou no crédito e ainda não virou fatura para pagar.
+              Sem isto, comprar no Itaú hoje não aparece em lugar nenhum: a
+              fatura só vence mês que vem, mas o dinheiro já está comprometido. */}
+          {painel.faturas_em_formacao?.length > 0 && (
+            <>
+              <div className="secao-cabecalho">
+                <p className="secao-titulo" style={{ margin: 0 }}>Faturas que ainda estão fechando</p>
+                <span className="ajuda" style={{ margin: 0 }}>
+                  {formatarBRL(painel.faturas_em_formacao_total)} já comprometidos
+                </span>
+              </div>
+              <div className="lista">
+                {painel.faturas_em_formacao.map((f) => (
+                  <div className="item fatura" key={`${f.cartao}-${f.mes}`}>
+                    <span className="ponto" aria-hidden="true" />
+                    <span className="corpo">
+                      <span className="titulo">{f.cartao}</span>
+                      <span className="meta">
+                        {f.lancamentos} compra{f.lancamentos === 1 ? '' : 's'} ·
+                        {' '}vence em {mesCurto(f.mes)}{f.dia ? `, dia ${f.dia}` : ''}
+                        {f.pessoa ? ` · ${f.pessoa}` : ''}
+                      </span>
+                    </span>
+                    <span className="num">{formatarBRL(f.total)}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
           <GraficoEvolucao evolucao={painel.evolucao} mesAtual={painel.mes} />
 
           {/* Fechada por padrão: é a seção mais alta da tela e a que menos
@@ -453,11 +483,16 @@ export default function Mes({ cadastros, aoMudarDados }) {
         </div>
       ) : (
         <div className="lista">
-          {daPagina.map((l) => (
+          {daPagina.map((l, i) => (
+            <Fragment key={l.uuid}>
+              {/* A virada do que aconteceu para o que ainda vai acontecer.
+                  Sem a marca, ver 28/09 depois de 01/09 parece desordem. */}
+              {ehFuturo(l) && !ehFuturo(daPagina[i - 1]) && (
+                <p className="divisor-lista">daqui para baixo, ainda vai acontecer</p>
+              )}
             <button
               type="button"
               className={`item clicavel ${l.status === 'agendado' ? 'agendado' : ''}`}
-              key={l.uuid}
               onClick={() => setEditando({ ...l })}
             >
               <span className="corpo">
@@ -479,6 +514,7 @@ export default function Mes({ cadastros, aoMudarDados }) {
                 {l.tipo === 'receita' ? '+' : '−'}{formatarBRL(l.valor).replace('R$', '').trim()}
               </span>
             </button>
+            </Fragment>
           ))}
         </div>
       )}
@@ -852,6 +888,21 @@ function resumirFixas(lista) {
 function mesDeHoje() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** "2026-10" vira "outubro". */
+function mesCurto(mes) {
+  const nomes = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+    'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+  const [ano, m] = String(mes || '').split('-');
+  const nome = nomes[Number(m) - 1];
+  if (!nome) return mes;
+  return ano === String(new Date().getFullYear()) ? nome : `${nome} de ${ano}`;
+}
+
+/** Já aconteceu, ou ainda está por vir? É o que separa a lista em duas. */
+function ehFuturo(l) {
+  return Boolean(l) && String(l.data || '') > hojeISO();
 }
 
 function hojeISO() {

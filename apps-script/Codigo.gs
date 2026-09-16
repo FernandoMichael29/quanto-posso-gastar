@@ -12,7 +12,7 @@
 
 // Suba junto com VERSAO_APP em src/lib/versao.js — o app compara as duas e
 // avisa na tela quando só uma das metades foi publicada.
-var VERSAO = '1.7.0';
+var VERSAO = '1.8.0';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -1556,6 +1556,54 @@ function faturasDoMes_(mes, contas, linhas, col) {
     .sort(function (a, b) { return (a.dia || 99) - (b.dia || 99); });
 }
 
+/**
+ * A próxima fatura de cada cartão — a que está sendo formada agora.
+ *
+ * Você compra no Itaú hoje e não vê nada: a fatura dessa compra só vence mês
+ * que vem, e a seção de faturas do mês só mostra as que vencem agora. O
+ * dinheiro está comprometido e a tela não dizia. Isto resolve, sem misturar
+ * com o que você tem que pagar neste mês.
+ */
+function faturasEmFormacao_(mes, contas, linhas, col) {
+  var porChave = {};
+
+  linhas.forEach(function (r) {
+    if (r[col.status] !== STATUS.OK) return;
+    if (r[col.tipo] !== TIPO.DESPESA) return;
+
+    var conta = contas[chaveNome_(String(r[col.conta] || ''))];
+    if (!ehCartao_(conta)) return;
+
+    var mesFatura = normalizarMes_(r[col.fatura_mes]) ||
+                    mesDaFatura_(conta, normalizarData_(r[col.data]));
+    if (!mesFatura || mesFatura <= mes) return;
+
+    var k = chaveNome_(conta.nome) + '|' + mesFatura;
+    if (!porChave[k]) {
+      porChave[k] = {
+        cartao: conta.nome, mes: mesFatura, dia: conta.vencimento,
+        pessoa: conta.pessoa, total: 0, lancamentos: 0
+      };
+    }
+    porChave[k].total += Number(r[col.valor]) || 0;
+    porChave[k].lancamentos++;
+  });
+
+  // Só a próxima de cada cartão: as de 2027 do parcelamento longo são história
+  // para outro dia, e encheriam a tela sem ajudar a decidir nada hoje.
+  var proxima = {};
+  Object.keys(porChave).forEach(function (k) {
+    var f = porChave[k];
+    var atual = proxima[chaveNome_(f.cartao)];
+    if (!atual || f.mes < atual.mes) proxima[chaveNome_(f.cartao)] = f;
+  });
+
+  return Object.keys(proxima)
+    .map(function (k) { proxima[k].total = arred_(proxima[k].total); return proxima[k]; })
+    .filter(function (f) { return f.total > 0; })
+    .sort(function (a, b) { return a.mes < b.mes ? -1 : (a.mes > b.mes ? 1 : (a.dia || 99) - (b.dia || 99)); });
+}
+
 function novaFatura_(cartao) {
   return {
     cartao: cartao, total: 0, lancamentos: 0, dia: 0, pessoa: '',
@@ -1677,6 +1725,7 @@ function painel_(pedido) {
   });
 
   var faturas = faturasDoMes_(mes, contas, linhas, col);
+  var emFormacao = faturasEmFormacao_(mes, contas, linhas, col);
   var faturasAbertas = faturas.filter(function (f) { return !f.pago; });
 
   // Um cartão sem dia de vencimento não consegue formar fatura: as compras dele
@@ -1748,6 +1797,8 @@ function painel_(pedido) {
     saldo: arred_(totais.receitas - totais.despesas),
     saldo_caixa: arred_(totais.receitas - totais.caixa),
     faturas: faturas,
+    faturas_em_formacao: emFormacao,
+    faturas_em_formacao_total: arred_(emFormacao.reduce(function (a, f) { return a + f.total; }, 0)),
     faturas_abertas: arred_(faturasAbertas.reduce(function (a, f) { return a + f.total; }, 0)),
     cartoes_sem_ciclo: emLista_(semCiclo),
     lancamentos: totais.lancamentos,
@@ -1933,7 +1984,18 @@ function ordemDe_(data, horaRegistro, indiceLinha) {
     var d = new Date(horaRegistro);
     h = isNaN(d.getTime()) ? 0 : d.getTime();
   }
-  return [data, h, indiceLinha];
+  // O que ainda não aconteceu vai para o fim da lista, por mais alta que seja
+  // a data: a parcela do dia 28 não pode passar na frente da compra que você
+  // acabou de fazer hoje. Dentro do futuro, o mais próximo vem primeiro.
+  var futuro = data > hojeISO_();
+  return [futuro ? 0 : 1, futuro ? inverso_(data) : data, h, indiceLinha];
+}
+
+/** Inverte a ordem de uma data ISO, para o futuro sair do mais próximo ao mais longe. */
+function inverso_(data) {
+  return String(9999 - Number(String(data).slice(0, 4))) + '-' +
+         String(99 - Number(String(data).slice(5, 7))) + '-' +
+         String(99 - Number(String(data).slice(8, 10)));
 }
 
 /** Do mais novo para o mais antigo, e tira a chave de ordenação do resultado. */
