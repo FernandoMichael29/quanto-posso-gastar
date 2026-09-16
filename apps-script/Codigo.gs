@@ -12,7 +12,7 @@
 
 // Suba junto com VERSAO_APP em src/lib/versao.js — o app compara as duas e
 // avisa na tela quando só uma das metades foi publicada.
-var VERSAO = '1.10.0';
+var VERSAO = '1.11.0';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -459,11 +459,13 @@ function lancar_(pedido) {
       if (l.repete && !(Number(l.parcelas_total) > 1)) {
         try {
           aplicarRecorrente_({
-            nome: l.descricao || l.categoria || 'Conta fixa',
+            nome: l.descricao || l.categoria ||
+                  ((l.tipo === TIPO.RECEITA) ? 'Renda mensal' : 'Conta fixa'),
             acao: 'definir',
             valor: Number(l.valor) || 0,
             tipo: l.tipo || TIPO.DESPESA,
-            categoria: l.categoria || 'Outros',
+            categoria: l.categoria ||
+                       ((l.tipo === TIPO.RECEITA) ? 'Outras Entradas' : 'Outros'),
             dia: Number(String(l.data || hojeISO_()).slice(8, 10)) || '',
             conta: l.conta || '',
             pessoa: l.pessoa || '',

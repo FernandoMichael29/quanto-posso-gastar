@@ -197,3 +197,15 @@ console.log('renda futura manual → status',
   abas.lancamentos.dados.slice(1).find(l => l[colx.uuid] === 'man2')[colx.status]);
 const pm = painel_({ mes: '2026-09' });
 console.log('não entrou no recebi, entrou na previsão: ainda entra', pm.previsao.ainda_entra);
+
+// 17. renda marcada como mensal na hora de lançar, com data futura
+capturar_({ uuid: 'emp2', texto: '', lancamento: { data: '2026-09-25', tipo: 'receita', valor: 2200,
+  categoria: 'Salário', descricao: 'Salário empresa 2', conta: 'Nubank Fernando', pessoa: 'Fernando',
+  origem: 'manual', repete: true } });
+const regra = recorrentes_({ mes: '2026-09' }).recorrentes.find(r => r.nome === 'Salário empresa 2');
+console.log('regra criada:', regra ? `${regra.tipo} ${regra.valor} dia ${regra.dia}` : 'NÃO CRIOU');
+const pe = painel_({ mes: '2026-09' });
+const linhaEmp = pe.rendas.find(r => r.nome === 'Salário empresa 2');
+console.log('em setembro:', linhaEmp.lancado ? 'já recebido' : 'a receber', '| confirma o agendado:', Boolean(linhaEmp.uuid_agendado));
+console.log('outubro herda a regra:', recorrentes_({ mes: '2026-10' }).recorrentes.some(r => r.nome === 'Salário empresa 2'),
+            '| e aparece como a receber:', painel_({ mes: '2026-10' }).rendas.some(r => r.nome === 'Salário empresa 2' && !r.lancado));
