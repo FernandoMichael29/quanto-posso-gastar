@@ -12,10 +12,14 @@ const { Aba } = require('./planilha-falsa.cjs');
 const abas = {
   lancamentos: new Aba(['uuid','data','hora_registro','tipo','valor','categoria','descricao','conta','metodo','fonte','pessoa','fatura_mes','parcela_atual','parcelas_total','texto_falado','origem','confianca','status','revisar','erro']),
   contas: new Aba(['nome','tipo','pessoa','dia_fechamento','dia_vencimento','saldo_inicial','ativo']),
+  categorias: new Aba(['categoria','grupo','tipo','palavras_chave','orcamento_mes','ativo']),
   resumo_mensal: new Aba(['mes','categoria','tipo','total','lancamentos']),
   recorrentes: new Aba(['nome','tipo','categoria','valor','dia','conta','metodo','pessoa','vigencia_inicio','vigencia_fim','escopo','parcelas_total','parcelas_restantes','texto_falado','criado_em'])
 };
 
+abas.categorias.dados.push(['Salário','Renda','receita','salario, pearson',0,'sim']);
+abas.categorias.dados.push(['Freela','Renda','receita','freela',0,'sim']);
+abas.categorias.dados.push(['Compras','Variável','despesa','roupa',0,'sim']);
 abas.contas.dados.push(['Itaú cartão','credito','Fernando',3,10,0,'sim']);
 abas.contas.dados.push(['Nubank Fernando','conta corrente','Fernando','','','', 'sim']);
 
@@ -234,3 +238,18 @@ console.log('importada agrupada:', imp
   : 'NÃO ACHOU');
 console.log('grupo do uuid importado:', grupoDoUuid_('imp-monitor-04'), '| do uuid do app:', grupoDoUuid_('abc-def-p12'));
 console.log('irmãs reconhecidas:', ehDoGrupo_('imp-teste-06', 'imp-teste'), ehDoGrupo_('abc-p2', 'abc'), '| falso positivo:', ehDoGrupo_('abcd', 'abc'));
+
+// 21. aprender categoria com a correção — este falha de verdade
+const assert = require('assert');
+const pal = (nome) => abas.categorias.dados.find(r => r[0] === nome)[3];
+let ap = lancar_({ lancamentos: [{ uuid: 'apr1', data: '2026-09-10', tipo: 'receita', valor: 500, categoria: 'Freela', descricao: 'Pearson', aprender_categoria: true }] });
+assert.deepStrictEqual(ap.aprendidos, [{ palavra: 'pearson', categoria: 'Freela' }], 'aprendeu pearson');
+assert.ok(pal('Freela').split(', ').includes('pearson'), 'pearson em Freela');
+assert.ok(!pal('Salário').includes('pearson'), 'pearson saiu de Salário');
+ap = lancar_({ lancamentos: [{ uuid: 'apr2', data: '2026-09-10', valor: 50, categoria: 'Compras', descricao: 'Compra parcelada', aprender_categoria: true }] });
+assert.deepStrictEqual(ap.aprendidos, [], 'genérica não aprende');
+ap = lancar_({ lancamentos: [{ uuid: 'apr3', data: '2026-09-10', valor: 50, categoria: 'Compras', descricao: 'Tênis Nike', aprender_categoria: false }] });
+assert.deepStrictEqual(ap.aprendidos, [], 'sem correção não aprende');
+const edApr = editarLancamento_({ uuid: 'apr3', campos: { categoria: 'Freela' } });
+assert.deepStrictEqual(edApr.aprendido, { palavra: 'tenis nike', categoria: 'Freela' }, 'edição aprende');
+console.log('\naprender categoria: ok');

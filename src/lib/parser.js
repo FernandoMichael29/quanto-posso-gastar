@@ -174,6 +174,19 @@ export function pareceRegra(texto) {
  * Procura a palavra inteira, não pedaço de outra.
  * Sem isso, "gas" (de Moradia) casaria com "gastei" e "oi" com "coisa".
  */
+// ponytail: lista duplicada de Codigo.gs (chaveAprendivel_) só para o aviso na tela;
+// quem grava é o script. Mudou lá, muda aqui.
+const DESCRICOES_GENERICAS = ['compra', 'compras', 'compra parcelada', 'outros', 'outro', 'pix',
+  'gasto', 'gastos', 'pagamento', 'despesa', 'receita', 'lancamento', 'transferencia',
+  'debito', 'credito', 'cartao', 'boleto', 'dinheiro', 'sem descricao'];
+
+/** A descrição vira palavra-chave quando você corrige a categoria? '' se não. */
+export function chaveAprendivel(descricao) {
+  const t = semAcento(descricao).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (t.length < 3 || !/[a-z]/.test(t) || t.split(' ').length > 3) return '';
+  return DESCRICOES_GENERICAS.includes(t) ? '' : t;
+}
+
 export function contemPalavra(texto, palavra) {
   const p = semAcento(palavra).trim();
   if (!p) return false;

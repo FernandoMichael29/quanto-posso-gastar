@@ -812,18 +812,48 @@ button.item.sugestao { align-items: center; }
 .resumo .v.pos { color: var(--accent); }
 .resumo .v.neg { color: var(--crit); }
 
-/* a conta da previsão, em linha */
-.previsao-contas {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--e1) var(--e4);
-  font-size: 12.5px;
-  color: var(--muted);
-}
 
-.previsao-contas strong { color: var(--ink-2); font-weight: 600; font-variant-numeric: tabular-nums; }
-.previsao-contas .mais strong { color: var(--accent); }
-.previsao-contas .menos strong { color: var(--warn); }
+/* recebi · gastei, em uma linha: fato miúdo acima da conta */
+.fatos-mes { margin: 0; font-size: 12.5px; color: var(--muted); }
+.fatos-mes strong { color: var(--ink-2); font-weight: 600; font-variant-numeric: tabular-nums; }
+.fatos-mes strong.pos { color: var(--accent); }
+
+/* a conta que dá o "livre": três parcelas e o total, números numa coluna só */
+.conta-livre {
+  margin: 0;
+  display: grid;
+  gap: 1px;
+  background: var(--line-soft);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--raio-p);
+  overflow: hidden;
+}
+.conta-livre div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--e3);
+  padding: 9px var(--e3);
+  background: var(--surface-2);
+}
+.conta-livre dt { font-size: 13px; color: var(--ink-2); }
+.conta-livre dd { margin: 0; font-size: 14.5px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.conta-livre dd.pos { color: var(--accent); }
+.conta-livre dd.warn { color: var(--warn); }
+.conta-livre dd.neg { color: var(--crit); }
+.conta-livre .total { background: var(--surface); }
+.conta-livre .total dt { font-weight: 600; color: var(--ink); }
+.conta-livre .total dd { font-size: 15.5px; font-weight: 700; }
+
+/* bolinha na aba Contas quando há conta vencida */
+.marca-aba {
+  display: inline-block;
+  width: 6px; height: 6px;
+  margin-left: 6px;
+  vertical-align: middle;
+  border-radius: 50%;
+  background: var(--crit);
+}
 
 .faixa-caixa {
   display: flex;

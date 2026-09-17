@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { interpretar, formatarBRL } from '../lib/parser.js';
+import { interpretar, formatarBRL, chaveAprendivel } from '../lib/parser.js';
 import { escutar, ERRO_VOZ, temReconhecimento } from '../lib/voz.js';
 import { enfileirar, ESTADO, novoId } from '../lib/db.js';
 import { api, configurado } from '../lib/api.js';
@@ -64,7 +64,7 @@ export default function Falar({ cadastros, resumo, aoMudarFila, aoIrParaFila }) 
     const r = interpretar(frase, { categorias });
 
     if (r.lancamento) {
-      setRascunho({ ...r.lancamento, confianca: r.confianca, motivo: r.motivo });
+      setRascunho({ ...r.lancamento, categoria_sugerida: r.lancamento.categoria, confianca: r.confianca, motivo: r.motivo });
       return;
     }
 
@@ -87,6 +87,7 @@ export default function Falar({ cadastros, resumo, aoMudarFila, aoIrParaFila }) 
       const [primeiro, ...extras] = resposta.lancamentos;
       setRascunho({
         ...primeiro,
+        categoria_sugerida: primeiro.categoria,
         texto_falado: frase,
         confianca: 'ia',
         motivo: 'interpretado pela IA',
@@ -148,19 +149,29 @@ export default function Falar({ cadastros, resumo, aoMudarFila, aoIrParaFila }) 
 
   async function confirmar() {
     const lista = [rascunho, ...(rascunho.extras || [])];
+    let aprendeu = null;
     for (const l of lista) {
-      const { extras, motivo, ...limpo } = l;
+      const { extras, motivo, categoria_sugerida, ...limpo } = l;
+      // Só o primeiro tem sugestão guardada; os extras vêm da IA sem você mexer.
+      const corrigiu = categoria_sugerida !== undefined && limpo.categoria && limpo.categoria !== categoria_sugerida;
+      if (corrigiu && chaveAprendivel(limpo.descricao)) {
+        aprendeu = { palavra: chaveAprendivel(limpo.descricao), categoria: limpo.categoria };
+      }
       await enfileirar({
         uuid: novoId(),
         estado: ESTADO.PENDENTE,
         texto: rascunho.texto_falado || texto,
-        lancamento: { ...limpo, texto_falado: rascunho.texto_falado || texto }
+        lancamento: { ...limpo, aprender_categoria: Boolean(corrigiu), texto_falado: rascunho.texto_falado || texto }
       });
     }
     setRascunho(null);
     setTexto('');
     aoMudarFila?.();
-    setRecado({ tom: 'bom', titulo: `${lista.length > 1 ? lista.length + ' lançamentos guardados' : 'Guardado'}` });
+    setRecado({
+      tom: 'bom',
+      titulo: `${lista.length > 1 ? lista.length + ' lançamentos guardados' : 'Guardado'}`,
+      detalhe: aprendeu ? `Aprendi: “${aprendeu.palavra}” agora é ${aprendeu.categoria}.` : undefined
+    });
     sincronizar().then(() => aoMudarFila?.());
   }
 

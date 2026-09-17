@@ -12,7 +12,7 @@
 
 // Suba junto com VERSAO_APP em src/lib/versao.js — o app compara as duas e
 // avisa na tela quando só uma das metades foi publicada.
-var VERSAO = '2.1.0';
+var VERSAO = '2.2.0';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -428,7 +428,7 @@ function lancar_(pedido) {
     var existentes = uuidsExistentes_(aba);
 
     var contas = indiceContas_();
-    var novas = [], gravados = [], duplicados = [];
+    var novas = [], gravados = [], duplicados = [], aprendidos = [];
     lista.forEach(function (l) {
       if (!l.uuid) { l.uuid = Utilities.getUuid(); }
       if (existentes[l.uuid]) { duplicados.push(l.uuid); return; }
@@ -442,6 +442,13 @@ function lancar_(pedido) {
       if (!l.fatura_mes && (l.tipo || 'despesa') === TIPO.DESPESA) {
         var conta = contas[chaveNome_(String(l.conta || ''))];
         if (ehCartao_(conta)) l.fatura_mes = mesDaFatura_(conta, l.data || hojeISO_());
+      }
+
+      // Você trocou a categoria que o app sugeriu: a descrição vira palavra-chave
+      // da categoria certa, e a próxima frase igual já chega classificada.
+      if (l.aprender_categoria) {
+        var a = aprenderCategoria_(l.descricao, l.categoria);
+        if (a) aprendidos.push(a);
       }
 
       // Compra parcelada vira uma linha por parcela.
@@ -480,7 +487,7 @@ function lancar_(pedido) {
       aba.getRange(aba.getLastRow() + 1, 1, novas.length, ABAS.lancamentos.length).setValues(novas);
       atualizarResumo_();
     }
-    return { ok: true, gravados: gravados, duplicados: duplicados };
+    return { ok: true, gravados: gravados, duplicados: duplicados, aprendidos: aprendidos };
   } finally {
     trava.releaseLock();
   }
@@ -2255,9 +2262,13 @@ function editarLancamento_(pedido) {
     // continuam sendo de cada uma.
     var irmas = propagarNoGrupo_(aba, col, pedido.uuid, valores, mudou);
 
+    var aprendido = mudou.indexOf('categoria') >= 0
+      ? aprenderCategoria_(valores[col.descricao], valores[col.categoria])
+      : null;
+
     atualizarResumo_();
 
-    return { ok: true, uuid: pedido.uuid, alterados: mudou, parcelas_ajustadas: irmas };
+    return { ok: true, uuid: pedido.uuid, alterados: mudou, parcelas_ajustadas: irmas, aprendido: aprendido };
   } finally {
     trava.releaseLock();
   }
@@ -2855,6 +2866,54 @@ function normalizarMes_(v) {
 
 function chaveNome_(nome) {
   return semAcentoGS_(String(nome || '')).replace(/[^a-z0-9]/g, '');
+}
+
+// ---------------------------------------------------------------------------
+// Aprender categoria com a sua correção
+// ---------------------------------------------------------------------------
+//
+// Corrigir a categoria uma vez tem que bastar. A descrição corrigida entra em
+// palavras_chave da categoria certa — é a mesma coluna que o parser do app já
+// lê, então não existe "memória" nova para manter: você vê e apaga na planilha.
+
+// Descrições que dizem nada sobre o gasto. Aprender "compra" como Lazer faria
+// toda compra futura virar Lazer. Mesma lista em src/lib/parser.js.
+var DESCRICOES_GENERICAS = ['compra', 'compras', 'compra parcelada', 'outros', 'outro', 'pix',
+  'gasto', 'gastos', 'pagamento', 'despesa', 'receita', 'lancamento', 'transferencia',
+  'debito', 'credito', 'cartao', 'boleto', 'dinheiro', 'sem descricao'];
+
+/** A descrição serve de palavra-chave? Curta, com letra, e não genérica. */
+function chaveAprendivel_(descricao) {
+  var t = semAcentoGS_(descricao).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (t.length < 3 || !/[a-z]/.test(t) || t.split(' ').length > 3) return '';
+  return DESCRICOES_GENERICAS.indexOf(t) >= 0 ? '' : t;
+}
+
+/** Devolve { palavra, categoria } quando aprendeu algo novo; senão null. */
+function aprenderCategoria_(descricao, categoria) {
+  var chave = chaveAprendivel_(descricao);
+  if (!chave || !categoria) return null;
+  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('categorias');
+  if (!aba || aba.getLastRow() < 2) return null;
+
+  var n = aba.getLastRow() - 1;
+  var linhas = aba.getRange(2, 1, n, 4).getValues();
+  var alvo = -1;
+  linhas.forEach(function (r, i) { if (chaveNome_(r[0]) === chaveNome_(categoria)) alvo = i; });
+  if (alvo < 0) return null;   // categoria que não está cadastrada: não inventa linha
+
+  var novo = false;
+  var colunas = linhas.map(function (r, i) {
+    var lista = String(r[3] || '').split(',').map(function (p) { return p.trim(); }).filter(Boolean);
+    var tem = lista.some(function (p) { return semAcentoGS_(p) === chave; });
+    if (i === alvo && !tem) { lista.push(chave); novo = true; }
+    // Numa categoria só: se estava em outra, sai de lá.
+    if (i !== alvo && tem) lista = lista.filter(function (p) { return semAcentoGS_(p) !== chave; });
+    return [lista.join(', ')];
+  });
+
+  aba.getRange(2, 4, n, 1).setValues(colunas);
+  return novo ? { palavra: chave, categoria: linhas[alvo][0] } : null;
 }
 
 function semAcentoGS_(s) {
