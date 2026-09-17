@@ -15,6 +15,13 @@ const CORTES = [
   { id: 'grupo', rotulo: 'Grupo', campo: 'por_grupo' }
 ];
 
+const CHAVE_VISTA = 'qpg.mes.vista';
+const VISTAS = [
+  { id: 'resumo', rotulo: 'Resumo' },
+  { id: 'contas', rotulo: 'Contas' },
+  { id: 'lancamentos', rotulo: 'Lançamentos' }
+];
+
 export default function Mes({ cadastros, aoMudarDados }) {
   const [mes, setMes] = useState(() => mesDeHoje());
   const [painel, setPainel] = useState(null);
@@ -30,6 +37,11 @@ export default function Mes({ cadastros, aoMudarDados }) {
   const [pagandoFatura, setPagandoFatura] = useState(null);
   const [confirmandoRenda, setConfirmandoRenda] = useState(null);
   const [busca, setBusca] = useState('');
+  const [aprendido, setAprendido] = useState(null);
+  // A aba lembrada neste aparelho: quem sempre abre em Contas não precisa tocar de novo.
+  const [vista, setVista] = useState(() => {
+    try { return localStorage.getItem(CHAVE_VISTA) || 'resumo'; } catch { return 'resumo'; }
+  });
   const [pagina, setPagina] = useState(1);
   const [porPagina, setPorPagina] = useState(10);
   const listaTopo = useRef(null);
@@ -38,7 +50,8 @@ export default function Mes({ cadastros, aoMudarDados }) {
   // não quer dizer nada no novo.
   useEffect(() => { setPagina(1); }, [mes, busca, filtroPessoa]);
   // Busca é do mês que você estava olhando; mês novo começa limpo.
-  useEffect(() => { setBusca(''); }, [mes]);
+  useEffect(() => { setBusca(''); setAprendido(null); }, [mes]);
+  useEffect(() => { try { localStorage.setItem(CHAVE_VISTA, vista); } catch { /* sem armazenamento, só não lembra */ } }, [vista]);
 
   const carregar = useCallback(async (alvo) => {
     if (!configurado()) { setErro('Configure o app nos Ajustes primeiro.'); return; }
@@ -59,7 +72,7 @@ export default function Mes({ cadastros, aoMudarDados }) {
     const { uuid, ...campos } = editando;
     const r = await api.editarLancamento(uuid, campos);
     setSalvando(false);
-    if (r.ok) { setEditando(null); carregar(mes); aoMudarDados?.(); }
+    if (r.ok) { setEditando(null); setAprendido(r.aprendido || null); carregar(mes); aoMudarDados?.(); }
     else setErro(traduzir(r.erro));
   }
 
@@ -235,6 +248,26 @@ export default function Mes({ cadastros, aoMudarDados }) {
     <>
       <SeletorMes mes={mes} aoMudar={setMes} />
 
+      {/* Três perguntas diferentes, três abas: quanto sobra, o que ainda vence,
+          o que aconteceu. Antes as três dividiam uma rolagem de dez seções. */}
+      <div className="abas vistas" role="tablist" aria-label="O que ver do mês">
+        {VISTAS.map((v) => (
+          <button
+            key={v.id}
+            type="button"
+            role="tab"
+            aria-selected={vista === v.id}
+            className={vista === v.id ? 'ativa' : ''}
+            onClick={() => setVista(v.id)}
+          >
+            {v.rotulo}
+            {v.id === 'contas' && atrasadas.total > 0 && (
+              <span className="marca-aba" aria-label="há conta vencida" />
+            )}
+          </button>
+        ))}
+      </div>
+
       {erro && (
         <div className="aviso ruim" role="alert">
           <strong>Não consegui carregar</strong>
@@ -242,9 +275,16 @@ export default function Mes({ cadastros, aoMudarDados }) {
         </div>
       )}
 
+      {aprendido && (
+        <div className="aviso bom" role="status">
+          <strong>Aprendi: “{aprendido.palavra}” agora é {aprendido.categoria}</strong>
+          <span className="detalhe">Da próxima vez que você falar isso, já vem certo. Errei? Apague a palavra na aba categorias da planilha.</span>
+        </div>
+      )}
+
       {!painel && carregando && <Esqueleto />}
 
-      {painel && (
+      {painel && vista === 'resumo' && (
         <>
           {/* A resposta primeiro, a prova depois.
               O app se chama "quanto posso gastar" e essa era exatamente a conta
@@ -258,27 +298,42 @@ export default function Mes({ cadastros, aoMudarDados }) {
               <p className="resposta-nota">{notaDaResposta(painel, aberto, livre)}</p>
             </div>
 
-            <div className="resumo">
-              <div><span className="r">Recebi</span><span className="v pos">{soNumero(painel.receitas)}</span></div>
-              <div><span className="r">Gastei</span><span className="v">{soNumero(painel.despesas)}</span></div>
-              <div>
-                <span className="r">Sobrou</span>
-                <span className={`v ${painel.saldo >= 0 ? 'pos' : 'neg'}`}>{soNumero(painel.saldo)}</span>
-              </div>
-            </div>
-
-            {aberto && (painel.previsao?.ainda_entra > 0 || painel.previsao?.ainda_sai > 0) && (
-              <div className="previsao-contas">
-                {painel.previsao.ainda_entra > 0 && (
-                  <span className="mais">
-                    ainda entra <strong>{formatarBRL(painel.previsao.ainda_entra)}</strong>
-                  </span>
-                )}
-                {painel.previsao.ainda_sai > 0 && (
-                  <span className="menos">
-                    ainda sai <strong>{formatarBRL(painel.previsao.ainda_sai)}</strong>
-                  </span>
-                )}
+            {/* A conta que dá o número de cima, montada. Sem ela, "Livre" e
+                "Sobrou" pareciam dois números brigando. */}
+            {aberto && painel.previsao ? (
+              <>
+                <p className="fatos-mes">
+                  Recebi <strong className="pos">{soNumero(painel.receitas)}</strong>
+                  <span aria-hidden="true"> · </span>
+                  Gastei <strong>{soNumero(painel.despesas)}</strong>
+                </p>
+                <dl className="conta-livre">
+                  <div>
+                    <dt>Sobrou até agora</dt>
+                    <dd className={painel.previsao.ja_sobrou < 0 ? 'neg' : ''}>{comSinal(painel.previsao.ja_sobrou)}</dd>
+                  </div>
+                  <div>
+                    <dt>Ainda entra</dt>
+                    <dd className="pos">{comSinal(painel.previsao.ainda_entra)}</dd>
+                  </div>
+                  <div>
+                    <dt>Ainda sai</dt>
+                    <dd className="warn">{comSinal(-painel.previsao.ainda_sai)}</dd>
+                  </div>
+                  <div className="total">
+                    <dt>Sobra no fim do mês</dt>
+                    <dd className={livre < 0 ? 'neg' : 'pos'}>{comSinal(livre)}</dd>
+                  </div>
+                </dl>
+              </>
+            ) : (
+              <div className="resumo">
+                <div><span className="r">Recebi</span><span className="v pos">{soNumero(painel.receitas)}</span></div>
+                <div><span className="r">Gastei</span><span className="v">{soNumero(painel.despesas)}</span></div>
+                <div>
+                  <span className="r">Sobrou</span>
+                  <span className={`v ${painel.saldo >= 0 ? 'pos' : 'neg'}`}>{soNumero(painel.saldo)}</span>
+                </div>
               </div>
             )}
           </div>
@@ -294,6 +349,11 @@ export default function Mes({ cadastros, aoMudarDados }) {
             </div>
           )}
 
+        </>
+      )}
+
+      {painel && vista === 'contas' && (
+        <>
           {/* Renda mensal vem antes das contas: é com ela que você paga o resto. */}
           <Compromissos
             titulo="Rendas do mês"
@@ -459,6 +519,11 @@ export default function Mes({ cadastros, aoMudarDados }) {
             </>
           )}
 
+        </>
+      )}
+
+      {painel && vista === 'resumo' && (
+        <>
           <GraficoEvolucao evolucao={painel.evolucao} mesAtual={painel.mes} />
 
           {/* Fechada por padrão: é a seção mais alta da tela e a que menos
@@ -492,6 +557,8 @@ export default function Mes({ cadastros, aoMudarDados }) {
         </>
       )}
 
+      {vista === 'lancamentos' && (
+      <>
       <div className="secao-cabecalho" ref={listaTopo}>
         <p className="secao-titulo" style={{ margin: 0 }}>
           Lançamentos{visiveis.length ? ` · ${visiveis.length}` : ''}
@@ -617,6 +684,8 @@ export default function Mes({ cadastros, aoMudarDados }) {
             </select>
           </label>
         </div>
+      )}
+      </>
       )}
 
       {confirmandoRenda && (
@@ -947,6 +1016,11 @@ function lider(porCategoria) {
 }
 
 /** O número sem o "R$": num trio apertado, o símbolo repetido só rouba espaço. */
+/** "+1.234,56" / "−800,00": o sinal é parte da conta, não só a cor. */
+function comSinal(v) {
+  return `${v < 0 ? '−' : '+'}${soNumero(Math.abs(v))}`;
+}
+
 function soNumero(v) {
   return formatarBRL(v).replace('R$', '').trim();
 }
