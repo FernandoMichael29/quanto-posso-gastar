@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import Falar from './telas/Falar.jsx';
-import Mes from './telas/Mes.jsx';
+import Mes from './telas/mes/Mes.jsx';
 import Perguntar from './telas/Perguntar.jsx';
 import Pendentes from './telas/Pendentes.jsx';
 import Ajustes from './telas/Ajustes.jsx';
@@ -10,6 +10,7 @@ import { ESTADO, listar } from './lib/db.js';
 import { acessoValidado, api, configurado, marcarAcessoValido } from './lib/api.js';
 import { aoMudar, ligarSincronizacaoAutomatica } from './lib/sync.js';
 import { VERSAO_APP, menorQue } from './lib/versao.js';
+import { mesPorExtenso } from './lib/datas.js';
 
 const CACHE = 'qpg.cadastros';
 const VAZIO = { categorias: [], contas: [], fontes: [], pessoas: [] };
@@ -240,12 +241,4 @@ function Botao({ atual, id, rotulo, aoClicar, children }) {
       {rotulo}
     </button>
   );
-}
-
-function mesPorExtenso(mes) {
-  if (!mes) return '';
-  const [ano, m] = mes.split('-');
-  const nomes = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
-    'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
-  return `${nomes[Number(m) - 1]} de ${ano}`;
 }

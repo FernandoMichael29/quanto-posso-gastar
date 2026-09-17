@@ -42,7 +42,9 @@ src/lib/db.js                a fila local (IndexedDB) — nada se perde
 src/lib/sync.js              quando e como tentar de novo
 src/lib/api.js               conversa com o Apps Script
 src/lib/voz.js               microfone, com queda para o teclado quando offline
+src/lib/datas.js             datas e meses (hoje, somar mês, por extenso)
 src/telas/                   Falar, Perguntar, Fila e Ajustes
+src/telas/mes/               tela Mês: Mes.jsx carrega e salva; uma aba por arquivo; Modais.jsx; util.js
 src/componentes/             o gráfico de projeção
 public/sw.js                 abre offline e sincroniza com o app fechado
 testes/parser.test.mjs       28 frases reais em português
