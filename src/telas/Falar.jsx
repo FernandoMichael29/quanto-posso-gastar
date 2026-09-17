@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { interpretar, formatarBRL, chaveAprendivel } from '../lib/parser.js';
+import { interpretar, soNumero, chaveAprendivel } from '../lib/parser.js';
+import { hojeISO, diaOuHoje } from '../lib/datas.js';
 import { escutar, ERRO_VOZ, temReconhecimento } from '../lib/voz.js';
-import { enfileirar, ESTADO, novoId } from '../lib/db.js';
+import { enfileirar, ESTADO, novoId, remover } from '../lib/db.js';
 import { api, configurado } from '../lib/api.js';
 import { sincronizar } from '../lib/sync.js';
 import CartaoLancamento from '../componentes/CartaoLancamento.jsx';
@@ -27,6 +28,13 @@ export default function Falar({ cadastros, resumo, aoMudarFila, aoIrParaFila }) 
   const sessao = useRef(null);
 
   useEffect(() => () => sessao.current?.cancelar(), []);
+
+  // O botão Desfazer vive 10 s; depois disso o recado fica, só sem o botão.
+  useEffect(() => {
+    if (!recado?.desfazer) return;
+    const t = setTimeout(() => setRecado((r) => (r ? { ...r, desfazer: null } : r)), 10000);
+    return () => clearTimeout(t);
+  }, [recado?.desfazer]);
 
   function comecar() {
     setRecado(null);
@@ -135,21 +143,23 @@ export default function Falar({ cadastros, resumo, aoMudarFila, aoIrParaFila }) 
 
   async function salvarNovo() {
     const { motivo, ...limpo } = novo;
+    const uuid = novoId();
     await enfileirar({
-      uuid: novoId(),
+      uuid,
       estado: ESTADO.PENDENTE,
       texto: '',
       lancamento: { ...limpo, valor: Number(limpo.valor) || 0, origem: 'manual' }
     });
     setNovo(null);
     aoMudarFila?.();
-    setRecado({ tom: 'bom', titulo: 'Guardado' });
+    setRecado({ tom: 'bom', titulo: 'Guardado', desfazer: [uuid] });
     sincronizar().then(() => aoMudarFila?.());
   }
 
   async function confirmar() {
     const lista = [rascunho, ...(rascunho.extras || [])];
     let aprendeu = null;
+    const uuids = [];
     for (const l of lista) {
       const { extras, motivo, categoria_sugerida, ...limpo } = l;
       // Só o primeiro tem sugestão guardada; os extras vêm da IA sem você mexer.
@@ -157,8 +167,10 @@ export default function Falar({ cadastros, resumo, aoMudarFila, aoIrParaFila }) 
       if (corrigiu && chaveAprendivel(limpo.descricao)) {
         aprendeu = { palavra: chaveAprendivel(limpo.descricao), categoria: limpo.categoria };
       }
+      const uuid = novoId();
+      uuids.push(uuid);
       await enfileirar({
-        uuid: novoId(),
+        uuid,
         estado: ESTADO.PENDENTE,
         texto: rascunho.texto_falado || texto,
         lancamento: { ...limpo, aprender_categoria: Boolean(corrigiu), texto_falado: rascunho.texto_falado || texto }
@@ -170,9 +182,45 @@ export default function Falar({ cadastros, resumo, aoMudarFila, aoIrParaFila }) 
     setRecado({
       tom: 'bom',
       titulo: `${lista.length > 1 ? lista.length + ' lançamentos guardados' : 'Guardado'}`,
-      detalhe: aprendeu ? `Aprendi: “${aprendeu.palavra}” agora é ${aprendeu.categoria}.` : undefined
+      detalhe: aprendeu ? `Aprendi: “${aprendeu.palavra}” agora é ${aprendeu.categoria}.` : undefined,
+      desfazer: uuids
     });
     sincronizar().then(() => aoMudarFila?.());
+  }
+
+  /**
+   * Apaga da fila e da planilha. O envio começa logo depois de guardar, então
+   * o lançamento pode estar em qualquer um dos dois lados — ou no meio do caminho.
+   */
+  async function desfazer(uuids) {
+    setRecado({ tom: 'bom', titulo: 'Desfazendo…' });
+    for (const u of uuids) await remover(u);
+    aoMudarFila?.();
+
+    // Sem internet nada saiu do aparelho: tirar da fila basta.
+    if (!navigator.onLine || !configurado()) {
+      setRecado({ tom: 'bom', titulo: 'Desfeito' });
+      return;
+    }
+
+    let falhou = false;
+    for (const u of uuids) {
+      let r = await api.excluirLancamento(u);
+      // ponytail: "não encontrado" pode ser envio ainda em trânsito; duas novas
+      // tentativas (3 s e 8 s) cobrem o envio normal. Envio mais lento que isso
+      // grava a linha — o recado de erro só aparece se a planilha recusar.
+      for (const espera of [3000, 5000]) {
+        if (r.ok || r.erro !== 'nao_encontrado') break;
+        await new Promise((ok) => setTimeout(ok, espera));
+        r = await api.excluirLancamento(u);
+      }
+      if (!r.ok && r.erro !== 'nao_encontrado') falhou = true;
+    }
+
+    aoMudarFila?.();
+    setRecado(falhou
+      ? { tom: 'ruim', titulo: 'Não consegui desfazer', detalhe: 'Apague em Mês › Lançamentos.' }
+      : { tom: 'bom', titulo: 'Desfeito' });
   }
 
   return (
@@ -185,9 +233,16 @@ export default function Falar({ cadastros, resumo, aoMudarFila, aoIrParaFila }) 
             <span className="detalhe ver-fila">Toque para ver a fila ›</span>
           </button>
         ) : (
-          <div className={`aviso ${recado.tom}`} role="status">
-            <strong>{recado.titulo}</strong>
-            {recado.detalhe && <span className="detalhe">{recado.detalhe}</span>}
+          <div className={`aviso ${recado.tom} ${recado.desfazer ? 'com-acao' : ''}`} role="status">
+            <div className="aviso-texto">
+              <strong>{recado.titulo}</strong>
+              {recado.detalhe && <span className="detalhe">{recado.detalhe}</span>}
+            </div>
+            {recado.desfazer && (
+              <button type="button" className="btn discreto pequeno desfazer" onClick={() => desfazer(recado.desfazer)}>
+                Desfazer
+              </button>
+            )}
           </div>
         )
       )}
@@ -251,9 +306,9 @@ export default function Falar({ cadastros, resumo, aoMudarFila, aoIrParaFila }) 
         <>
           <p className="secao-titulo">Este mês</p>
           <div className="resumo">
-            <div><span className="r">Recebi</span><span className="v pos">{semSimbolo(resumo.receitas)}</span></div>
-            <div><span className="r">Gastei</span><span className="v">{semSimbolo(resumo.despesas)}</span></div>
-            <div><span className="r">Sobrou</span><span className={`v ${resumo.saldo >= 0 ? 'pos' : 'neg'}`}>{semSimbolo(resumo.saldo)}</span></div>
+            <div><span className="r">Recebi</span><span className="v pos">{soNumero(resumo.receitas)}</span></div>
+            <div><span className="r">Gastei</span><span className="v">{soNumero(resumo.despesas)}</span></div>
+            <div><span className="r">Sobrou</span><span className={`v ${resumo.saldo >= 0 ? 'pos' : 'neg'}`}>{soNumero(resumo.saldo)}</span></div>
           </div>
         </>
       )}
@@ -266,10 +321,10 @@ export default function Falar({ cadastros, resumo, aoMudarFila, aoIrParaFila }) 
               <div className="item" key={l.uuid}>
                 <div className="corpo">
                   <span className="titulo">{l.descricao || l.categoria}</span>
-                  <span className="meta">{l.categoria} · {formatarData(l.data)}</span>
+                  <span className="meta">{l.categoria} · {diaOuHoje(l.data)}</span>
                 </div>
                 <span className={`num ${l.tipo === 'receita' ? 'receita' : ''}`}>
-                  {l.tipo === 'receita' ? '+' : '−'}{formatarBRL(l.valor).replace('R$', '').trim()}
+                  {l.tipo === 'receita' ? '+' : '−'}{soNumero(l.valor)}
                 </span>
               </div>
             ))}
@@ -291,22 +346,3 @@ const MOTIVO_TELA = {
   nada_entendido: 'Não achei um valor na frase. Dá uma olhada na fila e corrija se quiser.',
   teto_diario: 'Bateu o teto diário de interpretações por IA. Sua frase está guardada e é interpretada amanhã sozinha.'
 };
-
-function semSimbolo(v) {
-  return formatarBRL(v).replace('R$', '').trim();
-}
-
-function hojeISO() {
-  const d = new Date();
-  const z = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`;
-}
-
-function formatarData(iso) {
-  if (!iso) return '';
-  const [a, m, d] = String(iso).split('-');
-  const hoje = new Date();
-  const z = (n) => String(n).padStart(2, '0');
-  if (iso === `${hoje.getFullYear()}-${z(hoje.getMonth() + 1)}-${z(hoje.getDate())}`) return 'hoje';
-  return `${d}/${m}`;
-}

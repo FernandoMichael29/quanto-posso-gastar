@@ -4,6 +4,25 @@
  * ele grava na planilha, guarda as chaves e conversa com a API da Claude.
  *
  * Antes de publicar, rode a função `configurar()` uma vez (menu Executar).
+ *
+ * Seções, na ordem do arquivo (procure pelo nome):
+ *   - Configuração
+ *   - Instalação — rode uma vez
+ *   - Entrada HTTP
+ *   - Limites de uso
+ *   - Gravar lançamentos
+ *   - Interpretar com IA
+ *   - Perguntar e simular
+ *   - Reprocessar o que ficou pendente (gatilho horário)
+ *   - Avisos por e-mail
+ *   - Consultas
+ *   - Faturas de cartão
+ *   - Painel do mês
+ *   - Editar e excluir lançamentos
+ *   - Aprender categoria com a sua correção
+ *   - Cadastros: contas, categorias, fontes e pessoas
+ *   - Recorrentes: gastos e rendas que se repetem, com histórico de valores
+ *   - Consertos manuais — rode uma vez no editor, se precisar
  */
 
 // ---------------------------------------------------------------------------
@@ -346,7 +365,6 @@ function doPost(e) {
       case 'tornar_mensal':      return json_(tornarMensal_(pedido));
       case 'pagar_fixa':         return json_(pagarFixa_(pedido));
       case 'pagar_fatura':       return json_(pagarFatura_(pedido));
-      case 'recorrentes':        return json_({ ok: true, recorrentes: recorrentesDoMes_(pedido.mes || mesAtual_()) });
       case 'painel':      return json_(painel_(pedido));
       default:            return json_({ ok: false, erro: 'acao_desconhecida' });
     }
@@ -564,66 +582,6 @@ function somarMesesData_(dataISO, n) {
   var ultimo = new Date(Number(alvo.slice(0, 4)), Number(alvo.slice(5, 7)), 0).getDate();
   var d = Math.min(dia, ultimo);
   return alvo + '-' + (d < 10 ? '0' + d : String(d));
-}
-
-/**
- * Conserta as compras parceladas que já estão na planilha lançadas pelo valor
- * cheio num mês só. Rode uma vez, à mão, no editor do Apps Script — depois
- * disso toda compra parcelada já nasce dividida. Rodar de novo não faz mal:
- * quem já tem parcelas é ignorado.
- */
-function corrigirParcelasAntigas() {
-  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('lancamentos');
-  var n = aba.getLastRow() - 1;
-  if (n <= 0) return 'Nada para corrigir.';
-
-  var col = indiceColunas_();
-  var largura = ABAS.lancamentos.length;
-  var dados = aba.getRange(2, 1, n, largura).getValues();
-
-  var existe = {};
-  dados.forEach(function (r) { existe[String(r[col.uuid])] = true; });
-
-  var novas = [], relato = [];
-
-  for (var i = 0; i < dados.length; i++) {
-    var r = dados[i];
-    if (r[col.status] !== STATUS.OK) continue;
-    if (Math.round(Number(r[col.parcelas_total]) || 0) < 2) continue;
-
-    var uuid = String(r[col.uuid]);
-    if (grupoDoUuid_(uuid) !== uuid) continue;   // já é parcela derivada
-    if (existe[uuid + '-p2']) continue;          // já foi dividida antes
-
-    var l = {};
-    ABAS.lancamentos.forEach(function (nome, c) { l[nome] = r[c]; });
-    l.data = normalizarData_(l.data);
-    l.fatura_mes = l.fatura_mes ? normalizarMes_(l.fatura_mes) : '';
-
-    var partes = expandirParcelas_(l);
-    if (partes.length < 2) continue;
-
-    var primeira = linhaDe_(partes[0]);
-    primeira[col.hora_registro] = r[col.hora_registro];   // preserva o registro original
-    aba.getRange(i + 2, 1, 1, largura).setValues([primeira]);
-
-    for (var k = 1; k < partes.length; k++) {
-      var linha = linhaDe_(partes[k]);
-      linha[col.hora_registro] = r[col.hora_registro];
-      novas.push(linha);
-      existe[partes[k].uuid] = true;
-    }
-
-    relato.push((l.descricao || l.categoria || uuid) + ': ' +
-      arred_(l.valor).toFixed(2) + ' em ' + partes.length + 'x de ' +
-      partes[1].valor.toFixed(2));
-  }
-
-  if (novas.length) {
-    aba.getRange(aba.getLastRow() + 1, 1, novas.length, largura).setValues(novas);
-    atualizarResumo_();
-  }
-  return relato.length ? relato.join('\n') : 'Nenhuma compra parcelada precisava de conserto.';
 }
 
 function linhaDe_(l) {
@@ -2453,6 +2411,54 @@ function excluirLancamento_(pedido) {
 }
 
 // ---------------------------------------------------------------------------
+// Aprender categoria com a sua correção
+// ---------------------------------------------------------------------------
+//
+// Corrigir a categoria uma vez tem que bastar. A descrição corrigida entra em
+// palavras_chave da categoria certa — é a mesma coluna que o parser do app já
+// lê, então não existe "memória" nova para manter: você vê e apaga na planilha.
+
+// Descrições que dizem nada sobre o gasto. Aprender "compra" como Lazer faria
+// toda compra futura virar Lazer. Mesma lista em src/lib/parser.js.
+var DESCRICOES_GENERICAS = ['compra', 'compras', 'compra parcelada', 'outros', 'outro', 'pix',
+  'gasto', 'gastos', 'pagamento', 'despesa', 'receita', 'lancamento', 'transferencia',
+  'debito', 'credito', 'cartao', 'boleto', 'dinheiro', 'sem descricao'];
+
+/** A descrição serve de palavra-chave? Curta, com letra, e não genérica. */
+function chaveAprendivel_(descricao) {
+  var t = semAcentoGS_(descricao).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (t.length < 3 || !/[a-z]/.test(t) || t.split(' ').length > 3) return '';
+  return DESCRICOES_GENERICAS.indexOf(t) >= 0 ? '' : t;
+}
+
+/** Devolve { palavra, categoria } quando aprendeu algo novo; senão null. */
+function aprenderCategoria_(descricao, categoria) {
+  var chave = chaveAprendivel_(descricao);
+  if (!chave || !categoria) return null;
+  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('categorias');
+  if (!aba || aba.getLastRow() < 2) return null;
+
+  var n = aba.getLastRow() - 1;
+  var linhas = aba.getRange(2, 1, n, 4).getValues();
+  var alvo = -1;
+  linhas.forEach(function (r, i) { if (chaveNome_(r[0]) === chaveNome_(categoria)) alvo = i; });
+  if (alvo < 0) return null;   // categoria que não está cadastrada: não inventa linha
+
+  var novo = false;
+  var colunas = linhas.map(function (r, i) {
+    var lista = String(r[3] || '').split(',').map(function (p) { return p.trim(); }).filter(Boolean);
+    var tem = lista.some(function (p) { return semAcentoGS_(p) === chave; });
+    if (i === alvo && !tem) { lista.push(chave); novo = true; }
+    // Numa categoria só: se estava em outra, sai de lá.
+    if (i !== alvo && tem) lista = lista.filter(function (p) { return semAcentoGS_(p) !== chave; });
+    return [lista.join(', ')];
+  });
+
+  aba.getRange(2, 4, n, 1).setValues(colunas);
+  return novo ? { palavra: chave, categoria: linhas[alvo][0] } : null;
+}
+
+// ---------------------------------------------------------------------------
 // Cadastros: contas, categorias, fontes e pessoas
 // ---------------------------------------------------------------------------
 //
@@ -2780,37 +2786,6 @@ function confirmarRecebimento_(pedido) {
 }
 
 /**
- * Conserta as receitas com data futura que foram gravadas antes de existir o
- * estado "agendado" — elas estão contando como recebidas sem ter caído.
- * Rode uma vez, à mão, no editor. Rodar de novo não faz mal.
- */
-function marcarReceitasFuturasComoAgendadas() {
-  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('lancamentos');
-  var n = aba.getLastRow() - 1;
-  if (n <= 0) return 'Planilha vazia.';
-
-  var col = indiceColunas_();
-  var dados = aba.getRange(2, 1, n, ABAS.lancamentos.length).getValues();
-  var hoje = hojeISO_();
-  var mexidas = [];
-
-  for (var i = 0; i < dados.length; i++) {
-    if (dados[i][col.status] !== STATUS.OK) continue;
-    if (dados[i][col.tipo] !== TIPO.RECEITA) continue;
-    if (normalizarData_(dados[i][col.data]) <= hoje) continue;
-    aba.getRange(i + 2, col.status + 1).setValue(STATUS.AGENDADO);
-    mexidas.push(dados[i][col.descricao] + ' (' + normalizarData_(dados[i][col.data]) + ')');
-  }
-
-  if (mexidas.length) atualizarResumo_();
-  var texto = mexidas.length
-    ? mexidas.length + ' receitas futuras viraram agendadas:\n' + mexidas.join('\n')
-    : 'Nenhuma receita futura para ajustar.';
-  Logger.log(texto);
-  return texto;
-}
-
-/**
  * Apaga uma regra mensal inteira — todas as vigências e exceções dela.
  * Para "não tenho mais isso a partir de agora", o certo é encerrar (aplicar
  * com acao 'encerrar'), que preserva os meses em que a conta existiu.
@@ -2866,54 +2841,6 @@ function normalizarMes_(v) {
 
 function chaveNome_(nome) {
   return semAcentoGS_(String(nome || '')).replace(/[^a-z0-9]/g, '');
-}
-
-// ---------------------------------------------------------------------------
-// Aprender categoria com a sua correção
-// ---------------------------------------------------------------------------
-//
-// Corrigir a categoria uma vez tem que bastar. A descrição corrigida entra em
-// palavras_chave da categoria certa — é a mesma coluna que o parser do app já
-// lê, então não existe "memória" nova para manter: você vê e apaga na planilha.
-
-// Descrições que dizem nada sobre o gasto. Aprender "compra" como Lazer faria
-// toda compra futura virar Lazer. Mesma lista em src/lib/parser.js.
-var DESCRICOES_GENERICAS = ['compra', 'compras', 'compra parcelada', 'outros', 'outro', 'pix',
-  'gasto', 'gastos', 'pagamento', 'despesa', 'receita', 'lancamento', 'transferencia',
-  'debito', 'credito', 'cartao', 'boleto', 'dinheiro', 'sem descricao'];
-
-/** A descrição serve de palavra-chave? Curta, com letra, e não genérica. */
-function chaveAprendivel_(descricao) {
-  var t = semAcentoGS_(descricao).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
-  if (t.length < 3 || !/[a-z]/.test(t) || t.split(' ').length > 3) return '';
-  return DESCRICOES_GENERICAS.indexOf(t) >= 0 ? '' : t;
-}
-
-/** Devolve { palavra, categoria } quando aprendeu algo novo; senão null. */
-function aprenderCategoria_(descricao, categoria) {
-  var chave = chaveAprendivel_(descricao);
-  if (!chave || !categoria) return null;
-  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('categorias');
-  if (!aba || aba.getLastRow() < 2) return null;
-
-  var n = aba.getLastRow() - 1;
-  var linhas = aba.getRange(2, 1, n, 4).getValues();
-  var alvo = -1;
-  linhas.forEach(function (r, i) { if (chaveNome_(r[0]) === chaveNome_(categoria)) alvo = i; });
-  if (alvo < 0) return null;   // categoria que não está cadastrada: não inventa linha
-
-  var novo = false;
-  var colunas = linhas.map(function (r, i) {
-    var lista = String(r[3] || '').split(',').map(function (p) { return p.trim(); }).filter(Boolean);
-    var tem = lista.some(function (p) { return semAcentoGS_(p) === chave; });
-    if (i === alvo && !tem) { lista.push(chave); novo = true; }
-    // Numa categoria só: se estava em outra, sai de lá.
-    if (i !== alvo && tem) lista = lista.filter(function (p) { return semAcentoGS_(p) !== chave; });
-    return [lista.join(', ')];
-  });
-
-  aba.getRange(2, 4, n, 1).setValues(colunas);
-  return novo ? { palavra: chave, categoria: linhas[alvo][0] } : null;
 }
 
 function semAcentoGS_(s) {
@@ -3111,4 +3038,102 @@ function atualizarResumo_() {
   if (linhas.length) {
     destino.getRange(2, 1, linhas.length, ABAS.resumo_mensal.length).setValues(linhas);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Consertos manuais — rode uma vez no editor, se precisar
+// ---------------------------------------------------------------------------
+//
+// Nada no app chama estas funções. Elas arrumam dados gravados antes de uma
+// regra existir. Rodar de novo não faz mal.
+
+/**
+ * Conserta as compras parceladas que já estão na planilha lançadas pelo valor
+ * cheio num mês só. Rode uma vez, à mão, no editor do Apps Script — depois
+ * disso toda compra parcelada já nasce dividida. Rodar de novo não faz mal:
+ * quem já tem parcelas é ignorado.
+ */
+function corrigirParcelasAntigas() {
+  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('lancamentos');
+  var n = aba.getLastRow() - 1;
+  if (n <= 0) return 'Nada para corrigir.';
+
+  var col = indiceColunas_();
+  var largura = ABAS.lancamentos.length;
+  var dados = aba.getRange(2, 1, n, largura).getValues();
+
+  var existe = {};
+  dados.forEach(function (r) { existe[String(r[col.uuid])] = true; });
+
+  var novas = [], relato = [];
+
+  for (var i = 0; i < dados.length; i++) {
+    var r = dados[i];
+    if (r[col.status] !== STATUS.OK) continue;
+    if (Math.round(Number(r[col.parcelas_total]) || 0) < 2) continue;
+
+    var uuid = String(r[col.uuid]);
+    if (grupoDoUuid_(uuid) !== uuid) continue;   // já é parcela derivada
+    if (existe[uuid + '-p2']) continue;          // já foi dividida antes
+
+    var l = {};
+    ABAS.lancamentos.forEach(function (nome, c) { l[nome] = r[c]; });
+    l.data = normalizarData_(l.data);
+    l.fatura_mes = l.fatura_mes ? normalizarMes_(l.fatura_mes) : '';
+
+    var partes = expandirParcelas_(l);
+    if (partes.length < 2) continue;
+
+    var primeira = linhaDe_(partes[0]);
+    primeira[col.hora_registro] = r[col.hora_registro];   // preserva o registro original
+    aba.getRange(i + 2, 1, 1, largura).setValues([primeira]);
+
+    for (var k = 1; k < partes.length; k++) {
+      var linha = linhaDe_(partes[k]);
+      linha[col.hora_registro] = r[col.hora_registro];
+      novas.push(linha);
+      existe[partes[k].uuid] = true;
+    }
+
+    relato.push((l.descricao || l.categoria || uuid) + ': ' +
+      arred_(l.valor).toFixed(2) + ' em ' + partes.length + 'x de ' +
+      partes[1].valor.toFixed(2));
+  }
+
+  if (novas.length) {
+    aba.getRange(aba.getLastRow() + 1, 1, novas.length, largura).setValues(novas);
+    atualizarResumo_();
+  }
+  return relato.length ? relato.join('\n') : 'Nenhuma compra parcelada precisava de conserto.';
+}
+
+/**
+ * Conserta as receitas com data futura que foram gravadas antes de existir o
+ * estado "agendado" — elas estão contando como recebidas sem ter caído.
+ * Rode uma vez, à mão, no editor. Rodar de novo não faz mal.
+ */
+function marcarReceitasFuturasComoAgendadas() {
+  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('lancamentos');
+  var n = aba.getLastRow() - 1;
+  if (n <= 0) return 'Planilha vazia.';
+
+  var col = indiceColunas_();
+  var dados = aba.getRange(2, 1, n, ABAS.lancamentos.length).getValues();
+  var hoje = hojeISO_();
+  var mexidas = [];
+
+  for (var i = 0; i < dados.length; i++) {
+    if (dados[i][col.status] !== STATUS.OK) continue;
+    if (dados[i][col.tipo] !== TIPO.RECEITA) continue;
+    if (normalizarData_(dados[i][col.data]) <= hoje) continue;
+    aba.getRange(i + 2, col.status + 1).setValue(STATUS.AGENDADO);
+    mexidas.push(dados[i][col.descricao] + ' (' + normalizarData_(dados[i][col.data]) + ')');
+  }
+
+  if (mexidas.length) atualizarResumo_();
+  var texto = mexidas.length
+    ? mexidas.length + ' receitas futuras viraram agendadas:\n' + mexidas.join('\n')
+    : 'Nenhuma receita futura para ajustar.';
+  Logger.log(texto);
+  return texto;
 }

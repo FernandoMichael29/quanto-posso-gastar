@@ -418,6 +418,10 @@ input, select, textarea { font: inherit; }
 .aviso .detalhe { opacity: .9; font-size: 13px; }
 .aviso .ver-fila { font-weight: 600; opacity: 1; }
 
+.aviso-texto { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.aviso.com-acao { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--e3); }
+.aviso .btn.desfazer { color: inherit; font-weight: 600; min-height: 44px; flex-shrink: 0; }
+
 button.aviso { text-align: left; width: 100%; transition: filter var(--rapido) var(--curva); }
 button.aviso:active { filter: brightness(1.06); }
 

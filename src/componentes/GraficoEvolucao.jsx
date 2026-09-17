@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { formatarBRL } from '../lib/parser.js';
+import { mesAbreviado, mesPorExtenso } from '../lib/datas.js';
 
 /**
  * Renda e gastos, mês a mês.
@@ -106,7 +107,7 @@ export default function GraficoEvolucao({ evolucao, mesAtual }) {
         <div>
           <p className="gr-titulo">Renda e gastos</p>
           <p className="gr-sub">
-            {mesCurto(janela[0].mes)} a {mesCurto(janela[janela.length - 1].mes)}
+            {mesAbreviado(janela[0].mes)} a {mesAbreviado(janela[janela.length - 1].mes)}
           </p>
         </div>
 
@@ -125,7 +126,7 @@ export default function GraficoEvolucao({ evolucao, mesAtual }) {
 
       <div className="gr-caixa">
         <svg viewBox={`0 0 ${L} ${A}`} role="img"
-             aria-label={`Renda e gastos de ${mesCurto(janela[0].mes)} a ${mesCurto(janela[janela.length - 1].mes)}`}>
+             aria-label={`Renda e gastos de ${mesAbreviado(janela[0].mes)} a ${mesAbreviado(janela[janela.length - 1].mes)}`}>
           <line x1={MARGEM.esq - 6} x2={L - MARGEM.dir} y1={base} y2={base} className="gr-zero" />
           <text x={MARGEM.esq - 10} y={base + 4} className="gr-eixo" textAnchor="end">0</text>
           <text x={MARGEM.esq - 10} y={y(alto) + 10} className="gr-eixo" textAnchor="end">
@@ -208,22 +209,9 @@ function soma(e) {
   };
 }
 
-/** "2026-10" vira "out/26" — curto porque vive num subtítulo. */
-function mesCurto(mes) {
-  const m = NOMES[Number(String(mes).slice(5, 7)) - 1];
-  return m ? `${m}/${String(mes).slice(2, 4)}` : String(mes);
-}
-
+/** 12500 → "13k": rótulo de eixo. */
 function curto(v) {
   const a = Math.abs(Number(v) || 0);
   if (a >= 1000) return `${(a / 1000).toFixed(a >= 10000 ? 0 : 1).replace('.', ',')}k`;
   return String(Math.round(a));
-}
-
-const COMPLETOS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
-  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
-
-function mesPorExtenso(mes) {
-  const m = COMPLETOS[Number(String(mes).slice(5, 7)) - 1];
-  return m ? `${m} de ${String(mes).slice(0, 4)}` : String(mes);
 }

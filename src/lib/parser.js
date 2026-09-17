@@ -375,3 +375,8 @@ export function formatarBRL(v) {
     style: 'currency', currency: 'BRL'
   });
 }
+
+/** O valor sem o "R$": em lista e trio apertado, o símbolo repetido só rouba espaço. */
+export function soNumero(v) {
+  return formatarBRL(v).replace('R$', '').trim();
+}
