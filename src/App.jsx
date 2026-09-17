@@ -218,7 +218,7 @@ export default function App() {
           </Botao>
           <Botao atual={aba} id="perguntar" rotulo="Perguntar" aoClicar={setAba}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4 19V9M9.5 19V5M15 19v-7M20.5 19v-4" />
+              <path d="M20.5 11.5a8 8 0 0 1-11.8 7L3.5 20l1.5-4.7a8 8 0 1 1 15.5-3.8Z" />
             </svg>
           </Botao>
           <Botao atual={aba} id="ajustes" rotulo="Ajustes" aoClicar={setAba}>
