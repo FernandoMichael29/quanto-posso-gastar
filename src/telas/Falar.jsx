@@ -235,7 +235,8 @@ export default function Falar({ cadastros, resumo, aoMudarFila, aoIrParaFila }) 
         />
       )}
 
-      {resumo && (
+      {/* Formulário aberto: o resto sai de cena para ele ter a tela toda. */}
+      {resumo && !rascunho && !novo && (
         <>
           <p className="secao-titulo">Este mês</p>
           <div className="resumo">
@@ -246,7 +247,7 @@ export default function Falar({ cadastros, resumo, aoMudarFila, aoIrParaFila }) 
         </>
       )}
 
-      {resumo?.ultimos?.length > 0 && (
+      {resumo?.ultimos?.length > 0 && !rascunho && !novo && (
         <>
           <p className="secao-titulo">Últimos lançamentos</p>
           <div className="lista">

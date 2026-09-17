@@ -37,6 +37,8 @@ export default function Mes({ cadastros, aoMudarDados }) {
   // Mudou o mês, a busca ou o filtro de pessoa: a página 4 do resultado antigo
   // não quer dizer nada no novo.
   useEffect(() => { setPagina(1); }, [mes, busca, filtroPessoa]);
+  // Busca é do mês que você estava olhando; mês novo começa limpo.
+  useEffect(() => { setBusca(''); }, [mes]);
 
   const carregar = useCallback(async (alvo) => {
     if (!configurado()) { setErro('Configure o app nos Ajustes primeiro.'); return; }
