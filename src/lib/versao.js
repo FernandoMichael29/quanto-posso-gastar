@@ -7,7 +7,7 @@
 // para responder isso na tela.
 //
 // Suba junto com VERSAO no Codigo.gs, sempre.
-export const VERSAO_APP = '2.6.0';
+export const VERSAO_APP = '2.6.1';
 
 /** Compara versões por número: '2.9.0' < '2.10.0'. Texto puro erraria isso. */
 export function menorQue(a, b) {
@@ -18,4 +18,16 @@ export function menorQue(a, b) {
     if (d) return d < 0;
   }
   return false;
+}
+
+/**
+ * As duas metades só brigam quando mudam de verdade.
+ *
+ * Correção só no script (2.6.0 → 2.6.1) não muda o que o app precisa saber,
+ * então o terceiro número não conta: avisar ali era barulho, e barulho a gente
+ * aprende a ignorar — inclusive quando é aviso de verdade.
+ */
+export function mesmaFamilia(a, b) {
+  const familia = (v) => String(v || '').split('.').slice(0, 2).join('.');
+  return familia(a) === familia(b);
 }

@@ -10,7 +10,7 @@ import Mensais from './telas/Mensais.jsx';
 import { ESTADO, listar } from './lib/db.js';
 import { acessoValidado, api, configurado, marcarAcessoValido } from './lib/api.js';
 import { aoMudar, ligarSincronizacaoAutomatica } from './lib/sync.js';
-import { VERSAO_APP, menorQue } from './lib/versao.js';
+import { VERSAO_APP, menorQue, mesmaFamilia } from './lib/versao.js';
 import { mesPorExtenso } from './lib/datas.js';
 
 const CACHE = 'qpg.cadastros';
@@ -166,7 +166,7 @@ export default function App() {
       </header>
 
       <main className="conteudo">
-        {versaoScript && versaoScript !== VERSAO_APP && (
+        {versaoScript && !mesmaFamilia(versaoScript, VERSAO_APP) && (
           <div className="aviso atencao" role="status">
             <strong>As duas metades estão em versões diferentes</strong>
             <span className="detalhe">

@@ -1,10 +1,12 @@
 // Teste rápido do parser local. Rode com:  node testes/parser.test.mjs
 import { interpretar, extensoParaDigitos, formatarBRL } from '../src/lib/parser.js';
 import { CATEGORIAS_PADRAO } from '../src/lib/categorias.js';
-import { menorQue } from '../src/lib/versao.js';
+import { menorQue, mesmaFamilia } from '../src/lib/versao.js';
 import assert from 'node:assert';
 
 assert.ok(menorQue('2.9.0', '2.10.0') && !menorQue('2.10.0', '2.9.0') && !menorQue('2.1.0', '2.1.0'), 'menorQue');
+// Correção só no script (terceiro número) não é briga de versão.
+assert.ok(mesmaFamilia('2.6.0', '2.6.1') && !mesmaFamilia('2.5.0', '2.6.1'), 'mesmaFamilia');
 
 const hoje = new Date('2026-09-14T12:00:00');
 const op = { categorias: CATEGORIAS_PADRAO, hoje };
