@@ -29,7 +29,13 @@ export default function Sanfona({
         {resumo && <span className="sanfona-resumo">{resumo}</span>}
       </button>
 
-      {aberta && <div className="sanfona-corpo">{children}</div>}
+      {/* O grid de uma linha só é o que permite animar a altura sem saber o
+          tamanho do conteúdo: 0fr para 1fr. */}
+      {aberta && (
+        <div className="sanfona-corpo">
+          <div className="sanfona-conteudo">{children}</div>
+        </div>
+      )}
     </div>
   );
 }

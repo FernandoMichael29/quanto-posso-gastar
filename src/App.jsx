@@ -177,6 +177,9 @@ export default function App() {
           </div>
         )}
 
+        {/* A chave por aba faz o conteúdo entrar de novo a cada troca: é o
+            fade que separa uma tela da outra em vez do corte seco. */}
+        <div className="vista" key={aba}>
         {aba === 'falar' && (
           <Falar cadastros={cadastros} resumo={resumo} aoMudarFila={tudo} aoIrParaFila={() => setAba('fila')} />
         )}
@@ -201,6 +204,7 @@ export default function App() {
             <Ajustes aoSalvar={() => { recarregarDados(); setAba('falar'); }} />
           </>
         )}
+        </div>
       </main>
 
       <footer className="rodape">

@@ -941,7 +941,13 @@ button.item.sugestao { align-items: center; }
 .sanfona.aberta .sanfona-seta { transform: rotate(90deg); }
 .sanfona-titulo { flex: 1; font-size: 14px; font-weight: 500; }
 .sanfona-resumo { font-size: 12.5px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
-.sanfona-corpo { display: flex; flex-direction: column; gap: var(--e3); animation: abrir var(--normal) var(--curva); }
+.sanfona-corpo { display: grid; grid-template-rows: 1fr; animation: abrir-altura var(--normal) var(--curva); }
+.sanfona-conteudo { display: flex; flex-direction: column; gap: var(--e3); min-height: 0; overflow: hidden; }
+
+@keyframes abrir-altura {
+  from { grid-template-rows: 0fr; opacity: 0; }
+  to { grid-template-rows: 1fr; opacity: 1; }
+}
 
 @keyframes abrir {
   from { opacity: 0; transform: translateY(-4px); }
@@ -1209,7 +1215,38 @@ button.item.sugestao { align-items: center; }
   text-align: center;
 }
 
+/* saída mais rápida que a entrada: sair é um gesto decidido */
+.modal.saindo .modal-fundo { animation: sumir var(--rapido) var(--curva) forwards; }
+.modal.saindo .modal-corpo { animation: descer var(--rapido) var(--curva) forwards; }
+
 @keyframes surgir { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sumir { to { opacity: 0; } }
+@keyframes descer { to { opacity: 0; transform: translateY(10px); } }
+
+/* troca de aba e de mês: o conteúdo entra, nunca aparece pronto.
+   O empilhamento repete o da área de conteúdo, senão embrulhar as seções
+   num elemento a mais comeria o espaço entre elas. */
+.vista {
+  display: flex;
+  flex-direction: column;
+  gap: var(--e5);
+  animation: entrar-sobe 150ms var(--curva);
+}
+.vista.frente { animation-name: entrar-direita; }
+.vista.tras { animation-name: entrar-esquerda; }
+
+@keyframes entrar-sobe { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes entrar-direita { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
+@keyframes entrar-esquerda { from { opacity: 0; transform: translateX(-16px); } to { opacity: 1; transform: none; } }
+
+/* o número que responde a pergunta pisca quando muda de valor */
+.realce { animation: realce 600ms var(--curva); }
+
+@keyframes realce {
+  0% { opacity: .35; transform: translateY(3px); }
+  40% { opacity: 1; transform: none; }
+  100% { opacity: 1; }
+}
 @keyframes subir { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
 
 @media (min-width: 560px) {
