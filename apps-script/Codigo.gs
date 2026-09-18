@@ -31,7 +31,7 @@
 
 // Suba junto com VERSAO_APP em src/lib/versao.js — o app compara as duas e
 // avisa na tela quando só uma das metades foi publicada.
-var VERSAO = '2.2.0';
+var VERSAO = '2.3.0';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -73,7 +73,10 @@ var ABAS = {
   ],
   resumo_mensal: ['mes', 'categoria', 'tipo', 'total', 'lancamentos'],
   memoria: ['fato', 'origem', 'data', 'ativo'],
-  conversas: ['data', 'pergunta', 'resposta', 'modelo', 'custo_estimado']
+  // `analise_json` guarda a análise inteira (projeção, premissas, sugestões).
+  // É o que permite reabrir uma resposta sem pagar outra chamada de IA — e
+  // recuperar a última quando a resposta não chega no celular.
+  conversas: ['data', 'pergunta', 'resposta', 'modelo', 'custo_estimado', 'analise_json']
 };
 
 // Status possíveis de um lançamento na planilha.
@@ -349,6 +352,7 @@ function doPost(e) {
       case 'resumo':      return json_(resumo_(pedido));
       case 'pendencias':  return json_(pendencias_());
       case 'perguntar':   return json_(perguntar_(pedido));
+      case 'conversas':   return json_(conversas_(pedido));
       case 'panorama':    return json_(panorama_(pedido));
       case 'categorias':  return json_(cadastros_());
       case 'cadastros':   return json_(cadastros_());
@@ -1168,11 +1172,52 @@ function estimarCusto_(uso) {
 
 function registrarConversa_(pergunta, analise, custo) {
   var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('conversas');
+  var inteira = '';
+  // Uma célula do Sheets guarda até 50 mil caracteres. Se a análise passar
+  // disso, a linha continua valendo pelo texto — só não dá para reabrir o
+  // gráfico dela.
+  try {
+    inteira = JSON.stringify(analise);
+    if (inteira.length > 45000) inteira = '';
+  } catch (err) { inteira = ''; }
+
   aba.appendRow([
     new Date(), pergunta,
     String(analise.resposta || '').slice(0, 20000),
-    MODELO_ANALISAR, custo
+    MODELO_ANALISAR, custo, inteira
   ]);
+}
+
+/**
+ * As últimas conversas, com a análise inteira quando ela coube na célula.
+ * Serve para dois casos: reabrir uma resposta antiga e recuperar a última
+ * quando o celular perdeu a resposta no meio do caminho.
+ */
+function conversas_(pedido) {
+  var limite = Math.min(Math.max(Number(pedido && pedido.limite) || 1, 1), 30);
+  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('conversas');
+  if (!aba) return { ok: true, conversas: [] };
+  var n = aba.getLastRow() - 1;
+  if (n <= 0) return { ok: true, conversas: [] };
+
+  var qtd = Math.min(limite, n);
+  var inicio = n + 2 - qtd;
+  var linhas = aba.getRange(inicio, 1, qtd, ABAS.conversas.length).getValues();
+
+  var saida = linhas.map(function (r) {
+    var analise = null;
+    try { analise = r[5] ? JSON.parse(r[5]) : null; } catch (err) { analise = null; }
+    return {
+      data: r[0] instanceof Date ? r[0].toISOString() : String(r[0] || ''),
+      pergunta: String(r[1] || ''),
+      resposta: String(r[2] || ''),
+      custo_estimado: Number(r[4]) || 0,
+      analise: analise
+    };
+  });
+
+  saida.reverse();   // a mais recente primeiro, que é como a tela mostra
+  return { ok: true, conversas: saida };
 }
 
 function lerConversas_(quantas) {
@@ -1181,7 +1226,7 @@ function lerConversas_(quantas) {
   if (n <= 0) return [];
   var inicio = Math.max(2, n + 2 - quantas);
   var qtd = Math.min(quantas, n);
-  return aba.getRange(inicio, 1, qtd, 5).getValues().map(function (r) {
+  return aba.getRange(inicio, 1, qtd, ABAS.conversas.length).getValues().map(function (r) {
     return { data: r[0], pergunta: r[1], resposta: r[2] };
   });
 }
