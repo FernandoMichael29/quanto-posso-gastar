@@ -27,7 +27,9 @@ export default function AbaResumo({ painel }) {
       <div className="resposta">
         <div>
           <p className="resposta-rotulo">{aberto ? 'Livre para gastar' : 'Sobrou no mês'}</p>
-          <p className={`resposta-numero ${livre < 0 ? 'neg' : ''}`}>{formatarBRL(livre)}</p>
+          {/* A chave é o próprio valor: mudou, entra de novo e o realce diz
+              onde olhar depois de salvar. */}
+          <p key={livre} className={`resposta-numero realce ${livre < 0 ? 'neg' : ''}`}>{formatarBRL(livre)}</p>
           <p className="resposta-nota">{notaDaResposta(painel, aberto, livre)}</p>
         </div>
 

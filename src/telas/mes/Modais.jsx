@@ -1,12 +1,27 @@
 // As janelas da tela Mês. Nenhuma fala com a planilha: recebem o rascunho,
 // devolvem mudanças por aoMudar e chamam aoConfirmar. Quem salva é Mes.jsx.
+import { useState } from 'react';
 import CartaoLancamento from '../../componentes/CartaoLancamento.jsx';
 import { formatarBRL, soNumero } from '../../lib/parser.js';
 
-function Modal({ rotulo, ocupado, aoFechar, children }) {
+/**
+ * Fechar com animação: o React desmonta na hora, então 'saindo' segura o
+ * desenho pelos 120 ms da saída e só então avisa quem abriu.
+ */
+function useSaida(aoFechar, ocupado) {
+  const [saindo, setSaindo] = useState(false);
+  function fechar() {
+    if (ocupado || saindo) return;
+    setSaindo(true);
+    setTimeout(aoFechar, 120);
+  }
+  return [saindo, fechar];
+}
+
+function Modal({ rotulo, saindo, aoFechar, children }) {
   return (
-    <div className="modal" role="dialog" aria-modal="true" aria-label={rotulo}>
-      <div className="modal-fundo" onClick={() => !ocupado && aoFechar()} />
+    <div className={`modal ${saindo ? 'saindo' : ''}`} role="dialog" aria-modal="true" aria-label={rotulo}>
+      <div className="modal-fundo" onClick={aoFechar} />
       <div className="modal-corpo">{children}</div>
     </div>
   );
@@ -30,12 +45,13 @@ function Botoes({ ocupado, aoCancelar, rotuloCancelar = 'Cancelar', aoConfirmar,
  * que ninguém dá.
  */
 export function ConfirmarRenda({ item, previsto, ocupado, aoMudar, aoFechar, aoConfirmar }) {
+  const [saindo, fechar] = useSaida(aoFechar, ocupado);
   const valor = Number(item.valor) || 0;
   const diferenca = valor - previsto;
   const iguais = Math.abs(diferenca) < 0.01;
 
   return (
-    <Modal rotulo="Confirmar recebimento" ocupado={ocupado} aoFechar={aoFechar}>
+    <Modal rotulo="Confirmar recebimento" saindo={saindo} aoFechar={fechar}>
       <div className="cartao destaque">
         <div className="valor-linha">
           <label className="rotulo-campo-grande" htmlFor="renda-valor">Quanto caiu</label>
@@ -78,7 +94,7 @@ export function ConfirmarRenda({ item, previsto, ocupado, aoMudar, aoFechar, aoC
           Caiu mesmo? Registro com a data de hoje.
         </p>
 
-        <Botoes ocupado={ocupado} aoCancelar={aoFechar} rotuloCancelar="Ainda não"
+        <Botoes ocupado={ocupado} aoCancelar={fechar} rotuloCancelar="Ainda não"
           aoConfirmar={aoConfirmar} rotulo="Caiu, pode contar" rotuloOcupado="Registrando…"
           desabilitado={!valor} />
       </div>
@@ -87,8 +103,9 @@ export function ConfirmarRenda({ item, previsto, ocupado, aoMudar, aoFechar, aoC
 }
 
 export function EditarLancamento({ lancamento, cadastros, ocupado, aoMudar, aoFechar, aoSalvar, aoExcluir, aoTornarMensal }) {
+  const [saindo, fechar] = useSaida(aoFechar, ocupado);
   return (
-    <Modal rotulo="Editar lançamento" ocupado={ocupado} aoFechar={aoFechar}>
+    <Modal rotulo="Editar lançamento" saindo={saindo} aoFechar={fechar}>
       <CartaoLancamento
         valor={lancamento}
         aoMudar={aoMudar}
@@ -96,7 +113,7 @@ export function EditarLancamento({ lancamento, cadastros, ocupado, aoMudar, aoFe
         modo="editar"
         ocupado={ocupado}
         aoConfirmar={aoSalvar}
-        aoCancelar={aoFechar}
+        aoCancelar={fechar}
         aoExcluir={aoExcluir}
         aoTornarMensal={aoTornarMensal}
       />
@@ -105,9 +122,10 @@ export function EditarLancamento({ lancamento, cadastros, ocupado, aoMudar, aoFe
 }
 
 export function PagarFatura({ fatura, contas, ocupado, aoMudar, aoFechar, aoConfirmar }) {
+  const [saindo, fechar] = useSaida(aoFechar, ocupado);
   const mudar = (campo) => (e) => aoMudar({ ...fatura, [campo]: e.target.value });
   return (
-    <Modal rotulo={`Pagar fatura ${fatura.cartao}`} ocupado={ocupado} aoFechar={aoFechar}>
+    <Modal rotulo={`Pagar fatura ${fatura.cartao}`} saindo={saindo} aoFechar={fechar}>
       <div className="cartao destaque">
         <p className="secao-titulo" style={{ margin: 0 }}>Pagar fatura · {fatura.cartao}</p>
         <p className="ajuda">
@@ -143,7 +161,7 @@ export function PagarFatura({ fatura, contas, ocupado, aoMudar, aoFechar, aoConf
           </div>
         </details>
 
-        <Botoes ocupado={ocupado} aoCancelar={aoFechar} aoConfirmar={aoConfirmar}
+        <Botoes ocupado={ocupado} aoCancelar={fechar} aoConfirmar={aoConfirmar}
           rotulo="Registrar pagamento" rotuloOcupado="Salvando…" desabilitado={!Number(fatura.valor)} />
       </div>
     </Modal>
@@ -151,9 +169,10 @@ export function PagarFatura({ fatura, contas, ocupado, aoMudar, aoFechar, aoConf
 }
 
 export function PagarFixa({ fixa, cadastros, ocupado, aoMudar, aoFechar, aoConfirmar }) {
+  const [saindo, fechar] = useSaida(aoFechar, ocupado);
   const acao = fixa.receita ? 'Registrar recebimento' : 'Registrar pagamento';
   return (
-    <Modal rotulo={`${acao} de ${fixa.nome}`} ocupado={ocupado} aoFechar={aoFechar}>
+    <Modal rotulo={`${acao} de ${fixa.nome}`} saindo={saindo} aoFechar={fechar}>
       <p className="modal-titulo">{acao} · {fixa.nome}</p>
 
       <CartaoLancamento
@@ -163,7 +182,7 @@ export function PagarFixa({ fixa, cadastros, ocupado, aoMudar, aoFechar, aoConfi
         modo="confirmar"
         ocupado={ocupado}
         aoConfirmar={aoConfirmar}
-        aoCancelar={aoFechar}
+        aoCancelar={fechar}
         rotuloCancelar="Fechar"
         permiteParcelar={false}
       />
@@ -198,10 +217,11 @@ export function PagarFixa({ fixa, cadastros, ocupado, aoMudar, aoFechar, aoConfi
 }
 
 export function TornarMensal({ regra, ocupado, aoMudar, aoFechar, aoConfirmar }) {
+  const [saindo, fechar] = useSaida(aoFechar, ocupado);
   const mudar = (campo) => (e) => aoMudar({ ...regra, [campo]: e.target.value });
   const titulo = regra.receita ? 'Receber todo mês' : 'Repetir todo mês';
   return (
-    <Modal rotulo="Transformar em conta fixa" ocupado={ocupado} aoFechar={aoFechar}>
+    <Modal rotulo="Transformar em conta fixa" saindo={saindo} aoFechar={fechar}>
       <div className="cartao destaque">
         <p className="secao-titulo" style={{ margin: 0 }}>{titulo}</p>
         <p className="ajuda">
@@ -227,7 +247,7 @@ export function TornarMensal({ regra, ocupado, aoMudar, aoFechar, aoConfirmar })
           </div>
         </div>
 
-        <Botoes ocupado={ocupado} aoCancelar={aoFechar} aoConfirmar={aoConfirmar}
+        <Botoes ocupado={ocupado} aoCancelar={fechar} aoConfirmar={aoConfirmar}
           rotulo={titulo} rotuloOcupado="Salvando…" desabilitado={!regra.nome.trim()} />
       </div>
     </Modal>

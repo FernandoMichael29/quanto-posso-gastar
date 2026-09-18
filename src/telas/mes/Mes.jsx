@@ -28,6 +28,9 @@ export default function Mes({ cadastros, aoMudarDados }) {
   // Qual linha da tela está esperando a planilha responder ('lanc:<uuid>',
   // 'fixa:<nome>', 'fatura:<cartão>'). É o que põe a máscara em cima dela.
   const [ocupado, setOcupado] = useState(null);
+  // De que lado o mês novo entra: 'frente' para o mês seguinte, 'tras' para o
+  // anterior, null quando foi só troca de aba.
+  const [direcao, setDirecao] = useState(null);
   const [aprendido, setAprendido] = useState(null);
   // A aba lembrada neste aparelho: quem sempre abre em Contas não precisa tocar de novo.
   const [vista, setVista] = useState(() => {
@@ -74,6 +77,11 @@ export default function Mes({ cadastros, aoMudarDados }) {
     aoMudarDados?.();
   }
 
+  function irParaMes(alvo) {
+    setDirecao(alvo > mes ? 'frente' : 'tras');
+    setMes(alvo);
+  }
+
   function abrirLancamento(uuid) {
     const l = lista.find((x) => x.uuid === uuid);
     if (l) setEditando({ ...l });
@@ -116,7 +124,7 @@ export default function Mes({ cadastros, aoMudarDados }) {
 
   return (
     <>
-      <SeletorMes mes={mes} aoMudar={setMes} />
+      <SeletorMes mes={mes} aoMudar={irParaMes} />
 
       {/* Três perguntas, três abas: quanto sobra, o que ainda vence, o que aconteceu. */}
       <div className="abas vistas" role="tablist" aria-label="O que ver do mês">
@@ -127,7 +135,7 @@ export default function Mes({ cadastros, aoMudarDados }) {
             role="tab"
             aria-selected={vista === v.id}
             className={vista === v.id ? 'ativa' : ''}
-            onClick={() => setVista(v.id)}
+            onClick={() => { setDirecao(null); setVista(v.id); }}
           >
             {v.rotulo}
             {v.id === 'contas' && temAtrasada && <span className="marca-aba" aria-label="há conta vencida" />}
@@ -151,6 +159,9 @@ export default function Mes({ cadastros, aoMudarDados }) {
 
       {!painel && carregando && <Esqueleto />}
 
+      {/* Uma chave por aba e por mês: o conteúdo entra de novo a cada troca,
+          e a direção conta se você foi para frente ou para trás no tempo. */}
+      <div className={`vista ${direcao || ''}`} key={`${vista}:${mes}`}>
       {painel && vista === 'resumo' && <AbaResumo painel={painel} />}
 
       {painel && vista === 'contas' && (
@@ -173,6 +184,7 @@ export default function Mes({ cadastros, aoMudarDados }) {
           aoAbrir={(l) => setEditando({ ...l })}
         />
       )}
+      </div>
 
       {confirmandoRenda && (
         <ConfirmarRenda
