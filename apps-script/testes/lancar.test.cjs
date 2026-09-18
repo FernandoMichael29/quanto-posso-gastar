@@ -272,3 +272,21 @@ assert.strictEqual(
   JSON.parse(recomporJson_('Direto ao ponto: {"projecao":[{"mes":"2026-10"}],"veredito":"arriscado"} pronto')).veredito,
   'arriscado', 'objeto com texto em volta, sem se perder na chave de dentro');
 console.log('\nJSON do modelo: ok');
+
+// 24. concatenação partida: uma linha que acaba em aspas e a seguinte que
+// começa em aspas, sem o '+' no meio. O JavaScript não reclama — fecha a
+// expressão ali e joga fora todo o resto em silêncio. Foi assim que metade
+// da instrução da análise (inclusive o contrato do JSON) deixou de chegar
+// no modelo por dois dias.
+const fonte = require('fs').readFileSync(__dirname + '/../Codigo.gs', 'utf8').split('\n');
+const partidas = [];
+for (let i = 0; i < fonte.length - 1; i++) {
+  const atual = fonte[i].replace(/\s+$/, '');
+  if (!/['"]$/.test(atual)) continue;
+  let j = i + 1;
+  while (j < fonte.length && !fonte[j].trim()) j++;
+  if (j < fonte.length && /^['"]/.test(fonte[j].trim())) partidas.push(i + 1);
+}
+assert.deepStrictEqual(partidas, [], 'concatenação partida nas linhas: ' + partidas.join(', '));
+console.log('\nconcatenação de textos: ok');
+

@@ -31,7 +31,7 @@
 
 // Suba junto com VERSAO_APP em src/lib/versao.js — o app compara as duas e
 // avisa na tela quando só uma das metades foi publicada.
-var VERSAO = '2.6.1';
+var VERSAO = '2.6.2';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -1142,7 +1142,7 @@ function perguntar_(pedido) {
     'sua projeção — não repita o mês atual doze vezes. Se uma renda só começa em algum\n' +
     'mês, ou uma parcela acaba, isso já está lá e você deve comentar quando for relevante.\n' +
     'Os gastos variáveis NÃO estão em PREVISAO_12M: some sua estimativa deles por fora e\n' +
-    'diga em "premissas" quanto assumiu.\n\n'
+    'diga em "premissas" quanto assumiu.\n\n' +
     'Quando faltar um dado, assuma algo razoável e DIGA que assumiu, em "premissas".\n\n' +
 
     'Se a pergunta for sobre assumir um novo compromisso (uma parcela, uma assinatura,\n' +
@@ -1154,7 +1154,7 @@ function perguntar_(pedido) {
     'para afirmar qualquer coisa (nesse caso diga isso na resposta).\n\n' +
 
     'Responda SOMENTE com um objeto JSON, sem markdown e sem nenhuma palavra antes ou depois.\n' +
-    'Sua resposta já começa com "{" — continue de lá.\n' +
+    'Comece a resposta no "{" e termine no "}".\n' +
     'Seja econômico: o texto todo cabe em poucos parágrafos e as listas são curtas.\n' +
     '{"resposta": string (2 a 4 parágrafos curtos, texto puro, sem títulos),\n' +
     ' "veredito": "confortavel|apertado|arriscado",\n' +
@@ -1209,13 +1209,7 @@ function perguntar_(pedido) {
         // string — era isso, e não a rede, que dava "Unexpected end of JSON input".
         max_tokens: 8000,
         system: instrucao,
-        messages: [
-          { role: 'user', content: contexto },
-          // Prefill: a resposta já começa aberta em '{', então o modelo não tem
-          // como emendar um "Direto ao ponto:" antes do JSON. Era isso que dava
-          // "Unexpected token 'D' ... is not valid JSON".
-          { role: 'assistant', content: '{' }
-        ]
+        messages: [{ role: 'user', content: contexto }]
       }),
       muteHttpExceptions: true
     });
@@ -1266,10 +1260,9 @@ function perguntar_(pedido) {
 /**
  * Devolve só o objeto JSON da resposta do modelo.
  *
- * Três formas aparecem na prática: a continuação do prefill (começa em
- * `"resposta":`, porque o '{' ficou na pergunta), o objeto inteiro, e o objeto
- * com alguma frase em volta. A ordem dos testes importa: procurar '{' primeiro
- * pegaria a chave de dentro da projeção.
+ * Rede de segurança: o normal é vir o objeto limpo, mas se escapar uma frase
+ * em volta dá para aproveitar o JSON mesmo assim. A ordem dos testes importa:
+ * procurar '{' primeiro pegaria a chave de dentro da projeção.
  */
 function recomporJson_(texto) {
   var t = String(texto || '').trim();
