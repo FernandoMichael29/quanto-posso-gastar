@@ -1,7 +1,7 @@
 // As janelas da tela Mês. Nenhuma fala com a planilha: recebem o rascunho,
 // devolvem mudanças por aoMudar e chamam aoConfirmar. Quem salva é Mes.jsx.
 import CartaoLancamento from '../../componentes/CartaoLancamento.jsx';
-import { formatarBRL } from '../../lib/parser.js';
+import { formatarBRL, soNumero } from '../../lib/parser.js';
 
 function Modal({ rotulo, ocupado, aoFechar, children }) {
   return (
@@ -23,22 +23,64 @@ function Botoes({ ocupado, aoCancelar, rotuloCancelar = 'Cancelar', aoConfirmar,
   );
 }
 
-/** Renda agendada: caiu mesmo? */
-export function ConfirmarRenda({ item, ocupado, aoFechar, aoConfirmar }) {
+/**
+ * Renda agendada: caiu mesmo, e de quanto? O valor vem preenchido com o
+ * previsto e dá para corrigir aqui — comissão, hora extra e desconto fazem o
+ * que cai ser diferente do combinado, e voltar depois para editar é um passo
+ * que ninguém dá.
+ */
+export function ConfirmarRenda({ item, previsto, ocupado, aoMudar, aoFechar, aoConfirmar }) {
+  const valor = Number(item.valor) || 0;
+  const diferenca = valor - previsto;
+  const iguais = Math.abs(diferenca) < 0.01;
+
   return (
     <Modal rotulo="Confirmar recebimento" ocupado={ocupado} aoFechar={aoFechar}>
       <div className="cartao destaque">
         <div className="valor-linha">
-          <span className="valor receita">{formatarBRL(item.valor_agendado ?? item.valor)}</span>
+          <label className="rotulo-campo-grande" htmlFor="renda-valor">Quanto caiu</label>
           <span className="etiqueta receita">agendado</span>
         </div>
+
+        {/* O número grande é o próprio campo: ele continua sendo a estrela do
+            card e muda ali mesmo, sem um segundo lugar para olhar. */}
+        <div className="valor-campo">
+          <span className="moeda" aria-hidden="true">R$</span>
+          <input
+            id="renda-valor"
+            type="text"
+            inputMode="numeric"
+            aria-label="Quanto caiu, em reais"
+            value={soNumero(valor)}
+            onChange={(e) => {
+              // Só dígitos, e os dois últimos são os centavos: digitar 235040
+              // vira 2.350,40. No celular abre o teclado numérico e ninguém
+              // precisa achar a vírgula.
+              const digitos = e.target.value.replace(/\D/g, '').slice(0, 11);
+              aoMudar({ ...item, valor: Number(digitos) / 100 });
+            }}
+          />
+        </div>
+
+        <p className="ajuda" style={{ margin: 0 }}>
+          Previsto {formatarBRL(previsto)} ·{' '}
+          <strong className={iguais ? '' : (diferenca > 0 ? 'mais' : 'menos')}>
+            {iguais
+              ? 'sem diferença'
+              : `${formatarBRL(Math.abs(diferenca))} ${diferenca > 0 ? 'a mais' : 'a menos'}`}
+          </strong>
+          {iguais ? '.' : '. Vale só para este mês.'}
+        </p>
+
         <p className="secao-titulo" style={{ margin: 0 }}>{item.nome_visivel || item.nome}</p>
         <p className="ajuda">
           Esse dinheiro está previsto, mas ainda não conta como recebido.
           Caiu mesmo? Registro com a data de hoje.
         </p>
+
         <Botoes ocupado={ocupado} aoCancelar={aoFechar} rotuloCancelar="Ainda não"
-          aoConfirmar={aoConfirmar} rotulo="Caiu, pode contar" rotuloOcupado="Registrando…" />
+          aoConfirmar={aoConfirmar} rotulo="Caiu, pode contar" rotuloOcupado="Registrando…"
+          desabilitado={!valor} />
       </div>
     </Modal>
   );
