@@ -44,6 +44,18 @@ export default function Compromissos({
   );
 }
 
+/**
+ * Qual número aparece na linha. O valor da regra mensal é só o combinado: se
+ * já existe lançamento — feito ou marcado para cair — o valor dele é o que
+ * vale, senão editar o lançamento mudava a janela e a linha ficava no valor
+ * antigo.
+ */
+function valorQueVale(i) {
+  if (i.lancado && i.valor_lancado != null) return i.valor_lancado;
+  if (i.valor_agendado != null) return i.valor_agendado;
+  return i.valor;
+}
+
 function Linhas({ itens, aoAbrir }) {
   return (
     <div className="lista">
@@ -65,7 +77,7 @@ function Linhas({ itens, aoAbrir }) {
             </span>
           </span>
           <span className={`num ${i.tipo === 'receita' ? 'receita' : ''}`}>
-            {formatarBRL(i.lancado && i.valor_lancado != null ? i.valor_lancado : i.valor)}
+            {formatarBRL(valorQueVale(i))}
           </span>
           <span className="seta" aria-hidden="true">›</span>
         </button>

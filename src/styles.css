@@ -859,6 +859,48 @@ button.item.sugestao { align-items: center; }
   background: var(--crit);
 }
 
+/* o número grande que também é campo: R$ fixo à esquerda, valor editável */
+.valor-campo {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  border-bottom: 2px dashed var(--line);
+  padding-bottom: 4px;
+}
+.valor-campo .moeda {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--accent);
+  opacity: .8;
+}
+.valor-campo input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: 38px;
+  font-weight: 700;
+  letter-spacing: -.035em;
+  line-height: 1.1;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.valor-campo input:focus { outline: none; }
+.valor-campo input::-webkit-outer-spin-button,
+.valor-campo input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.valor-campo:focus-within { border-bottom-color: var(--accent); }
+.rotulo-campo-grande {
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 600;
+}
+.ajuda .mais { color: var(--accent); font-weight: 600; }
+.ajuda .menos { color: var(--crit); font-weight: 600; }
+
 .faixa-caixa {
   display: flex;
   flex-wrap: wrap;

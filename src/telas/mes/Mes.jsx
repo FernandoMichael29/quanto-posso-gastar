@@ -74,7 +74,8 @@ export default function Mes({ cadastros, aoMudarDados }) {
     if (f.lancado) { abrirLancamento(f.uuid_lancamento); return; }
     // Já existe uma linha marcada para a frente: confirmar é promover aquela,
     // nunca criar outra — senão o mesmo salário entraria duas vezes.
-    if (f.uuid_agendado) { setConfirmandoRenda(f); return; }
+    // O valor entra editável no rascunho: o que cai nem sempre é o combinado.
+    if (f.uuid_agendado) { setConfirmandoRenda({ ...f, valor: f.valor_agendado ?? f.valor }); return; }
     const receita = f.tipo === 'receita';
     setPagandoFixa({
       nome: f.nome,
@@ -164,10 +165,15 @@ export default function Mes({ cadastros, aoMudarDados }) {
       {confirmandoRenda && (
         <ConfirmarRenda
           item={confirmandoRenda}
+          previsto={confirmandoRenda.valor_agendado ?? confirmandoRenda.valor}
           ocupado={salvando}
+          aoMudar={setConfirmandoRenda}
           aoFechar={() => setConfirmandoRenda(null)}
           aoConfirmar={() => salvar(
-            api.confirmarRecebimento(confirmandoRenda.uuid_agendado, { data: hojeISO() }),
+            api.confirmarRecebimento(confirmandoRenda.uuid_agendado, {
+              data: hojeISO(),
+              valor: Number(confirmandoRenda.valor) || 0
+            }),
             () => setConfirmandoRenda(null)
           )}
         />
