@@ -41,6 +41,9 @@ export default function Perguntar({ aoVerHistorico }) {
   // Quando a resposta se perde no caminho, a tela conta que está procurando
   // na planilha em vez de ficar parada num "Analisando…" que já terminou.
   const [procurando, setProcurando] = useState(false);
+  // A análise que a próxima pergunta continua. Vai junto para a IA responder
+  // em cima dos mesmos números em vez de refazer a conta do zero.
+  const [continuando, setContinuando] = useState(null);
   const sessao = useRef(null);
 
   // O histórico local abre na hora; a planilha atualiza em segundo plano.
@@ -62,11 +65,12 @@ export default function Perguntar({ aoVerHistorico }) {
     setAnalise(null);
     setRecuperada(false);
 
-    const r = await api.perguntar(q);
+    const r = await api.perguntar(q, continuando);
 
     if (r.ok) {
       setPensando(false);
       setAnalise(r);
+      setContinuando(null);
       const nova = guardar(q, r);
       setRecentes([nova, ...lerCache().filter((c) => c.data !== nova.data)].slice(0, 3));
       return;
@@ -152,10 +156,23 @@ export default function Perguntar({ aoVerHistorico }) {
             {pensando ? 'Analisando…' : 'Perguntar'}
           </button>
         </div>
-        <p className="ajuda">
-          Eu leio seu histórico real, seus compromissos fixos e o que você já me contou.
-          Cada pergunta custa menos de vinte centavos.
-        </p>
+        {continuando ? (
+          <div className="aviso bom" role="status">
+            <strong>Continuando a análise anterior</strong>
+            <span className="detalhe">
+              Vou usar os mesmos números e premissas dela. Pergunte o que mudou — por
+              exemplo, &ldquo;e se a parcela fosse 700?&rdquo;.
+            </span>
+            <button type="button" className="btn discreto pequeno" onClick={() => setContinuando(null)}>
+              começar do zero
+            </button>
+          </div>
+        ) : (
+          <p className="ajuda">
+            Eu leio seu histórico real, seus compromissos fixos e o que você já me contou.
+            Cada pergunta custa menos de vinte centavos.
+          </p>
+        )}
       </div>
 
       {!analise && !pensando && !erro && (
@@ -231,9 +248,27 @@ export default function Perguntar({ aoVerHistorico }) {
 
           <Analise analise={analise} />
 
-          <button className="btn discreto" onClick={() => { setAnalise(null); setPergunta(''); }}>
-            Fazer outra pergunta
-          </button>
+          <div className="botoes">
+            <button
+              className="btn discreto"
+              onClick={() => { setAnalise(null); setPergunta(''); setContinuando(null); }}
+            >
+              Outra pergunta
+            </button>
+            {/* Continuar sai mais barato em atenção: a IA já recebe esta
+                análise pronta e só mexe no que a nova pergunta mudar. */}
+            <button
+              className="btn"
+              onClick={() => {
+                setContinuando(analise);
+                setAnalise(null);
+                setPergunta('');
+                document.getElementById('pergunta')?.focus();
+              }}
+            >
+              Perguntar sobre esta análise
+            </button>
+          </div>
         </>
       )}
     </>

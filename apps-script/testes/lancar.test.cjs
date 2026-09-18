@@ -253,3 +253,14 @@ assert.deepStrictEqual(ap.aprendidos, [], 'sem correção não aprende');
 const edApr = editarLancamento_({ uuid: 'apr3', campos: { categoria: 'Freela' } });
 assert.deepStrictEqual(edApr.aprendido, { palavra: 'tenis nike', categoria: 'Freela' }, 'edição aprende');
 console.log('\naprender categoria: ok');
+
+// 22. os 12 meses à frente enxergam vigências, parcelas e agendados
+abas.recorrentes.dados.push(['Salário empresa 2','receita','Salário',8000,5,'Nubank Fernando','','Fernando','2026-10','','padrao','','','', new Date()]);
+abas.recorrentes.dados.push(['Aluguel teste','despesa','Moradia',1800,10,'Nubank Fernando','','Fernando','2026-01','','padrao','','','', new Date()]);
+const prev = previsao12_();
+const mes = (k) => prev.find((x) => x.mes === k);
+assert.strictEqual(prev.length, 12, '12 meses');
+assert.ok(mes('2026-10').fixas_a_receber >= 8000, 'renda que começa em outubro entra na previsão');
+assert.ok(mes('2026-09').fixas_a_receber < 8000, 'e não aparece antes da vigência');
+assert.ok(mes('2026-11').sai >= 1800, 'aluguel continua nos meses seguintes');
+console.log('\nprevisão de 12 meses: ok');
