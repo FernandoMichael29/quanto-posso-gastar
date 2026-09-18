@@ -31,7 +31,7 @@
 
 // Suba junto com VERSAO_APP em src/lib/versao.js — o app compara as duas e
 // avisa na tela quando só uma das metades foi publicada.
-var VERSAO = '2.5.0';
+var VERSAO = '2.6.0';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -1022,8 +1022,72 @@ function panorama_(pedido) {
       .slice(0, 12),
     contas: contas,
     saldo_estimado: Math.round((saldoInicial + movimento) * 100) / 100,
+    // Doze meses de calendário real: é o que a IA deve usar para projetar.
+    previsao_12m: previsao12_(),
     memoria: lerMemoria_()
   };
+}
+
+/**
+ * Doze meses à frente, mês a mês, com tudo que já está marcado no calendário.
+ *
+ * A projeção da IA era "repete o mês atual", e isso ignorava justamente o que
+ * dá previsibilidade: uma renda que começa em outubro, uma conta fixa que
+ * termina em dezembro, as parcelas que ainda vão cair e os recebimentos já
+ * agendados. Aqui a aritmética é feita em código, com as mesmas regras da tela
+ * Mês — vigências dos recorrentes, cruzamento com o que já foi lançado (para
+ * não contar duas vezes) e os lançamentos futuros que já existem na planilha.
+ */
+function previsao12_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var aba = ss.getSheetByName('lancamentos');
+  var n = aba.getLastRow() - 1;
+  var col = indiceColunas_();
+  var todos = lerRecorrentes_();
+  var hoje = mesAtual_();
+
+  var saida = [];
+  for (var i = 0; i < 12; i++) {
+    var mes = mesSomado_(hoje, i);
+
+    // O que já está gravado para este mês: parcelas que vão cair, compras
+    // futuras, rendas agendadas. 'ok' é fato ou parcela marcada; 'agendado' é
+    // dinheiro previsto que ainda não caiu.
+    var despesasLancadas = lancamentosDoMesCru_(mes, col, aba, n, TIPO.DESPESA)
+      .concat(lancamentosDoMesCru_(mes, col, aba, n, TIPO.DESPESA, STATUS.AGENDADO));
+    var receitasLancadas = lancamentosDoMesCru_(mes, col, aba, n, TIPO.RECEITA)
+      .concat(lancamentosDoMesCru_(mes, col, aba, n, TIPO.RECEITA, STATUS.AGENDADO));
+
+    // As regras mensais que valem NESTE mês (cada uma no valor da vigência dele).
+    var fixos = compromissosDoMes_(todos, mes);
+    var fixasDespesa = cruzarCompromissos_(
+      fixos.filter(function (r) { return r.tipo !== TIPO.RECEITA; }), despesasLancadas);
+    var fixasReceita = cruzarCompromissos_(
+      fixos.filter(function (r) { return r.tipo === TIPO.RECEITA; }), receitasLancadas);
+
+    // Só entra o que ainda não virou lançamento — senão a conta fixa já paga
+    // seria somada duas vezes.
+    var somar = function (lista) {
+      return lista.reduce(function (a, c) { return a + (Number(c.valor) || 0); }, 0);
+    };
+    var faltaPagar = somar(fixasDespesa.filter(function (f) { return !f.lancado; }));
+    var faltaReceber = somar(fixasReceita.filter(function (f) { return !f.lancado; }));
+
+    var entra = arred_(somar(receitasLancadas) + faltaReceber);
+    var sai = arred_(somar(despesasLancadas) + faltaPagar);
+
+    saida.push({
+      mes: mes,
+      entra: entra,
+      sai: sai,
+      sobra: arred_(entra - sai),
+      ja_lancado_entra: arred_(somar(receitasLancadas)),
+      ja_lancado_sai: arred_(somar(despesasLancadas)),
+      fixas_a_receber: arred_(faltaReceber),
+      fixas_a_pagar: arred_(faltaPagar)
+    });
+  }
+  return saida;
 }
 
 function lerContasCompletas_() {
@@ -1072,6 +1136,13 @@ function perguntar_(pedido) {
     'na segunda pessoa, direto e sem jargão. Hoje é ' + hojeISO_() + '.\n\n' +
 
     'A aritmética já foi feita: use os números do panorama como verdade e não os recalcule.\n' +
+    'PREVISAO_12M é o calendário real dele, mês a mês: já inclui as rendas e as contas\n' +
+    'fixas que valem em cada mês (com começo e fim de vigência), as parcelas que ainda\n' +
+    'vão cair e os recebimentos agendados. Use "entra" e "sai" de cada mês como base da\n' +
+    'sua projeção — não repita o mês atual doze vezes. Se uma renda só começa em algum\n' +
+    'mês, ou uma parcela acaba, isso já está lá e você deve comentar quando for relevante.\n' +
+    'Os gastos variáveis NÃO estão em PREVISAO_12M: some sua estimativa deles por fora e\n' +
+    'diga em "premissas" quanto assumiu.\n\n'
     'Quando faltar um dado, assuma algo razoável e DIGA que assumiu, em "premissas".\n\n' +
 
     'Se a pergunta for sobre assumir um novo compromisso (uma parcela, uma assinatura,\n' +
@@ -1109,11 +1180,18 @@ function perguntar_(pedido) {
       contas: p.contas,
       saldo_estimado: p.saldo_estimado
     }) + '\n\n' +
+    'PREVISAO_12M (calendário já marcado, sem os gastos variáveis):\n' +
+    JSON.stringify(p.previsao_12m) + '\n\n' +
     'O QUE ELE JÁ ME CONTOU:\n' + (p.memoria.length ? p.memoria.join('\n') : '(nada ainda)') + '\n\n' +
     (historico.length
       ? 'CONVERSAS ANTERIORES:\n' + historico.map(function (h) {
           return 'P: ' + h.pergunta + '\nR: ' + String(h.resposta).slice(0, 600);
         }).join('\n\n') + '\n\n'
+      : '') +
+    (pedido.analise_anterior
+      ? 'ESTA PERGUNTA CONTINUA A ANÁLISE ABAIXO. Use os mesmos números e premissas dela;\n' +
+        'só recalcule o que a nova pergunta mudar, e diga o que mudou.\n' +
+        JSON.stringify(pedido.analise_anterior).slice(0, 12000) + '\n\n'
       : '') +
     'PERGUNTA:\n' + pergunta;
 
