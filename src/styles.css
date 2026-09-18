@@ -729,6 +729,26 @@ button.aviso:active { filter: brightness(1.06); }
 
 button.item.sugestao { align-items: center; }
 
+/* linha do histórico: a pergunta abre, o × apaga */
+.item.conversa { align-items: center; gap: var(--e2); }
+.item.conversa .abrir-conversa {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+}
+.item.conversa .abrir-conversa .titulo { display: block; }
+.item.conversa .btn { min-height: 40px; padding: 4px 10px; font-size: 18px; line-height: 1; }
+.item .meta .pos { color: var(--accent); font-weight: 600; }
+.item .meta .warn { color: var(--warn); font-weight: 600; }
+.item .meta .neg { color: var(--crit); font-weight: 600; }
+
 .item .marcador {
   flex: none;
   width: 22px; height: 22px;

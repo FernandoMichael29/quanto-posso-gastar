@@ -1,8 +1,8 @@
-import { useRef, useState } from 'react';
-import GraficoProjecao from '../componentes/GraficoProjecao.jsx';
+import { useEffect, useRef, useState } from 'react';
+import Analise from '../componentes/Analise.jsx';
 import { api, configurado } from '../lib/api.js';
 import { escutar, ERRO_VOZ, temReconhecimento } from '../lib/voz.js';
-import { formatarBRL } from '../lib/parser.js';
+import { guardar, lerCache, sincronizar } from '../lib/conversas.js';
 
 const SUGESTOES = [
   'Estou pensando em comprar um carro com parcela de 950. Quanto isso afeta minhas finanças?',
@@ -10,12 +10,6 @@ const SUGESTOES = [
   'Consigo guardar 500 por mês do jeito que estou hoje?',
   'Se eu cortar delivery pela metade, quanto sobra no ano?'
 ];
-
-const VEREDITOS = {
-  confortavel: { rotulo: 'Cabe no seu orçamento', classe: 'bom' },
-  apertado: { rotulo: 'Cabe, mas sem margem', classe: 'atencao' },
-  arriscado: { rotulo: 'Compromete mais do que sobra', classe: 'ruim' }
-};
 
 const ERROS = {
   sem_dados: 'Ainda não tenho lançamentos suficientes para projetar. Registre sua renda e alguns gastos primeiro — uma ou duas semanas já dão uma boa base.',
@@ -27,19 +21,28 @@ const ERROS = {
   sem_configuracao: 'Configure o endereço e o token nos Ajustes primeiro.',
   limite_taxa: 'Muitas chamadas seguidas. Espera um minuto e tenta de novo.',
   api_fora: 'A IA está fora do ar agora. Tenta daqui a pouco.',
-  // O script devolveu 200 sem corpo nenhum: quase sempre a execução dele
-  // estourou o tempo no meio da análise.
-  resposta_vazia: 'O script da planilha não terminou a análise a tempo e não respondeu nada. Tente de novo — se repetir, veja "Execuções" no Apps Script para ver onde ele parou.',
-  resposta_estranha: 'O script respondeu algo que não é JSON. Confira se a implantação está atualizada no Apps Script.'
+  // O script devolveu 200 sem corpo nenhum: quase sempre a resposta se perdeu
+  // no caminho depois de pronta.
+  resposta_vazia: 'A resposta não chegou inteira no aparelho. A análise pode ter ficado guardada — veja no Histórico antes de perguntar de novo.',
+  resposta_estranha: 'O script respondeu algo que não é JSON — provavelmente uma página de erro do Google.'
 };
 
-export default function Perguntar() {
+export default function Perguntar({ aoVerHistorico }) {
   const [pergunta, setPergunta] = useState('');
   const [pensando, setPensando] = useState(false);
   const [analise, setAnalise] = useState(null);
+  const [recuperada, setRecuperada] = useState(false);
   const [erro, setErro] = useState(null);
   const [ouvindo, setOuvindo] = useState(false);
+  const [recentes, setRecentes] = useState(() => lerCache().slice(0, 3));
   const sessao = useRef(null);
+
+  // O histórico local abre na hora; a planilha atualiza em segundo plano.
+  useEffect(() => {
+    let vivo = true;
+    sincronizar().then((r) => { if (vivo) setRecentes(r.lista.slice(0, 3)); });
+    return () => { vivo = false; };
+  }, []);
 
   async function enviar(texto) {
     const q = (texto ?? pergunta).trim();
@@ -51,25 +54,33 @@ export default function Perguntar() {
     setPensando(true);
     setErro(null);
     setAnalise(null);
+    setRecuperada(false);
 
     const r = await api.perguntar(q);
 
-    if (r.ok) { setPensando(false); setAnalise(r); return; }
+    if (r.ok) {
+      setPensando(false);
+      setAnalise(r);
+      const nova = guardar(q, r);
+      setRecentes([nova, ...lerCache().filter((c) => c.data !== nova.data)].slice(0, 3));
+      return;
+    }
 
     // A resposta pode ter se perdido no caminho depois de pronta — o script
     // grava toda análise na planilha, então vale procurar lá antes de dizer
     // que falhou. Isso não custa IA nenhuma.
-    if (r.erro === 'resposta_vazia' || r.erro === 'sem_rede') {
+    if (r.erro === 'resposta_vazia' || r.erro === 'resposta_estranha' || r.erro === 'sem_rede') {
       const guardada = await recuperarUltima(q);
       if (guardada) {
         setPensando(false);
-        setAnalise({ ...guardada, recuperada: true });
+        setAnalise(guardada);
+        setRecuperada(true);
         return;
       }
     }
 
     setPensando(false);
-    setErro(ERROS[r.erro] || r.detalhe || 'Não consegui responder agora.');
+    setErro([ERROS[r.erro] || 'Não consegui responder agora.', r.detalhe].filter(Boolean).join(' '));
   }
 
   /** A última análise da planilha, se for desta mesma pergunta e recente. */
@@ -95,8 +106,6 @@ export default function Perguntar() {
       aoErro: (c) => { setOuvindo(false); setErro(ERRO_VOZ[c] || 'Não consegui ouvir.'); }
     });
   }
-
-  const veredito = analise && VEREDITOS[analise.veredito];
 
   return (
     <>
@@ -140,6 +149,27 @@ export default function Perguntar() {
               </button>
             ))}
           </div>
+
+          {/* As últimas já respondidas ficam à mão: reabrir não custa nada,
+              perguntar de novo custa. */}
+          {recentes.length > 0 && (
+            <>
+              <div className="secao-cabecalho">
+                <p className="secao-titulo" style={{ margin: 0 }}>Você já perguntou</p>
+                <button type="button" className="btn discreto pequeno" onClick={aoVerHistorico}>
+                  ver todas ›
+                </button>
+              </div>
+              <div className="lista">
+                {recentes.map((c) => (
+                  <button key={c.data} className="item sugestao" onClick={aoVerHistorico}>
+                    <span className="corpo"><span className="titulo">{c.pergunta}</span></span>
+                    <span className="seta" aria-hidden="true">›</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </>
       )}
 
@@ -159,7 +189,7 @@ export default function Perguntar() {
 
       {analise && (
         <>
-          {analise.recuperada && (
+          {recuperada && (
             <div className="aviso bom" role="status">
               <strong>Recuperei a resposta da planilha</strong>
               <span className="detalhe">
@@ -168,57 +198,7 @@ export default function Perguntar() {
             </div>
           )}
 
-          {veredito && (
-            <div className={`aviso ${veredito.classe}`}>
-              <strong>{veredito.rotulo}</strong>
-              {analise.compromisso_mensal > 0 && (
-                <span className="detalhe">
-                  Simulando {formatarBRL(analise.compromisso_mensal)} por mês.
-                </span>
-              )}
-            </div>
-          )}
-
-          <div className="cartao">
-            {String(analise.resposta || '')
-              .split(/\n{2,}/)
-              .filter(Boolean)
-              .map((p, i) => <p key={i}>{p}</p>)}
-          </div>
-
-          <GraficoProjecao
-            projecao={analise.projecao}
-            compromisso={analise.compromisso_mensal}
-          />
-
-          {analise.sugestoes?.length > 0 && (
-            <>
-              <p className="secao-titulo">O que dá pra fazer</p>
-              <div className="lista">
-                {analise.sugestoes.map((s, i) => (
-                  <div className="item" key={i}>
-                    <span className="marcador" aria-hidden="true">{i + 1}</span>
-                    <span className="corpo"><span className="titulo">{s}</span></span>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-
-          {analise.premissas?.length > 0 && (
-            <>
-              <p className="secao-titulo">No que eu me baseei</p>
-              <div className="cartao">
-                <ul className="premissas">
-                  {analise.premissas.map((p, i) => <li key={i}>{p}</li>)}
-                </ul>
-                <p className="ajuda">
-                  Se alguma dessas premissas estiver errada, me corrija falando —
-                  tipo &ldquo;meu aluguel agora é 1900&rdquo; — e pergunte de novo.
-                </p>
-              </div>
-            </>
-          )}
+          <Analise analise={analise} />
 
           <button className="btn discreto" onClick={() => { setAnalise(null); setPergunta(''); }}>
             Fazer outra pergunta
@@ -231,6 +211,6 @@ export default function Perguntar() {
 
 /** Compara perguntas ignorando acento, caixa e espaço sobrando. */
 function normalizar(t) {
-  return String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  return String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
     .toLowerCase().replace(/\s+/g, ' ').trim();
 }

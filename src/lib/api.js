@@ -139,6 +139,7 @@ export const api = {
   perguntar: (pergunta) => chamar('perguntar', { pergunta }, { prazo: 90000 }),
   // Perguntas já respondidas, com a análise inteira: não custa IA nenhuma.
   conversas: (limite = 10) => chamar('conversas', { limite }),
+  excluirConversa: (data) => chamar('excluir_conversa', { data }),
   panorama: () => chamar('panorama'),
   pendencias: () => chamar('pendencias'),
   categorias: () => chamar('categorias')
