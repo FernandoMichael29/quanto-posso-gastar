@@ -1232,6 +1232,17 @@ button.item.sugestao { align-items: center; }
 
 @keyframes girar { to { transform: rotate(360deg); } }
 
+/* linha esperando a planilha: véu por cima dela só, com a mesma roda */
+.item.ocupado { position: relative; }
+.item.ocupado .capa {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  backdrop-filter: blur(1px);
+}
+
 .esqueleto { display: flex; flex-direction: column; gap: var(--e3); }
 
 .osso {

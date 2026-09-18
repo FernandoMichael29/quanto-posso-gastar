@@ -25,6 +25,9 @@ export default function Mes({ cadastros, aoMudarDados }) {
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState(null);
   const [salvando, setSalvando] = useState(false);
+  // Qual linha da tela está esperando a planilha responder ('lanc:<uuid>',
+  // 'fixa:<nome>', 'fatura:<cartão>'). É o que põe a máscara em cima dela.
+  const [ocupado, setOcupado] = useState(null);
   const [aprendido, setAprendido] = useState(null);
   // A aba lembrada neste aparelho: quem sempre abre em Contas não precisa tocar de novo.
   const [vista, setVista] = useState(() => {
@@ -53,14 +56,21 @@ export default function Mes({ cadastros, aoMudarDados }) {
 
   useEffect(() => { carregar(mes); }, [mes, carregar]);
 
-  /** Toda gravação é igual: trava os botões, chama, e se deu certo fecha e recarrega. */
-  async function salvar(chamada, aoDarCerto) {
+  /**
+   * Toda gravação é igual: trava os botões, chama, e se deu certo fecha a
+   * janela e recarrega. A janela fecha antes da planilha responder, então a
+   * linha mexida fica marcada como ocupada até o dado novo chegar — senão a
+   * tela mostra o valor velho e parece que não salvou.
+   */
+  async function salvar(id, chamada, aoDarCerto) {
     setSalvando(true);
+    setOcupado(id);
     const r = await chamada;
     setSalvando(false);
-    if (!r.ok) { setErro(traduzir(r.erro)); return; }
+    if (!r.ok) { setErro(traduzir(r.erro)); setOcupado(null); return; }
     aoDarCerto(r);
-    carregar(mes);
+    await carregar(mes);
+    setOcupado(null);
     aoMudarDados?.();
   }
 
@@ -146,6 +156,7 @@ export default function Mes({ cadastros, aoMudarDados }) {
       {painel && vista === 'contas' && (
         <AbaContas
           painel={painel}
+          ocupado={ocupado}
           aoAbrirCompromisso={abrirCompromisso}
           aoAbrirFatura={abrirFatura}
           aoAbrirLancamento={abrirLancamento}
@@ -157,7 +168,8 @@ export default function Mes({ cadastros, aoMudarDados }) {
           key={mes}
           lista={lista}
           pessoas={pessoas}
-          carregando={carregando}
+          carregando={carregando && lista.length === 0}
+          ocupado={ocupado}
           aoAbrir={(l) => setEditando({ ...l })}
         />
       )}
@@ -170,6 +182,7 @@ export default function Mes({ cadastros, aoMudarDados }) {
           aoMudar={setConfirmandoRenda}
           aoFechar={() => setConfirmandoRenda(null)}
           aoConfirmar={() => salvar(
+            `fixa:${confirmandoRenda.nome}`,
             api.confirmarRecebimento(confirmandoRenda.uuid_agendado, {
               data: hojeISO(),
               valor: Number(confirmandoRenda.valor) || 0
@@ -188,9 +201,9 @@ export default function Mes({ cadastros, aoMudarDados }) {
           aoFechar={() => setEditando(null)}
           aoSalvar={() => {
             const { uuid, ...campos } = editando;
-            salvar(api.editarLancamento(uuid, campos), (r) => { setEditando(null); setAprendido(r.aprendido || null); });
+            salvar(`lanc:${uuid}`, api.editarLancamento(uuid, campos), (r) => { setEditando(null); setAprendido(r.aprendido || null); });
           }}
-          aoExcluir={() => salvar(api.excluirLancamento(editando.uuid), () => setEditando(null))}
+          aoExcluir={() => salvar(`lanc:${editando.uuid}`, api.excluirLancamento(editando.uuid), () => setEditando(null))}
           aoTornarMensal={() => setVirandoMensal({
             uuid: editando.uuid,
             receita: editando.tipo === 'receita',
@@ -209,6 +222,7 @@ export default function Mes({ cadastros, aoMudarDados }) {
           aoMudar={setPagandoFatura}
           aoFechar={() => setPagandoFatura(null)}
           aoConfirmar={() => salvar(
+            `fatura:${pagandoFatura.cartao}`,
             api.pagarFatura(pagandoFatura.cartao, mes, {
               valor: Number(pagandoFatura.valor) || 0,
               conta: pagandoFatura.conta,
@@ -227,6 +241,7 @@ export default function Mes({ cadastros, aoMudarDados }) {
           aoMudar={setPagandoFixa}
           aoFechar={() => setPagandoFixa(null)}
           aoConfirmar={() => salvar(
+            `fixa:${pagandoFixa.nome}`,
             api.pagarFixa(pagandoFixa.nome, mes, { ...pagandoFixa.lancamento, dia: pagandoFixa.dia, ajuste: pagandoFixa.ajuste }),
             () => setPagandoFixa(null)
           )}
@@ -240,6 +255,7 @@ export default function Mes({ cadastros, aoMudarDados }) {
           aoMudar={setVirandoMensal}
           aoFechar={() => setVirandoMensal(null)}
           aoConfirmar={() => salvar(
+            `lanc:${virandoMensal.uuid}`,
             api.tornarMensal(virandoMensal.uuid, {
               nome: virandoMensal.nome,
               dia: virandoMensal.dia,

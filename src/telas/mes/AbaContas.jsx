@@ -1,11 +1,12 @@
 import Compromissos from '../../componentes/Compromissos.jsx';
+import Capa from '../../componentes/Capa.jsx';
 import Sanfona from '../../componentes/Sanfona.jsx';
 import { formatarBRL } from '../../lib/parser.js';
 import { diaDe, nomeDoMes } from '../../lib/datas.js';
 import { fixasDoPainel, rendasDoPainel, resumirFixas } from './util.js';
 
 /** O que ainda vence ou cai: rendas, contas fixas, faturas e parceladas. */
-export default function AbaContas({ painel, aoAbrirCompromisso, aoAbrirFatura, aoAbrirLancamento }) {
+export default function AbaContas({ painel, ocupado, aoAbrirCompromisso, aoAbrirFatura, aoAbrirLancamento }) {
   const fixas = fixasDoPainel(painel);
   const atrasadas = resumirFixas(fixas.filter((f) => f.situacao === 'erro'));
   const aVencer = resumirFixas(fixas.filter((f) => f.situacao === 'pendente'));
@@ -25,6 +26,7 @@ export default function AbaContas({ painel, aoAbrirCompromisso, aoAbrirFatura, a
         titulo="Rendas do mês"
         resumo={painel.a_receber_total > 0 ? `${formatarBRL(painel.a_receber_total)} a receber` : 'tudo recebido'}
         itens={rendasDoPainel(painel)}
+        ocupado={ocupado}
         aoAbrir={aoAbrirCompromisso}
         rotuloFeitos={{ um: 'já recebida', varios: 'já recebidas' }}
       />
@@ -35,6 +37,7 @@ export default function AbaContas({ painel, aoAbrirCompromisso, aoAbrirFatura, a
             titulo="Contas fixas do mês"
             resumo={`${formatarBRL(painel.fixas_total)} no total`}
             itens={fixas}
+            ocupado={ocupado}
             aoAbrir={aoAbrirCompromisso}
             rotuloFeitos={{ um: 'já lançada', varios: 'já lançadas' }}
           />
@@ -86,9 +89,10 @@ export default function AbaContas({ painel, aoAbrirCompromisso, aoAbrirFatura, a
             {faturasAPagar.map((f) => (
               <button
                 type="button"
-                className={`item fatura clicavel ${f.pago ? 'paga' : ''}`}
+                className={`item fatura clicavel ${f.pago ? 'paga' : ''} ${ocupado === `fatura:${f.cartao}` ? 'ocupado' : ''}`}
                 key={f.cartao}
                 onClick={() => aoAbrirFatura(f)}
+                disabled={ocupado === `fatura:${f.cartao}`}
               >
                 <span className={`ponto ${f.pago ? 'sincronizado' : 'pendente'}`} aria-hidden="true" />
                 <span className="corpo">
@@ -102,6 +106,7 @@ export default function AbaContas({ painel, aoAbrirCompromisso, aoAbrirFatura, a
                 </span>
                 <span className="num">{formatarBRL(f.pago ? f.valor_pago : f.total)}</span>
                 <span className="seta" aria-hidden="true">›</span>
+                <Capa quando={ocupado === `fatura:${f.cartao}`} />
               </button>
             ))}
           </div>

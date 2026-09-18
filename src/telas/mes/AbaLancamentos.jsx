@@ -1,5 +1,6 @@
 import { Fragment, useRef, useState } from 'react';
 import Esqueleto from '../../componentes/Esqueleto.jsx';
+import Capa from '../../componentes/Capa.jsx';
 import { semAcento, soNumero } from '../../lib/parser.js';
 import { diaDe } from '../../lib/datas.js';
 import { ehFuturo } from './util.js';
@@ -8,7 +9,7 @@ import { ehFuturo } from './util.js';
  * O que aconteceu no mês: busca, filtro por pessoa e páginas.
  * Quem usa passa key={mes} — mês novo começa com busca e página limpas.
  */
-export default function AbaLancamentos({ lista, pessoas, carregando, aoAbrir }) {
+export default function AbaLancamentos({ lista, pessoas, carregando, ocupado, aoAbrir }) {
   const [busca, setBusca] = useState('');
   const [filtroPessoa, setFiltroPessoa] = useState('');
   const [pagina, setPagina] = useState(1);
@@ -93,8 +94,9 @@ export default function AbaLancamentos({ lista, pessoas, carregando, aoAbrir }) 
               )}
               <button
                 type="button"
-                className={`item clicavel ${l.status === 'agendado' ? 'agendado' : ''}`}
+                className={`item clicavel ${l.status === 'agendado' ? 'agendado' : ''} ${ocupado === `lanc:${l.uuid}` ? 'ocupado' : ''}`}
                 onClick={() => aoAbrir(l)}
+                disabled={ocupado === `lanc:${l.uuid}`}
               >
                 <span className="corpo">
                   <span className="titulo">{l.descricao || l.categoria || '(sem descrição)'}</span>
@@ -112,6 +114,7 @@ export default function AbaLancamentos({ lista, pessoas, carregando, aoAbrir }) 
                 <span className={`num ${l.tipo === 'receita' ? 'receita' : ''}`}>
                   {l.tipo === 'receita' ? '+' : '−'}{soNumero(l.valor)}
                 </span>
+                <Capa quando={ocupado === `lanc:${l.uuid}`} />
               </button>
             </Fragment>
           ))}

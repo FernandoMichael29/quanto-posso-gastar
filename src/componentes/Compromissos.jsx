@@ -1,4 +1,5 @@
 import Sanfona from './Sanfona.jsx';
+import Capa from './Capa.jsx';
 import { formatarBRL } from '../lib/parser.js';
 
 // Contas fixas e rendas do mês.
@@ -12,6 +13,7 @@ export default function Compromissos({
   titulo,
   resumo,          // texto à direita do título da seção
   itens,
+  ocupado,         // 'fixa:<nome>' da linha que está salvando, se houver
   aoAbrir,
   rotuloFeitos     // { um: 'já lançada', varios: 'já lançadas' }
 }) {
@@ -30,14 +32,14 @@ export default function Compromissos({
         {resumo && <span className="ajuda" style={{ margin: 0 }}>{resumo}</span>}
       </div>
 
-      {pendentes.length > 0 && <Linhas itens={pendentes} aoAbrir={aoAbrir} />}
+      {pendentes.length > 0 && <Linhas itens={pendentes} ocupado={ocupado} aoAbrir={aoAbrir} />}
 
       {feitos.length > 0 && (
         <Sanfona
           titulo={`${feitos.length} ${feitos.length === 1 ? rotuloFeitos.um : rotuloFeitos.varios}`}
           resumo={formatarBRL(totalFeitos)}
         >
-          <Linhas itens={feitos} aoAbrir={aoAbrir} />
+          <Linhas itens={feitos} ocupado={ocupado} aoAbrir={aoAbrir} />
         </Sanfona>
       )}
     </>
@@ -56,15 +58,16 @@ function valorQueVale(i) {
   return i.valor;
 }
 
-function Linhas({ itens, aoAbrir }) {
+function Linhas({ itens, ocupado, aoAbrir }) {
   return (
     <div className="lista">
       {itens.map((i) => (
         <button
           type="button"
-          className={`item fixa clicavel ${i.lancado ? 'paga' : ''}`}
+          className={`item fixa clicavel ${i.lancado ? 'paga' : ''} ${ocupado === `fixa:${i.nome}` ? 'ocupado' : ''}`}
           key={i.nome}
           onClick={() => aoAbrir(i)}
+          disabled={ocupado === `fixa:${i.nome}`}
         >
           <span className={`ponto ${i.situacao}`} aria-hidden="true" />
           <span className="corpo">
@@ -80,6 +83,7 @@ function Linhas({ itens, aoAbrir }) {
             {formatarBRL(valorQueVale(i))}
           </span>
           <span className="seta" aria-hidden="true">›</span>
+          <Capa quando={ocupado === `fixa:${i.nome}`} />
         </button>
       ))}
     </div>
