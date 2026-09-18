@@ -83,7 +83,18 @@ async function chamar(acao, dados = {}, opcoes = {}) {
       redirect: 'follow'
     });
     if (!resposta.ok) return { ok: false, erro: 'api_fora', detalhe: `HTTP ${resposta.status}` };
-    return await resposta.json();
+
+    // O Apps Script às vezes devolve 200 com corpo vazio: é o que acontece
+    // quando a execução estoura o tempo dele (a análise é a chamada mais
+    // demorada). Sem este cuidado, o erro que chegava na tela era o
+    // "Unexpected end of JSON input" do JSON.parse, que não diz nada.
+    const texto = await resposta.text();
+    if (!texto.trim()) return { ok: false, erro: 'resposta_vazia' };
+    try {
+      return JSON.parse(texto);
+    } catch {
+      return { ok: false, erro: 'resposta_estranha', detalhe: texto.slice(0, 200) };
+    }
   } catch (err) {
     return { ok: false, erro: 'sem_rede', detalhe: String(err && err.message || err) };
   } finally {

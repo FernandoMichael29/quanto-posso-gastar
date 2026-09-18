@@ -26,7 +26,11 @@ const ERROS = {
   sem_rede: 'Sem internet. Esta tela precisa de conexão — ela consulta seu histórico na hora.',
   sem_configuracao: 'Configure o endereço e o token nos Ajustes primeiro.',
   limite_taxa: 'Muitas chamadas seguidas. Espera um minuto e tenta de novo.',
-  api_fora: 'A IA está fora do ar agora. Tenta daqui a pouco.'
+  api_fora: 'A IA está fora do ar agora. Tenta daqui a pouco.',
+  // O script devolveu 200 sem corpo nenhum: quase sempre a execução dele
+  // estourou o tempo no meio da análise.
+  resposta_vazia: 'O script da planilha não terminou a análise a tempo e não respondeu nada. Tente de novo — se repetir, veja "Execuções" no Apps Script para ver onde ele parou.',
+  resposta_estranha: 'O script respondeu algo que não é JSON. Confira se a implantação está atualizada no Apps Script.'
 };
 
 export default function Perguntar() {
