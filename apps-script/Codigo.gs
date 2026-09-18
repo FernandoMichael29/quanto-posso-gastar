@@ -31,7 +31,7 @@
 
 // Suba junto com VERSAO_APP em src/lib/versao.js — o app compara as duas e
 // avisa na tela quando só uma das metades foi publicada.
-var VERSAO = '2.6.0';
+var VERSAO = '2.6.1';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -1153,7 +1153,8 @@ function perguntar_(pedido) {
     '"arriscado" se comprometer mais do que sobra, ou se os dados forem poucos demais\n' +
     'para afirmar qualquer coisa (nesse caso diga isso na resposta).\n\n' +
 
-    'Responda SOMENTE com um objeto JSON, sem markdown em volta:\n' +
+    'Responda SOMENTE com um objeto JSON, sem markdown e sem nenhuma palavra antes ou depois.\n' +
+    'Sua resposta já começa com "{" — continue de lá.\n' +
     'Seja econômico: o texto todo cabe em poucos parágrafos e as listas são curtas.\n' +
     '{"resposta": string (2 a 4 parágrafos curtos, texto puro, sem títulos),\n' +
     ' "veredito": "confortavel|apertado|arriscado",\n' +
@@ -1208,7 +1209,13 @@ function perguntar_(pedido) {
         // string — era isso, e não a rede, que dava "Unexpected end of JSON input".
         max_tokens: 8000,
         system: instrucao,
-        messages: [{ role: 'user', content: contexto }]
+        messages: [
+          { role: 'user', content: contexto },
+          // Prefill: a resposta já começa aberta em '{', então o modelo não tem
+          // como emendar um "Direto ao ponto:" antes do JSON. Era isso que dava
+          // "Unexpected token 'D' ... is not valid JSON".
+          { role: 'assistant', content: '{' }
+        ]
       }),
       muteHttpExceptions: true
     });
@@ -1237,6 +1244,7 @@ function perguntar_(pedido) {
 
     var saida = (dados.content || []).map(function (b) { return b.text || ''; }).join('').trim();
     saida = saida.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+    saida = recomporJson_(saida);
     var analise = JSON.parse(saida);
 
     (analise.lembrar || []).forEach(function (f) {
@@ -1253,6 +1261,22 @@ function perguntar_(pedido) {
   } catch (err) {
     return { ok: false, erro: 'analise_ilegivel', detalhe: String(err && err.message || err) };
   }
+}
+
+/**
+ * Devolve só o objeto JSON da resposta do modelo.
+ *
+ * Três formas aparecem na prática: a continuação do prefill (começa em
+ * `"resposta":`, porque o '{' ficou na pergunta), o objeto inteiro, e o objeto
+ * com alguma frase em volta. A ordem dos testes importa: procurar '{' primeiro
+ * pegaria a chave de dentro da projeção.
+ */
+function recomporJson_(texto) {
+  var t = String(texto || '').trim();
+  if (t.charAt(0) === '{') return t.slice(0, t.lastIndexOf('}') + 1);
+  if (t.charAt(0) === '"') return '{' + t.slice(0, t.lastIndexOf('}') + 1);
+  var abre = t.indexOf('{');
+  return abre >= 0 ? t.slice(abre, t.lastIndexOf('}') + 1) : t;
 }
 
 /** Custo em reais, aproximado, dos preços do Sonnet 5. */

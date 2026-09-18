@@ -264,3 +264,11 @@ assert.ok(mes('2026-10').fixas_a_receber >= 8000, 'renda que começa em outubro 
 assert.ok(mes('2026-09').fixas_a_receber < 8000, 'e não aparece antes da vigência');
 assert.ok(mes('2026-11').sai >= 1800, 'aluguel continua nos meses seguintes');
 console.log('\nprevisão de 12 meses: ok');
+
+// 23. a resposta do modelo, nas três formas que já apareceram na prática
+assert.strictEqual(JSON.parse(recomporJson_('"veredito":"apertado"}')).veredito, 'apertado', 'continuação do prefill');
+assert.strictEqual(JSON.parse(recomporJson_('{"veredito":"cabe"}')).veredito, 'cabe', 'objeto inteiro');
+assert.strictEqual(
+  JSON.parse(recomporJson_('Direto ao ponto: {"projecao":[{"mes":"2026-10"}],"veredito":"arriscado"} pronto')).veredito,
+  'arriscado', 'objeto com texto em volta, sem se perder na chave de dentro');
+console.log('\nJSON do modelo: ok');
