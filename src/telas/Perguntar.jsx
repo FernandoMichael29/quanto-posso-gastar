@@ -53,10 +53,34 @@ export default function Perguntar() {
     setAnalise(null);
 
     const r = await api.perguntar(q);
-    setPensando(false);
 
-    if (r.ok) setAnalise(r);
-    else setErro(ERROS[r.erro] || r.detalhe || 'Não consegui responder agora.');
+    if (r.ok) { setPensando(false); setAnalise(r); return; }
+
+    // A resposta pode ter se perdido no caminho depois de pronta — o script
+    // grava toda análise na planilha, então vale procurar lá antes de dizer
+    // que falhou. Isso não custa IA nenhuma.
+    if (r.erro === 'resposta_vazia' || r.erro === 'sem_rede') {
+      const guardada = await recuperarUltima(q);
+      if (guardada) {
+        setPensando(false);
+        setAnalise({ ...guardada, recuperada: true });
+        return;
+      }
+    }
+
+    setPensando(false);
+    setErro(ERROS[r.erro] || r.detalhe || 'Não consegui responder agora.');
+  }
+
+  /** A última análise da planilha, se for desta mesma pergunta e recente. */
+  async function recuperarUltima(q) {
+    const r = await api.conversas(1);
+    const c = r.ok && r.conversas?.[0];
+    if (!c?.analise) return null;
+    if (normalizar(c.pergunta) !== normalizar(q)) return null;
+    const quando = Date.parse(c.data);
+    if (!quando || Date.now() - quando > 15 * 60 * 1000) return null;
+    return c.analise;
   }
 
   function falar() {
@@ -135,6 +159,15 @@ export default function Perguntar() {
 
       {analise && (
         <>
+          {analise.recuperada && (
+            <div className="aviso bom" role="status">
+              <strong>Recuperei a resposta da planilha</strong>
+              <span className="detalhe">
+                A análise já tinha sido feita e ficou guardada — não gastei uma nova chamada de IA.
+              </span>
+            </div>
+          )}
+
           {veredito && (
             <div className={`aviso ${veredito.classe}`}>
               <strong>{veredito.rotulo}</strong>
@@ -194,4 +227,10 @@ export default function Perguntar() {
       )}
     </>
   );
+}
+
+/** Compara perguntas ignorando acento, caixa e espaço sobrando. */
+function normalizar(t) {
+  return String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/\s+/g, ' ').trim();
 }

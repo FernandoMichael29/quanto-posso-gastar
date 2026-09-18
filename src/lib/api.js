@@ -137,6 +137,8 @@ export const api = {
   painel: (mes) => chamar('painel', { mes }, { prazo: 40000 }),
   // A análise lê vários meses e chama o modelo grande: precisa de mais fôlego.
   perguntar: (pergunta) => chamar('perguntar', { pergunta }, { prazo: 90000 }),
+  // Perguntas já respondidas, com a análise inteira: não custa IA nenhuma.
+  conversas: (limite = 10) => chamar('conversas', { limite }),
   panorama: () => chamar('panorama'),
   pendencias: () => chamar('pendencias'),
   categorias: () => chamar('categorias')
