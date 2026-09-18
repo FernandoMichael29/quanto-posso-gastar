@@ -24,7 +24,9 @@ const ERROS = {
   // O script devolveu 200 sem corpo nenhum: quase sempre a resposta se perdeu
   // no caminho depois de pronta.
   resposta_vazia: 'A resposta não chegou inteira no aparelho. A análise pode ter ficado guardada — veja no Histórico antes de perguntar de novo.',
-  resposta_estranha: 'A resposta veio cortada pela conexão. Procurei na planilha e não achei a análise desta pergunta.',
+  resposta_estranha: 'A resposta veio cortada no caminho. Procurei na planilha e não achei a análise desta pergunta.',
+  resposta_cortada: 'A análise ficou grande demais e o modelo cortou no meio. Tente uma pergunta mais específica — por exemplo, só o consórcio, sem a meta de guardar.',
+  analise_ilegivel: 'O modelo respondeu num formato que eu não consegui ler. Tente perguntar de novo.',
   acao_desconhecida: 'O script da planilha está numa versão antiga: cole o Codigo.gs novo e implante com "Nova versão".'
 };
 

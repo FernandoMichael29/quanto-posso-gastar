@@ -31,7 +31,7 @@
 
 // Suba junto com VERSAO_APP em src/lib/versao.js — o app compara as duas e
 // avisa na tela quando só uma das metades foi publicada.
-var VERSAO = '2.4.0';
+var VERSAO = '2.5.0';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -1083,11 +1083,12 @@ function perguntar_(pedido) {
     'para afirmar qualquer coisa (nesse caso diga isso na resposta).\n\n' +
 
     'Responda SOMENTE com um objeto JSON, sem markdown em volta:\n' +
-    '{"resposta": string (2 a 5 parágrafos curtos, texto puro, sem títulos),\n' +
+    'Seja econômico: o texto todo cabe em poucos parágrafos e as listas são curtas.\n' +
+    '{"resposta": string (2 a 4 parágrafos curtos, texto puro, sem títulos),\n' +
     ' "veredito": "confortavel|apertado|arriscado",\n' +
     ' "compromisso_mensal": number|null (a parcela perguntada, se houver),\n' +
     ' "premissas": [string],\n' +
-    ' "sugestoes": [string] (2 a 4, concretas e ligadas aos números dele),\n' +
+    ' "sugestoes": [string] (2 a 3, concretas e ligadas aos números dele, uma linha cada),\n' +
     ' "projecao": [{"mes":"YYYY-MM","receitas":number,"fixas":number,' +
     '"variaveis":number,"novo":number,"sobra":number}] (12 meses a partir do mês atual;\n' +
     '   "novo" é o novo compromisso, 0 se a pergunta não envolver nenhum;\n' +
@@ -1124,7 +1125,10 @@ function perguntar_(pedido) {
       headers: { 'x-api-key': chave, 'anthropic-version': '2023-06-01' },
       payload: JSON.stringify({
         model: MODELO_ANALISAR,
-        max_tokens: 3000,
+        // A análise devolve texto + 12 meses de projeção + sugestões + premissas.
+        // Com 3000 o modelo batia no teto e o JSON vinha cortado no meio de uma
+        // string — era isso, e não a rede, que dava "Unexpected end of JSON input".
+        max_tokens: 8000,
         system: instrucao,
         messages: [{ role: 'user', content: contexto }]
       }),
@@ -1143,6 +1147,16 @@ function perguntar_(pedido) {
 
   try {
     var dados = JSON.parse(resposta.getContentText());
+
+    // O modelo parou porque bateu o teto de tokens? Então o JSON está cortado
+    // e não adianta tentar interpretar: é melhor dizer isso com todas as letras.
+    if (dados.stop_reason === 'max_tokens') {
+      return {
+        ok: false, erro: 'resposta_cortada',
+        detalhe: 'A análise passou do tamanho máximo. Faça uma pergunta mais específica.'
+      };
+    }
+
     var saida = (dados.content || []).map(function (b) { return b.text || ''; }).join('').trim();
     saida = saida.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
     var analise = JSON.parse(saida);
@@ -1159,7 +1173,7 @@ function perguntar_(pedido) {
     analise.custo_estimado = custo;
     return analise;
   } catch (err) {
-    return { ok: false, erro: 'resposta_estranha', detalhe: String(err && err.message || err) };
+    return { ok: false, erro: 'analise_ilegivel', detalhe: String(err && err.message || err) };
   }
 }
 
