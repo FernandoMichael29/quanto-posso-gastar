@@ -24,7 +24,8 @@ const ERROS = {
   // O script devolveu 200 sem corpo nenhum: quase sempre a resposta se perdeu
   // no caminho depois de pronta.
   resposta_vazia: 'A resposta não chegou inteira no aparelho. A análise pode ter ficado guardada — veja no Histórico antes de perguntar de novo.',
-  resposta_estranha: 'O script respondeu algo que não é JSON — provavelmente uma página de erro do Google.'
+  resposta_estranha: 'A resposta veio cortada pela conexão. Procurei na planilha e não achei a análise desta pergunta.',
+  acao_desconhecida: 'O script da planilha está numa versão antiga: cole o Codigo.gs novo e implante com "Nova versão".'
 };
 
 export default function Perguntar({ aoVerHistorico }) {
@@ -35,6 +36,9 @@ export default function Perguntar({ aoVerHistorico }) {
   const [erro, setErro] = useState(null);
   const [ouvindo, setOuvindo] = useState(false);
   const [recentes, setRecentes] = useState(() => lerCache().slice(0, 3));
+  // Quando a resposta se perde no caminho, a tela conta que está procurando
+  // na planilha em vez de ficar parada num "Analisando…" que já terminou.
+  const [procurando, setProcurando] = useState(false);
   const sessao = useRef(null);
 
   // O histórico local abre na hora; a planilha atualiza em segundo plano.
@@ -70,11 +74,15 @@ export default function Perguntar({ aoVerHistorico }) {
     // grava toda análise na planilha, então vale procurar lá antes de dizer
     // que falhou. Isso não custa IA nenhuma.
     if (r.erro === 'resposta_vazia' || r.erro === 'resposta_estranha' || r.erro === 'sem_rede') {
+      setProcurando(true);
       const guardada = await recuperarUltima(q);
+      setProcurando(false);
       if (guardada) {
         setPensando(false);
         setAnalise(guardada);
         setRecuperada(true);
+        const nova = guardar(q, guardada);
+        setRecentes([nova, ...lerCache().filter((c) => c.data !== nova.data)].slice(0, 3));
         return;
       }
     }
@@ -83,15 +91,25 @@ export default function Perguntar({ aoVerHistorico }) {
     setErro([ERROS[r.erro] || 'Não consegui responder agora.', r.detalhe].filter(Boolean).join(' '));
   }
 
-  /** A última análise da planilha, se for desta mesma pergunta e recente. */
-  async function recuperarUltima(q) {
-    const r = await api.conversas(1);
-    const c = r.ok && r.conversas?.[0];
-    if (!c?.analise) return null;
-    if (normalizar(c.pergunta) !== normalizar(q)) return null;
-    const quando = Date.parse(c.data);
-    if (!quando || Date.now() - quando > 15 * 60 * 1000) return null;
-    return c.analise;
+  /**
+   * Procura na planilha a análise desta pergunta.
+   *
+   * O script grava a análise ANTES de responder, e a resposta é o que se perde
+   * na rede — às vezes chega cortada no meio. Então a resposta quase sempre
+   * existe do lado de lá. Tenta algumas vezes porque a consulta também pode
+   * cair na mesma conexão ruim. Nada disso custa IA.
+   */
+  async function recuperarUltima(q, tentativas = 8) {
+    for (let i = 0; i < tentativas; i++) {
+      const r = await api.conversas(1);
+      const c = r.ok && r.conversas?.[0];
+      if (c?.analise && normalizar(c.pergunta) === normalizar(q)) {
+        const quando = Date.parse(c.data);
+        if (quando && Date.now() - quando < 15 * 60 * 1000) return c.analise;
+      }
+      if (i < tentativas - 1) await new Promise((ok) => setTimeout(ok, 4000));
+    }
+    return null;
   }
 
   function falar() {
@@ -176,15 +194,26 @@ export default function Perguntar({ aoVerHistorico }) {
       {pensando && (
         <div className="cartao pensando">
           <span className="girando" aria-hidden="true" />
-          <span>Lendo seus meses e montando a projeção…</span>
+          <span>
+            {procurando
+              ? 'A resposta não chegou inteira. Procurando na planilha…'
+              : 'Lendo seus meses e montando a projeção…'}
+          </span>
         </div>
       )}
 
       {erro && (
-        <div className="aviso ruim" role="alert">
-          <strong>Não deu pra responder</strong>
-          <span className="detalhe">{erro}</span>
-        </div>
+        <>
+          <div className="aviso ruim" role="alert">
+            <strong>Não deu pra responder</strong>
+            <span className="detalhe">{erro}</span>
+          </div>
+          {aoVerHistorico && (
+            <button className="btn discreto" onClick={aoVerHistorico}>
+              Ver o histórico — a análise pode estar guardada lá
+            </button>
+          )}
+        </>
       )}
 
       {analise && (
