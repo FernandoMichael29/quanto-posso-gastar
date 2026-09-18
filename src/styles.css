@@ -79,6 +79,9 @@
   --e1: 4px;  --e2: 8px;  --e3: 12px; --e4: 16px;
   --e5: 20px; --e6: 24px; --e7: 32px; --e8: 44px;
 
+  /* altura da barra de abas: o conteúdo e a barra de ações se apoiam nela */
+  --rodape-h: 66px;
+
   /* --- tempo: curto, porque o usuário está no meio de uma tarefa --- */
   --rapido: 120ms;
   --normal: 180ms;
@@ -291,7 +294,7 @@ input, select, textarea { font: inherit; }
 
 .conteudo {
   flex: 1;
-  padding: var(--e5) var(--e4) 104px;
+  padding: var(--e5) var(--e4) calc(var(--rodape-h) + var(--e8));
   display: flex;
   flex-direction: column;
   gap: var(--e5);
@@ -1374,3 +1377,24 @@ button.item.sugestao { align-items: center; }
 .tema-nome { font-size: 14px; font-weight: 600; }
 .tema.ativo .tema-nome { color: var(--accent); }
 .tema-ajuda { font-size: 11.5px; color: var(--muted); line-height: 1.35; }
+
+/* A resposta é longa — duas telas e meia de rolagem. Deixar o "perguntar sobre
+   esta análise" só no fim significa que ninguém acha: a pergunta de
+   continuação nasce no meio da leitura, não depois dela. Então a barra
+   acompanha a rolagem logo acima das abas e encosta no fim do conteúdo. */
+.acoes-analise {
+  position: sticky;
+  bottom: var(--rodape-h);
+  z-index: 9;
+  display: flex;
+  gap: var(--e2);
+  margin: 0 calc(var(--e4) * -1) calc(var(--e5) * -1);
+  padding: var(--e3) var(--e4);
+  background: color-mix(in srgb, var(--ground) 96%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid var(--line-soft);
+}
+
+.acoes-analise .btn { flex: 1; }
+

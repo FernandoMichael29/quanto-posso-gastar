@@ -248,22 +248,31 @@ export default function Perguntar({ aoVerHistorico }) {
 
           <Analise analise={analise} />
 
-          <div className="botoes">
+          <button
+            className="btn discreto"
+            onClick={() => { setAnalise(null); setPergunta(''); setContinuando(null); }}
+          >
+            Outra pergunta, do zero
+          </button>
+
+          {/* A resposta tem duas telas e meia. Se este botão ficar só no fim,
+              ninguém chega nele — e a dúvida que ele resolve nasce no meio da
+              leitura. Por isso ele acompanha a rolagem. Continuar também sai
+              mais barato em atenção: a IA já recebe esta análise pronta e só
+              mexe no que a nova pergunta mudar. */}
+          <div className="acoes-analise">
             <button
-              className="btn discreto"
-              onClick={() => { setAnalise(null); setPergunta(''); setContinuando(null); }}
-            >
-              Outra pergunta
-            </button>
-            {/* Continuar sai mais barato em atenção: a IA já recebe esta
-                análise pronta e só mexe no que a nova pergunta mudar. */}
-            <button
-              className="btn"
+              className="btn principal"
               onClick={() => {
                 setContinuando(analise);
                 setAnalise(null);
                 setPergunta('');
-                document.getElementById('pergunta')?.focus();
+                // A análise some e a página encolhe; esperar o desenho novo
+                // para levar o campo (lá em cima) até os olhos.
+                setTimeout(() => {
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                  document.getElementById('pergunta')?.focus({ preventScroll: true });
+                }, 0);
               }}
             >
               Perguntar sobre esta análise
