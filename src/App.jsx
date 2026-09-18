@@ -10,7 +10,7 @@ import Mensais from './telas/Mensais.jsx';
 import { ESTADO, listar } from './lib/db.js';
 import { acessoValidado, api, configurado, marcarAcessoValido } from './lib/api.js';
 import { aoMudar, ligarSincronizacaoAutomatica } from './lib/sync.js';
-import { VERSAO_APP, menorQue, mesmaFamilia } from './lib/versao.js';
+import { VERSAO_APP, menorQue } from './lib/versao.js';
 import { mesPorExtenso } from './lib/datas.js';
 
 const CACHE = 'qpg.cadastros';
@@ -166,14 +166,13 @@ export default function App() {
       </header>
 
       <main className="conteudo">
-        {versaoScript && !mesmaFamilia(versaoScript, VERSAO_APP) && (
+        {versaoScript && menorQue(versaoScript, VERSAO_APP) && (
           <div className="aviso atencao" role="status">
-            <strong>As duas metades estão em versões diferentes</strong>
+            <strong>O script da planilha está atrasado</strong>
             <span className="detalhe">
-              O app é a {VERSAO_APP} e o script da planilha é a {versaoScript}.
-              {menorQue(versaoScript, VERSAO_APP)
-                ? ' Cole o Codigo.gs novo no Apps Script e implante com "Nova versão" — até lá, o que é novo não aparece.'
-                : ' O site ainda está com a versão antiga: espere o deploy do GitHub terminar e recarregue.'}
+              O app é a {VERSAO_APP} e o script é a {versaoScript}. Cole o Codigo.gs novo no
+              Apps Script e implante em <strong>Nova versão</strong> — até lá, o que é novo
+              não funciona.
             </span>
           </div>
         )}

@@ -19,15 +19,3 @@ export function menorQue(a, b) {
   }
   return false;
 }
-
-/**
- * As duas metades só brigam quando mudam de verdade.
- *
- * Correção só no script (2.6.0 → 2.6.1) não muda o que o app precisa saber,
- * então o terceiro número não conta: avisar ali era barulho, e barulho a gente
- * aprende a ignorar — inclusive quando é aviso de verdade.
- */
-export function mesmaFamilia(a, b) {
-  const familia = (v) => String(v || '').split('.').slice(0, 2).join('.');
-  return familia(a) === familia(b);
-}
