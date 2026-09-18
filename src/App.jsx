@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Falar from './telas/Falar.jsx';
 import Mes from './telas/mes/Mes.jsx';
 import Perguntar from './telas/Perguntar.jsx';
+import Historico from './telas/Historico.jsx';
 import Pendentes from './telas/Pendentes.jsx';
 import Ajustes from './telas/Ajustes.jsx';
 import Cadastros from './telas/Cadastros.jsx';
@@ -184,7 +185,8 @@ export default function App() {
           <Falar cadastros={cadastros} resumo={resumo} aoMudarFila={tudo} aoIrParaFila={() => setAba('fila')} />
         )}
         {aba === 'mes' && <Mes cadastros={cadastros} aoMudarDados={tudo} />}
-        {aba === 'perguntar' && <Perguntar />}
+        {aba === 'perguntar' && <Perguntar aoVerHistorico={() => setAba('historico')} />}
+        {aba === 'historico' && <Historico />}
         {aba === 'fila' && (
           <>
             <button className="btn discreto voltar" onClick={() => setAba('falar')}>
@@ -224,6 +226,12 @@ export default function App() {
           <Botao atual={aba} id="perguntar" rotulo="Perguntar" aoClicar={setAba}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
               <path d="M20.5 11.5a8 8 0 0 1-11.8 7L3.5 20l1.5-4.7a8 8 0 1 1 15.5-3.8Z" />
+            </svg>
+          </Botao>
+          <Botao atual={aba} id="historico" rotulo="Histórico" aoClicar={setAba}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="8.5" />
+              <path d="M12 7v5.2l3.2 2" />
             </svg>
           </Botao>
           <Botao atual={aba} id="ajustes" rotulo="Ajustes" aoClicar={setAba}>

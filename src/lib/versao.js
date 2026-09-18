@@ -7,7 +7,7 @@
 // para responder isso na tela.
 //
 // Suba junto com VERSAO no Codigo.gs, sempre.
-export const VERSAO_APP = '2.3.0';
+export const VERSAO_APP = '2.4.0';
 
 /** Compara versões por número: '2.9.0' < '2.10.0'. Texto puro erraria isso. */
 export function menorQue(a, b) {

@@ -31,7 +31,7 @@
 
 // Suba junto com VERSAO_APP em src/lib/versao.js — o app compara as duas e
 // avisa na tela quando só uma das metades foi publicada.
-var VERSAO = '2.3.0';
+var VERSAO = '2.4.0';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -353,6 +353,7 @@ function doPost(e) {
       case 'pendencias':  return json_(pendencias_());
       case 'perguntar':   return json_(perguntar_(pedido));
       case 'conversas':   return json_(conversas_(pedido));
+      case 'excluir_conversa': return json_(excluirConversa_(pedido));
       case 'panorama':    return json_(panorama_(pedido));
       case 'categorias':  return json_(cadastros_());
       case 'cadastros':   return json_(cadastros_());
@@ -1229,6 +1230,31 @@ function lerConversas_(quantas) {
   return aba.getRange(inicio, 1, qtd, ABAS.conversas.length).getValues().map(function (r) {
     return { data: r[0], pergunta: r[1], resposta: r[2] };
   });
+}
+
+/**
+ * Apaga uma conversa pela data exata (é o que a tela tem em mãos). Some da
+ * planilha e some do contexto das próximas perguntas — é como você limpa um
+ * teste que não quer mais ver.
+ */
+function excluirConversa_(pedido) {
+  var alvo = String(pedido && pedido.data || '');
+  if (!alvo) return { ok: false, erro: 'data_faltando' };
+
+  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('conversas');
+  var n = aba ? aba.getLastRow() - 1 : 0;
+  if (n <= 0) return { ok: false, erro: 'nao_encontrado' };
+
+  var datas = aba.getRange(2, 1, n, 1).getValues();
+  for (var i = n - 1; i >= 0; i--) {
+    var d = datas[i][0];
+    var iso = d instanceof Date ? d.toISOString() : String(d || '');
+    if (iso === alvo) {
+      aba.deleteRow(i + 2);
+      return { ok: true, data: alvo };
+    }
+  }
+  return { ok: false, erro: 'nao_encontrado' };
 }
 
 /** Traduz o erro da API para um motivo que dá pra mostrar na tela. */
