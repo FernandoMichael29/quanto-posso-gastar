@@ -191,7 +191,7 @@ export default function App() {
             <button className="btn discreto voltar" onClick={() => setAba('falar')}>
               ‹ Voltar
             </button>
-            <Pendentes fila={fila} aoMudarFila={recarregarFila} />
+            <Pendentes fila={fila} aoMudarFila={recarregarFila} cadastros={cadastros} aoMudarDados={recarregarDados} />
           </>
         )}
         {aba === 'ajustes' && (

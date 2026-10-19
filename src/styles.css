@@ -1403,12 +1403,25 @@ button.item.sugestao { align-items: center; }
    procuram ao rolar. */
 .grupo-dia { display: flex; flex-direction: column; gap: var(--e2); }
 
-.item .icone-cat {
+/* O ícone mora num quadradinho de inventário de jogo: fundo escuro e moldura
+   clara nos dois temas, porque é um objeto, não um pedaço da interface. */
+.item.extrato { align-items: center; }
+
+.slot {
   flex: none;
-  width: 24px;
-  margin-top: 1px;
-  font-size: 15.5px;
-  line-height: 1.5;
-  text-align: center;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  background: #141626;
+  border: 1.5px solid #c9cedd;
+  border-radius: 4px;
+}
+
+.slot .sprite {
+  width: 32px;
+  height: 32px;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
 }
 

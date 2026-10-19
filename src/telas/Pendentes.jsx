@@ -32,7 +32,7 @@ const PRECISA_DE_VOCE = {
   }
 };
 
-export default function Pendentes({ fila, aoMudarFila }) {
+export default function Pendentes({ fila, aoMudarFila, cadastros, aoMudarDados }) {
   const [sincronizando, setSincronizando] = useState(false);
 
   const pendentes = fila.filter((i) => i.estado !== ESTADO.SINCRONIZADO);
@@ -86,7 +86,7 @@ export default function Pendentes({ fila, aoMudarFila }) {
         </div>
       )}
 
-      <Extrato />
+      <Extrato cadastros={cadastros} aoMudarDados={aoMudarDados} />
     </>
   );
 }
