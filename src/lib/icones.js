@@ -1,9 +1,11 @@
 // Gerado por ferramentas/icones/gerar.py — não edite à mão.
 import folha from '../assets/icones.png';
+import folhaAbas from '../assets/abas.png';
 
 export const FOLHA = folha;
+export const FOLHA_ABAS = folhaAbas;
 
-// Categoria (minúscula, sem acento) → coluna na folha de sprites.
+// Categoria (minúscula, sem acento) → coluna na folha de 32 px.
 export const COLUNA = {
   'salario': 0,
   'saude': 1,
@@ -26,4 +28,13 @@ export const COLUNA = {
   'rendimento': 18,
   'outras entradas': 19,
   'outros': 20,
+};
+
+// Aba → coluna na folha de 24 px.
+export const ABA = {
+  novo: 0,
+  mes: 1,
+  perguntar: 2,
+  historico: 3,
+  ajustes: 4,
 };

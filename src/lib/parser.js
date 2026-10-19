@@ -244,6 +244,17 @@ function acharData(texto, hoje) {
 // Categoria
 // --------------------------------------------------------------------------
 
+/**
+ * A categoria que as suas palavras-chave apontam para uma descrição, ou ''.
+ * É o que a tela Novo usa para já deixar o item certo marcado enquanto você
+ * digita — e as palavras-chave crescem sozinhas toda vez que você corrige.
+ */
+export function sugerirCategoria(descricao, categorias, tipo = 'despesa') {
+  const texto = semAcento(descricao || '');
+  if (!texto.trim()) return '';
+  return acharCategoria(texto, categorias || [], tipo)?.categoria || '';
+}
+
 function acharCategoria(texto, categorias, tipo) {
   let melhor = null;
   for (const c of categorias) {

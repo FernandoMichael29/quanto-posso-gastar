@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import Capa from './Capa.jsx';
 import Esqueleto from './Esqueleto.jsx';
+import Item from './Item.jsx';
 import { EditarLancamento } from '../telas/mes/Modais.jsx';
 import { api } from '../lib/api.js';
-import { COLUNA, FOLHA } from '../lib/icones.js';
 import { formatarBRL } from '../lib/parser.js';
 
 // Tudo o que você já lançou, do mais novo para o mais antigo, agrupado pelo dia
@@ -124,7 +124,7 @@ export default function Extrato({ cadastros, aoMudarDados }) {
           <p className="vazio">
             {busca
               ? `Nada encontrado para "${busca}".`
-              : 'Nenhum lançamento na planilha ainda. Toque em Falar e registre o primeiro.'}
+              : 'Nenhum lançamento na planilha ainda. Toque na moeda lá embaixo e registre o primeiro.'}
           </p>
         </div>
       )}
@@ -189,7 +189,7 @@ function Linha({ l, ocupado, aoAbrir }) {
       onClick={aoAbrir}
       disabled={ocupado}
     >
-      <Icone categoria={l.categoria} receita={receita} />
+      <Item categoria={l.categoria} receita={receita} />
       <span className="corpo">
         <span className="meta">{l.categoria || (receita ? 'Entrada' : 'Sem categoria')}{parcela}</span>
         <span className="titulo">{l.descricao || l.texto_falado || l.categoria || '—'}</span>
@@ -198,17 +198,6 @@ function Linha({ l, ocupado, aoAbrir }) {
       <span className={`num ${receita ? 'receita' : ''}`}>{formatarBRL(l.valor)}</span>
       <Capa quando={ocupado} />
     </button>
-  );
-}
-
-/** Um quadradinho de inventário com o item da categoria. */
-function Icone({ categoria, receita }) {
-  const chave = String(categoria || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-  const coluna = COLUNA[chave] ?? COLUNA[receita ? 'outras entradas' : 'outros'];
-  return (
-    <span className="slot" aria-hidden="true">
-      <span className="sprite" style={{ backgroundImage: `url(${FOLHA})`, backgroundPositionX: `${-32 * coluna}px` }} />
-    </span>
   );
 }
 

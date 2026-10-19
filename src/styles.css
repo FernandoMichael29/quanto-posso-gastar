@@ -27,7 +27,17 @@
    dois temas.
    ========================================================================= */
 
+/* Pixelify Sans (SIL OFL 1.1 — licença em public/fonts/OFL.txt). Só para
+   acentos: títulos, números grandes, rótulos de aba. Texto corrido não. */
+@font-face {
+  font-family: 'Pixelify Sans';
+  src: url('./assets/fonts/pixelify-sans.woff2') format('woff2');
+  font-weight: 400 700;
+  font-display: swap;
+}
+
 :root {
+  --fonte-pixel: "Pixelify Sans", ui-monospace, monospace;
   /* --- superfícies: três camadas, do fundo ao que salta --- */
   --ground: #EEF2F0;        /* o fundo da página */
   --surface: #FFFFFF;       /* cartões e listas */
@@ -334,10 +344,44 @@ input, select, textarea { font: inherit; }
   transition: color var(--rapido) var(--curva);
 }
 
-.rodape button svg { width: 22px; height: 22px; transition: transform var(--normal) var(--curva); }
-.rodape button:active svg { transform: scale(.9); }
+.rodape button { font-family: var(--fonte-pixel); font-size: 11.5px; letter-spacing: .03em; }
+
+/* Apagada, a aba é cinza; ativa, acende na cor do item e sobe um pouco. */
+.rodape .aba-icone {
+  width: 24px;
+  height: 24px;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  filter: grayscale(1) brightness(.85);
+  transition: filter var(--rapido) var(--curva), transform var(--normal) var(--curva);
+}
+.rodape button:active .aba-icone { transform: scale(.9); }
 .rodape button[aria-current="page"] { color: var(--accent); font-weight: 600; }
-.rodape button[aria-current="page"] svg { transform: translateY(-1px); }
+.rodape button[aria-current="page"] .aba-icone { filter: none; transform: translateY(-2px); }
+.rodape button[aria-current="page"]:not(.central)::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  width: 8px;
+  height: 3px;
+  margin-left: -4px;
+  background: var(--accent);
+}
+
+/* A moeda do meio: maior, saltada, com moldura de item de jogo. */
+.rodape .central .botao-mais {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  margin: -26px 0 -2px;
+  background: #141626;
+  box-shadow: 0 -3px 0 0 #f6c63c, 0 3px 0 0 #f6c63c, -3px 0 0 0 #f6c63c, 3px 0 0 0 #f6c63c, 0 6px 0 0 #5a2a12;
+  transition: transform var(--rapido) var(--curva);
+}
+.rodape .central:active .botao-mais { transform: translateY(2px); }
+.rodape .central .aba-icone { width: 48px; height: 48px; background-size: 240px 48px; filter: none; transform: none; }
 
 .selo {
   position: absolute;
@@ -429,68 +473,6 @@ button.aviso { text-align: left; width: 100%; transition: filter var(--rapido) v
 button.aviso:active { filter: brightness(1.06); }
 
 /* =========================================================================
-   Captura por voz — a ação principal do app
-   ========================================================================= */
-
-.captura {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--e4);
-  padding: var(--e3) 0 0;
-}
-
-.mic-area { position: relative; display: grid; place-items: center; }
-
-.mic {
-  width: 136px;
-  height: 136px;
-  border-radius: 999px;
-  border: none;
-  background: var(--accent);
-  color: var(--sobre-accent);
-  display: grid;
-  place-items: center;
-  box-shadow: 0 14px 34px -12px color-mix(in srgb, var(--accent) 65%, transparent);
-  transition: transform var(--rapido) var(--curva), background var(--normal) var(--curva),
-              box-shadow var(--normal) var(--curva);
-}
-
-.mic:active { transform: scale(.95); }
-.mic:disabled { background: var(--muted); color: var(--surface); box-shadow: none; cursor: default; }
-.mic svg { width: 54px; height: 54px; }
-
-.mic.ouvindo { background: var(--crit); box-shadow: 0 14px 34px -12px color-mix(in srgb, var(--crit) 65%, transparent); }
-.mic.ouvindo::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 999px;
-  border: 2px solid var(--crit);
-  animation: onda 1.5s ease-out infinite;
-}
-
-@keyframes onda {
-  from { transform: scale(1); opacity: .7; }
-  to { transform: scale(1.38); opacity: 0; }
-}
-
-.transcricao {
-  width: 100%;
-  min-height: 58px;
-  text-align: center;
-  font-size: 19px;
-  line-height: 1.35;
-  color: var(--ink);
-  padding: 0 var(--e1);
-  display: grid;
-  place-items: center;
-}
-
-.transcricao .parcial { color: var(--muted); }
-.dica { color: var(--muted); font-size: 13.5px; text-align: center; max-width: 32ch; margin: 0; }
-
-/* =========================================================================
    Campos e botões
    ========================================================================= */
 
@@ -549,15 +531,6 @@ button.aviso:active { filter: brightness(1.06); }
 .btn.perigo { background: var(--crit-soft); border-color: color-mix(in srgb, var(--crit) 32%, transparent); color: var(--crit); }
 .btn.pequeno { flex: none; padding: 7px 12px; font-size: 13px; }
 
-.btn.adicionar {
-  width: 100%;
-  background: none;
-  border: 1px dashed var(--line);
-  color: var(--accent);
-  font-size: 14.5px;
-}
-
-.btn.adicionar:hover { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
 
 .btn.repetir {
   width: 100%;
@@ -650,11 +623,12 @@ button.aviso:active { filter: brightness(1.06); }
    ========================================================================= */
 
 .secao-titulo {
-  font-size: 11px;
-  letter-spacing: .1em;
+  font-family: var(--fonte-pixel);
+  font-size: 12.5px;
+  letter-spacing: .12em;
   text-transform: uppercase;
   color: var(--muted);
-  font-weight: 600;
+  font-weight: 500;
   margin: var(--e2) 0 calc(var(--e3) * -1 + 2px);
 }
 
@@ -1418,10 +1392,119 @@ button.item.sugestao { align-items: center; }
   border-radius: 4px;
 }
 
-.slot .sprite {
+.sprite {
   width: 32px;
   height: 32px;
   background-repeat: no-repeat;
   image-rendering: pixelated;
 }
+
+/* =========================================================================
+   Tela Novo — registrar à mão, com cara de item de jogo
+   ========================================================================= */
+
+.px { font-family: var(--fonte-pixel); }
+
+/* minmax(0, 1fr): sem isso a coluna cresce até a largura "natural" do campo
+   de valor (20 caracteres em fonte 46) e a tela inteira vaza para o lado. */
+.cartao.novo { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--e4); }
+
+.alterna { display: grid; grid-template-columns: 1fr 1fr; gap: var(--e2); }
+.alterna button {
+  font-family: var(--fonte-pixel);
+  font-size: 14px;
+  letter-spacing: .08em;
+  padding: 11px;
+  margin: 2px;
+  border: 0;
+  border-radius: 0;
+  color: var(--muted);
+  background: var(--surface-2);
+  box-shadow: 0 -2px 0 0 var(--line), 0 2px 0 0 var(--line), -2px 0 0 0 var(--line), 2px 0 0 0 var(--line);
+}
+.alterna button.on.gasto {
+  color: var(--crit);
+  background: var(--crit-soft);
+  box-shadow: 0 -2px 0 0 var(--crit), 0 2px 0 0 var(--crit), -2px 0 0 0 var(--crit), 2px 0 0 0 var(--crit);
+}
+.alterna button.on.entrada {
+  color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: 0 -2px 0 0 var(--accent), 0 2px 0 0 var(--accent), -2px 0 0 0 var(--accent), 2px 0 0 0 var(--accent);
+}
+
+.valor-px { display: flex; align-items: baseline; gap: var(--e2); cursor: text; }
+.valor-px .moeda { font-size: 20px; color: var(--muted); }
+.valor-px input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  padding: 0;
+  background: none;
+  font-size: 46px;
+  line-height: 1.1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.valor-px input:focus { outline: none; }
+.valor-px.zerado input { color: var(--muted); }
+
+.escolha-categoria { display: grid; gap: var(--e2); }
+.categoria-topo { display: flex; justify-content: space-between; align-items: baseline; gap: var(--e2); }
+.categoria-topo span { font-size: 12.5px; letter-spacing: .12em; color: var(--muted); }
+.categoria-topo strong { font-size: 15px; color: var(--warn); text-align: right; }
+
+/* O inventário: tocar no item é escolher a categoria. */
+.inventario { display: grid; grid-template-columns: repeat(auto-fill, minmax(42px, 1fr)); gap: 6px; }
+.inventario .slot {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  padding: 0;
+  border-color: color-mix(in srgb, #c9cedd 30%, #141626);
+  transition: transform var(--rapido) var(--curva), border-color var(--rapido) var(--curva);
+}
+.inventario .slot:active { transform: scale(.92); }
+.inventario .slot.escolhido {
+  border-color: #f6c63c;
+  box-shadow: 0 0 0 2px color-mix(in srgb, #f6c63c 35%, transparent), inset 0 0 0 2px color-mix(in srgb, #f6c63c 25%, transparent);
+}
+.sprite.iniciais {
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  color: #c9cedd;
+  text-transform: uppercase;
+}
+
+.chips { display: flex; gap: var(--e2); flex-wrap: wrap; }
+.chip {
+  font: inherit;
+  font-size: 13.5px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+  background: var(--surface-2);
+}
+.chip.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+select.chip { max-width: 100%; }
+
+/* O botão de registrar: botão de jogo, com degrau embaixo. */
+.btn-px {
+  font-family: var(--fonte-pixel);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  padding: 15px;
+  margin: 4px 4px 10px;
+  border: 0;
+  color: #10261c;
+  background: linear-gradient(#8af0c4 0 18%, #4fd1a5 18% 78%, #2a9a78 78%);
+  box-shadow: 0 -4px 0 0 #0c3a2c, 0 4px 0 0 #0c3a2c, -4px 0 0 0 #0c3a2c, 4px 0 0 0 #0c3a2c, 0 8px 0 0 #07241b;
+  transition: transform var(--rapido) var(--curva), filter var(--rapido) var(--curva);
+}
+.btn-px:active:not(:disabled) { transform: translateY(3px); }
+.btn-px:disabled { filter: grayscale(1) brightness(.7); cursor: default; }
 

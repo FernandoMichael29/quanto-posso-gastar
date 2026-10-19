@@ -1,5 +1,5 @@
 // Teste rápido do parser local. Rode com:  node testes/parser.test.mjs
-import { interpretar, extensoParaDigitos, formatarBRL } from '../src/lib/parser.js';
+import { interpretar, extensoParaDigitos, formatarBRL, sugerirCategoria } from '../src/lib/parser.js';
 import { CATEGORIAS_PADRAO } from '../src/lib/categorias.js';
 import { menorQue } from '../src/lib/versao.js';
 import assert from 'node:assert';
@@ -76,3 +76,12 @@ if (falhas.length) {
   console.log('\nFalhas:\n' + falhas.join('\n'));
   process.exit(1);
 }
+
+// A tela Novo sugere a categoria pela descrição, enquanto você digita.
+assert.strictEqual(sugerirCategoria('almoço no restaurante', CATEGORIAS_PADRAO), 'Alimentação', 'sugere pela palavra-chave');
+assert.strictEqual(sugerirCategoria('Posto Ipiranga', CATEGORIAS_PADRAO), 'Transporte', 'ignora caixa e acha a palavra no meio');
+assert.strictEqual(sugerirCategoria('xyz qualquer', CATEGORIAS_PADRAO), '', 'sem palavra-chave, sem palpite');
+assert.strictEqual(sugerirCategoria('salário', CATEGORIAS_PADRAO, 'receita'), 'Salário', 'respeita o tipo');
+assert.strictEqual(sugerirCategoria('salário', CATEGORIAS_PADRAO, 'despesa'), '', 'categoria de entrada não aparece num gasto');
+console.log('sugestão de categoria: ok');
+

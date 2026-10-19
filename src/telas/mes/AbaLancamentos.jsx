@@ -80,7 +80,7 @@ export default function AbaLancamentos({ lista, pessoas, carregando, ocupado, ao
           <p className="vazio">
             {busca
               ? `Nada encontrado para “${busca}”.`
-              : 'Nada registrado neste mês ainda. Toque em Falar e diga um gasto, ou use "Adicionar à mão".'}
+              : 'Nada registrado neste mês ainda. Toque na moeda lá embaixo e registre o primeiro.'}
           </p>
         </div>
       ) : (

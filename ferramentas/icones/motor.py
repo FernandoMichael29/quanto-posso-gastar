@@ -145,3 +145,11 @@ def brilho(p, x, y, cor='#ffffff'):
         if 0 <= x + dx < N and 0 <= y + dy < N: p[x + dx, y + dy] = hexa(cor)
 
 L, R, T = (-0.62, -0.25, 0.75), (0.62, -0.1, 0.78), (-0.2, -0.75, 0.63)   # normais de faceta prontas
+
+
+def grade(n):
+    """Troca o tamanho da tela de desenho (32 para os itens, 24 para as abas)."""
+    global N, xx, yy
+    N = n
+    yy, xx = np.mgrid[0:N, 0:N].astype(float)
+    xx += 0.5; yy += 0.5
