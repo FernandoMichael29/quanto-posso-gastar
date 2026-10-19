@@ -1398,3 +1398,17 @@ button.item.sugestao { align-items: center; }
 
 .acoes-analise .btn { flex: 1; }
 
+/* Extrato: cada dia é um bloco, o título colado na sua própria lista. O
+   respiro grande fica entre um dia e o outro, que é o corte que os olhos
+   procuram ao rolar. */
+.grupo-dia { display: flex; flex-direction: column; gap: var(--e2); }
+
+.item .icone-cat {
+  flex: none;
+  width: 24px;
+  margin-top: 1px;
+  font-size: 15.5px;
+  line-height: 1.5;
+  text-align: center;
+}
+

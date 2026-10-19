@@ -35,6 +35,16 @@ const planilha = {
 global.SpreadsheetApp = { getActiveSpreadsheet: () => planilha };
 global.LockService = { getScriptLock: () => ({ waitLock(){}, releaseLock(){} }) };
 let seq = 0;
+// O teste vive num dia fixo. Metade dele depende do que é "futuro" e do que é
+// "passado" — renda agendada, ordem da lista, vigência. Com o relógio de
+// verdade, virar o mês quebrava testes que ninguém tinha tocado.
+const HOJE = new Date(2026, 8, 16, 12, 0, 0);   // 16 de setembro de 2026
+const DataReal = Date;
+global.Date = class extends DataReal {
+  constructor(...args) { super(...(args.length ? args : [HOJE.getTime()])); }
+  static now() { return HOJE.getTime(); }
+};
+
 global.Utilities = {
   getUuid: () => 'uuid-' + (++seq),
   formatDate: (d, tz, fmt) => {
@@ -290,3 +300,33 @@ for (let i = 0; i < fonte.length - 1; i++) {
 assert.deepStrictEqual(partidas, [], 'concatenação partida nas linhas: ' + partidas.join(', '));
 console.log('\nconcatenação de textos: ok');
 
+// 25. o extrato: tudo, do mais novo para o mais antigo, com busca e página
+lancar_({ lancamentos: [
+  { uuid: 'ex1', data: '2026-09-02', valor: 50, categoria: 'Compras', descricao: 'Tenis Ipiranga velho' },
+  { uuid: 'ex2', data: '2026-09-14', valor: 57, categoria: 'Transporte', descricao: 'Posto Ipiranga' },
+  { uuid: 'ex3', data: '2026-09-14', valor: 6.99, categoria: 'Mercado', descricao: 'H2o redbeef' }
+] });
+
+const uuids = (r) => r.lancamentos.map((l) => l.uuid);
+
+const pag1 = extrato_({ limite: 2 });
+assert.strictEqual(pag1.lancamentos.length, 2, 'a página respeita o limite');
+assert.ok(pag1.tem_mais, 'avisa que ainda há mais');
+assert.ok(pag1.total > 2, 'o total conta tudo, não só a página');
+
+const tudo = extrato_({ limite: 100 }).lancamentos;
+const pos = (u) => tudo.findIndex((l) => l.uuid === u);
+assert.ok(pos('ex2') < pos('ex1'), 'o mais novo vem antes do mais antigo');
+
+const pag2 = extrato_({ limite: 2, inicio: 2 });
+assert.ok(!uuids(pag2).some((u) => uuids(pag1).includes(u)), 'a segunda página não repete a primeira');
+
+assert.ok(uuids(extrato_({ busca: 'REDBEEF' })).includes('ex3'), 'busca ignora a caixa');
+assert.ok(uuids(extrato_({ busca: 'h2o redbeef' })).includes('ex3'), 'busca por descrição inteira');
+assert.deepStrictEqual(uuids(extrato_({ busca: 'ipiranga' })).sort(), ['ex1', 'ex2'], 'acha os dois do Ipiranga');
+assert.ok(uuids(extrato_({ busca: '6.99' })).includes('ex3'), 'busca pelo valor');
+assert.strictEqual(extrato_({ busca: 'nao existe isso aqui' }).total, 0, 'busca sem resultado devolve vazio');
+
+excluirLancamento_({ uuid: 'ex1' });
+assert.ok(!uuids(extrato_({ busca: 'tenis ipiranga' })).includes('ex1'), 'o que foi excluído some do extrato');
+console.log('\nextrato: ok');

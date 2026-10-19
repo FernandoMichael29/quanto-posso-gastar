@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import Extrato from '../componentes/Extrato.jsx';
 import { ESTADO, MOTIVO, ROTULO_ESTADO, remover } from '../lib/db.js';
 import { formatarBRL } from '../lib/parser.js';
 import { sincronizar } from '../lib/sync.js';
@@ -35,7 +36,6 @@ export default function Pendentes({ fila, aoMudarFila }) {
   const [sincronizando, setSincronizando] = useState(false);
 
   const pendentes = fila.filter((i) => i.estado !== ESTADO.SINCRONIZADO);
-  const prontos = fila.filter((i) => i.estado === ESTADO.SINCRONIZADO);
 
   const bloqueio = pendentes.map((i) => i.motivo).find((m) => PRECISA_DE_VOCE[m]);
 
@@ -86,15 +86,7 @@ export default function Pendentes({ fila, aoMudarFila }) {
         </div>
       )}
 
-      {prontos.length > 0 && (
-        <>
-          <p className="secao-titulo">Já sincronizados</p>
-          <div className="lista">
-            {prontos.slice(0, 15).map((i) => <Linha key={i.uuid} item={i} />)}
-          </div>
-          <p className="ajuda">Some daqui sozinho depois de uma semana — na planilha fica para sempre.</p>
-        </>
-      )}
+      <Extrato />
     </>
   );
 }

@@ -31,7 +31,7 @@
 
 // Suba junto com VERSAO_APP em src/lib/versao.js — o app compara as duas e
 // avisa na tela quando só uma das metades foi publicada.
-var VERSAO = '2.6.2';
+var VERSAO = '2.7.0';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -360,6 +360,7 @@ function doPost(e) {
       case 'salvar_cadastro':  return json_(salvarCadastro_(pedido));
       case 'excluir_cadastro': return json_(excluirCadastro_(pedido));
       case 'lancamentos':      return json_(lancamentosDoMes_(pedido));
+      case 'extrato':          return json_(extrato_(pedido));
       case 'editar_lancamento':  return json_(editarLancamento_(pedido));
       case 'excluir_lancamento': return json_(excluirLancamento_(pedido));
       case 'confirmar_recebimento': return json_(confirmarRecebimento_(pedido));
@@ -2283,6 +2284,55 @@ function lancamentosDoMes_(pedido) {
  * como pagas, os lançamentos de uma frase só — ficava na ordem em que a planilha
  * cresceu, que para quem olha a tela é ordem nenhuma.
  */
+/**
+ * Todos os lançamentos, do mais novo para o mais antigo, com busca e página.
+ *
+ * A lista "já sincronizados" do aparelho só guardava uma semana e no máximo 15
+ * linhas — servia para conferir o que subiu, não para procurar coisa. Aqui vem
+ * a planilha inteira. A busca e o corte acontecem no script de propósito:
+ * mandar tudo para o celular a cada letra digitada seria absurdo.
+ */
+function extrato_(pedido) {
+  var limite = Math.min(Math.max(Number(pedido && pedido.limite) || 30, 1), 100);
+  var inicio = Math.max(Number(pedido && pedido.inicio) || 0, 0);
+  var busca = semAcentoGS_(String((pedido && pedido.busca) || '')).trim();
+
+  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('lancamentos');
+  var n = aba.getLastRow() - 1;
+  if (n <= 0) return { ok: true, lancamentos: [], total: 0, tem_mais: false };
+
+  var col = indiceColunas_();
+  var lista = [];
+
+  aba.getRange(2, 1, n, ABAS.lancamentos.length).getValues().forEach(function (r, i) {
+    if (r[col.status] === STATUS.EXCLUIDO) return;
+    var data = normalizarData_(r[col.data]);
+    var item = lancamentoDe_(r, col, data);
+    if (busca && !combinaComBusca_(item, busca)) return;
+    item._ordem = ordemDe_(data, r[col.hora_registro], i);
+    lista.push(item);
+  });
+
+  ordenarDoMaisNovo_(lista);
+
+  return {
+    ok: true,
+    total: lista.length,
+    tem_mais: inicio + limite < lista.length,
+    lancamentos: lista.slice(inicio, inicio + limite)
+  };
+}
+
+/** A busca olha o que você leria na tela — e também o valor, que é como a
+ *  gente costuma lembrar de um gasto ("aquele de 57"). */
+function combinaComBusca_(item, busca) {
+  var alvo = semAcentoGS_([
+    item.descricao, item.categoria, item.conta, item.fonte, item.pessoa, item.texto_falado
+  ].join(' '));
+  if (alvo.indexOf(busca) >= 0) return true;
+  return String(item.valor).indexOf(busca.replace(',', '.')) >= 0;
+}
+
 function ordemDe_(data, horaRegistro, indiceLinha) {
   var h = 0;
   if (horaRegistro instanceof Date) h = horaRegistro.getTime();
