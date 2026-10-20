@@ -42,6 +42,8 @@ export default function Importar({ cadastros, pessoaPadrao, aoVoltar, aoMudarFil
   const [jaImportados, setJaImportados] = useState(0);
   const [editando, setEditando] = useState(null);
   const [lancados, setLancados] = useState(0);
+  const [acertarSaldo, setAcertarSaldo] = useState(true);
+  const [saldoAcertado, setSaldoAcertado] = useState(null);   // null | 'enviando' | 'ok' | 'falhou'
   const heroi = personagemSalvo();
 
   const contas = (cadastros.contas || []).filter((c) => c.ativo !== false);
@@ -111,6 +113,10 @@ export default function Importar({ cadastros, pessoaPadrao, aoVoltar, aoMudarFil
     return { saiu, entrou };
   }, [marcados]);
 
+  // O saldo final do extrato acerta o saldo da conta (cartão de crédito não tem saldo).
+  const contaEscolhida = contas.find((c) => c.nome === conta);
+  const saldoDoExtrato = extrato?.saldoFinal && contaEscolhida && contaEscolhida.tipo !== 'credito' ? extrato.saldoFinal : null;
+
   async function lancar() {
     setLendo(true);
     for (const m of marcados) {
@@ -137,7 +143,15 @@ export default function Importar({ cadastros, pessoaPadrao, aoVoltar, aoMudarFil
     setLendo(false);
     setEtapa('pronto');
     aoMudarFila?.();
-    sincronizar().then(() => aoMudarFila?.());
+    const saldo = acertarSaldo ? saldoDoExtrato : null;
+    if (saldo) setSaldoAcertado('enviando');
+    sincronizar().then(async () => {
+      aoMudarFila?.();
+      if (!saldo) return;
+      // Depois da fila: assim o app compara o saldo do banco já com os movimentos novos.
+      const r = await api.acertarConta(conta, saldo.valor, { origem: 'extrato', data: saldo.data });
+      setSaldoAcertado(r?.ok ? 'ok' : 'falhou');
+    });
   }
 
   const mudarItem = (id, campos) => setItens((l) => l.map((m) => (m.id === id ? { ...m, ...campos } : m)));
@@ -148,8 +162,11 @@ export default function Importar({ cadastros, pessoaPadrao, aoVoltar, aoMudarFil
       <>
         <div className="cartao importado-fim">
           {heroi && <Personagem id={heroi.id} tamanho={112} anim="vitoria" base="contando" />}
-          <p className="secao-titulo" style={{ margin: 0 }}>{lancados} {lancados === 1 ? 'movimento lançado' : 'movimentos lançados'}</p>
+          <p className="secao-titulo" style={{ margin: 0 }}>{lancados ? `${lancados} ${lancados === 1 ? 'movimento lançado' : 'movimentos lançados'}` : 'Nada novo para lançar'}</p>
           <p className="ajuda" style={{ margin: 0 }}>Estão subindo pela fila. Se a internet cair, sobem sozinhos quando voltar.</p>
+          {saldoAcertado === 'enviando' && <p className="ajuda" style={{ margin: 0 }}>Acertando o saldo de {conta}…</p>}
+          {saldoAcertado === 'ok' && <p className="ajuda" style={{ margin: 0 }}>✓ Saldo de {conta} acertado com o extrato: {formatarBRL(saldoDoExtrato?.valor)} em {diaBR(saldoDoExtrato?.data)}.</p>}
+          {saldoAcertado === 'falhou' && <p className="ajuda ruim" style={{ margin: 0 }}>Não consegui acertar o saldo agora — dá para fazer em Mês → Dinheiro nas contas.</p>}
           <button type="button" className="btn-px" onClick={aoVoltar}>VER NO EXTRATO</button>
         </div>
       </>
@@ -199,8 +216,14 @@ export default function Importar({ cadastros, pessoaPadrao, aoVoltar, aoMudarFil
                 : `${semBau} de caixinha, mas você ainda não tem baú: crie um na pílula do topo, ou desmarque.`)}
             </p>
           )}
-          <button type="button" className="btn-px" disabled={!marcados.length || semBau > 0 || lendo} onClick={lancar}>
-            {lendo ? 'LANÇANDO…' : `LANÇAR ${marcados.length} ${marcados.length === 1 ? 'MOVIMENTO' : 'MOVIMENTOS'}`}
+          {saldoDoExtrato && (
+            <label className="aprender">
+              <input type="checkbox" checked={acertarSaldo} onChange={(e) => setAcertarSaldo(e.target.checked)} />
+              <span>Acertar o saldo de <b>{conta}</b> para <b>{formatarBRL(saldoDoExtrato.valor)}</b> (saldo de {diaBR(saldoDoExtrato.data)} no extrato)</span>
+            </label>
+          )}
+          <button type="button" className="btn-px" disabled={(!marcados.length && !(saldoDoExtrato && acertarSaldo)) || semBau > 0 || lendo} onClick={lancar}>
+            {lendo ? 'LANÇANDO…' : !marcados.length ? 'SÓ ACERTAR O SALDO' : `LANÇAR ${marcados.length} ${marcados.length === 1 ? 'MOVIMENTO' : 'MOVIMENTOS'}`}
           </button>
         </div>
 

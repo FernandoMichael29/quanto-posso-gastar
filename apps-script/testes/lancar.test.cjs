@@ -604,3 +604,208 @@ console.log('\nmissão em dupla: ok');
   assert.ok(String(internet[3]).includes('elevar telecom'), 'aprendeu a palavra do extrato: ' + internet[3]);
 }
 console.log('\nimportar extrato: ok');
+
+// 33. avisos no celular: chaves VAPID, assinatura ES256 que o node confere, inscrições e o texto do aviso
+{
+  const crypto = require('crypto');
+  const sinal = (b) => Array.from(b).map((x) => (x > 127 ? x - 256 : x));
+  const semSinal = (b) => Buffer.from(b.map((x) => (x < 0 ? x + 256 : x)));
+  Utilities.DigestAlgorithm = { SHA_256: 'sha256' };
+  Utilities.computeDigest = (alg, bytes) => sinal(crypto.createHash('sha256').update(semSinal(bytes)).digest());
+  Utilities.computeHmacSha256Signature = (valor, chave) => sinal(crypto.createHmac('sha256', semSinal(chave)).update(semSinal(valor)).digest());
+  Utilities.base64EncodeWebSafe = (bytes) => semSinal(bytes).toString('base64').replace(/\+/g, '-').replace(/\//g, '_');
+  Utilities.newBlob = (t) => ({ getBytes: () => sinal(Buffer.from(t, 'utf8')) });
+  const gatilhos = [];
+  const horas = [];
+  ScriptApp = { getProjectTriggers: () => gatilhos.map((h, i) => ({ getHandlerFunction: () => h, i })),
+    deleteTrigger: (t) => { gatilhos.splice(gatilhos.indexOf(t.getHandlerFunction()), 1); },
+    newTrigger: (h) => ({ timeBased: () => ({ atHour: (x) => ({ everyDays: () => ({ create: () => { gatilhos.push(h); horas.push(x); } }) }), everyHours: () => ({ create: () => gatilhos.push(h) }) }) }) };
+
+  const pub = vapidPublica_().chave;
+  assert.strictEqual(pub, vapidPublica_().chave, 'a chave é criada uma vez só');
+  const raw = Buffer.from(pub.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+  assert.strictEqual(raw.length, 65); assert.strictEqual(raw[0], 4);
+  const chaveNode = crypto.createPublicKey({ key: { kty: 'EC', crv: 'P-256', x: raw.subarray(1, 33).toString('base64url'), y: raw.subarray(33).toString('base64url') }, format: 'jwk' });
+
+  const aut = autorizacaoVapid_('https://fcm.googleapis.com/fcm/send/abc');
+  const jwt = /^vapid t=([^,]+), k=(.+)$/.exec(aut);
+  assert.ok(jwt, 'formato vapid t=…, k=…');
+  assert.strictEqual(jwt[2], pub);
+  const [cab, corpo, ass] = jwt[1].split('.');
+  const ok = crypto.verify('sha256', Buffer.from(`${cab}.${corpo}`), { key: chaveNode, dsaEncoding: 'ieee-p1363' }, Buffer.from(ass, 'base64url'));
+  assert.ok(ok, 'o node confere a assinatura ES256');
+  const dados = JSON.parse(Buffer.from(corpo, 'base64url').toString());
+  assert.strictEqual(dados.aud, 'https://fcm.googleapis.com');
+  assert.ok(dados.exp > Date.now() / 1000 && dados.sub.startsWith('mailto:'));
+  // várias mensagens: todas conferem (k determinístico, mas diferente por mensagem)
+  for (const m of ['a', 'outra coisa', 'x'.repeat(300)]) {
+    const s = semSinal(assinarEs256_(Array.from(Buffer.from(m)), chavesVapid_().d));
+    assert.ok(crypto.verify('sha256', Buffer.from(m), { key: chaveNode, dsaEncoding: 'ieee-p1363' }, s), 'confere: ' + m.slice(0, 10));
+  }
+
+  assert.strictEqual(inscrever_({ inscricao: { endpoint: 'https://malicioso.com/x' } }).erro, 'servico_desconhecido', 'só serviços de push conhecidos');
+  assert.strictEqual(inscrever_({ inscricao: { endpoint: 'https://fcm.googleapis.com/fcm/send/abc' }, pessoa: 'Fernando' }).inscritos, 1);
+  assert.strictEqual(inscrever_({ inscricao: { endpoint: 'https://fcm.googleapis.com/fcm/send/abc' }, pessoa: 'Fernando' }).inscritos, 1, 'o mesmo celular não duplica');
+  inscrever_({ inscricao: { endpoint: 'https://web.push.apple.com/QQ' }, pessoa: 'Mayara' });
+  assert.deepStrictEqual(gatilhos.filter((g) => g === 'avisarContasDoDia').length, 1, 'gatilho diário criado uma vez');
+  assert.strictEqual(horas[horas.length - 1], 12, 'avisa ao meio-dia');
+
+  // o texto do aviso (16/09): vence hoje, amanhã, já venceu; lançada não avisa
+  const painelReal = painel_;
+  painel_ = () => ({ fixas: [
+    { nome: 'Energia', valor: 212.4, dia: 16, lancado: false },
+    { nome: 'Internet', valor: 119.9, dia: 17, lancado: false },
+    { nome: 'Academia', valor: 99.9, dia: 17, lancado: false },
+    { nome: 'Aluguel', valor: 1800, dia: 5, lancado: false },
+    { nome: 'Celular', valor: 64.99, dia: 16, lancado: true }
+  ] });
+  const av = avisosDeHoje_().avisos;
+  assert.deepStrictEqual(av.map((a) => a.tag), ['hoje', 'amanha', 'atacando']);
+  assert.strictEqual(av[0].titulo, '⚔️ O chefe Energia ataca hoje');
+  assert.strictEqual(av[1].titulo, '🛡️ 2 contas vencem amanhã');
+  assert.ok(av[2].corpo.includes('Aluguel R$ 1800,00'));
+
+  // o gatilho cutuca os inscritos; 410 tira o celular da lista
+  const chamados = [];
+  UrlFetchApp = { fetch: (url, op) => { chamados.push([url, op.headers.Authorization.slice(0, 8), op.headers.TTL]); return { getResponseCode: () => (url.includes('apple') ? 410 : 201) }; } };
+  // Quem implantou com o gatilho das 8h: a primeira rodada troca pelo do meio-dia e não avisa.
+  PROP.setProperty('AVISOS_HORA', '8');
+  const troca = avisarContasDoDia();
+  assert.strictEqual(troca.gatilho, 'trocado'); assert.strictEqual(troca.enviados, 0);
+  assert.strictEqual(gatilhos.filter((g) => g === 'avisarContasDoDia').length, 1, 'continua um gatilho só');
+  assert.strictEqual(horas[horas.length - 1], 12);
+  const r33 = avisarContasDoDia();
+  assert.strictEqual(r33.enviados, 1);
+  assert.strictEqual(chamados.length, 2);
+  assert.strictEqual(chamados[0][1], 'vapid t=');
+  assert.deepStrictEqual(lerInscricoes_().map((i) => i.pessoa), ['Fernando'], 'o celular que saiu (410) some');
+  painel_ = () => ({ fixas: [{ nome: 'Energia', valor: 1, dia: 1, lancado: true }] });
+  chamados.length = 0;
+  assert.strictEqual(avisarContasDoDia().enviados, 0, 'nada a avisar: não cutuca');
+  assert.strictEqual(chamados.length, 0);
+
+  // teste pelos Ajustes: cutuca e o próximo "avisos" é a mensagem de teste
+  assert.strictEqual(testarAviso_({ endpoint: 'https://fcm.googleapis.com/fcm/send/abc' }).ok, true);
+  assert.strictEqual(avisosDeHoje_().avisos[0].tag, 'teste');
+  assert.strictEqual(avisosDeHoje_().avisos.length, 0, 'o teste aparece uma vez só');
+  assert.strictEqual(testarAviso_({ endpoint: 'https://fcm.googleapis.com/fcm/send/outro' }).erro, 'nao_inscrito');
+  assert.strictEqual(desinscrever_({ endpoint: 'https://fcm.googleapis.com/fcm/send/abc' }).inscritos, 0);
+  painel_ = painelReal;
+  UrlFetchApp = { fetch: () => { throw new Error('sem rede no teste'); } };
+}
+console.log('\navisos no celular: ok');
+
+// 34. dinheiro nas contas: saldo conferido com o banco + o que veio depois, e o
+// rendimento do CDI entrando como renda um pouco por dia
+{
+  // a aba velha de contas (7 colunas) ganha rende_tipo/rende_pct sem perder nada
+  const linhasAntes = abas.contas.dados.length;
+  CONTAS_CONFERIDA_ = false;
+  lerCadastro_('contas');
+  assert.deepStrictEqual(abas.contas.dados[0], ABAS.contas, 'cabeçalho novo das contas');
+  assert.strictEqual(abas.contas.dados.length, linhasAntes, 'nenhuma conta perdida');
+
+  // Banco Central de mentira: 0,05% ao dia útil em setembro, menos o feriado de 7/9
+  const TAXA = 0.05;
+  const br = (iso) => iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4);
+  const uteis = [];
+  for (let d = new DataReal(Date.UTC(2026, 7, 20, 12)); d < new DataReal(Date.UTC(2026, 8, 16, 12)); d = new DataReal(d.getTime() + 86400000)) {
+    const iso = d.toISOString().slice(0, 10);
+    if (d.getUTCDay() === 0 || d.getUTCDay() === 6 || iso === '2026-09-07') continue;
+    uteis.push(iso);
+  }
+  UrlFetchApp = { fetch: () => ({ getResponseCode: () => 200, getContentText: () => JSON.stringify(uteis.map((d) => ({ data: br(d), valor: String(TAXA) }))) }) };
+  const memCache = {};
+  CacheService = { getScriptCache: () => ({ get: (k) => (k in memCache ? memCache[k] : null), put: (k, v) => { memCache[k] = v; } }) };
+
+  assert.ok(salvarCadastro_({ tipo: 'contas', item: { nome: 'Conta Teste', tipo: 'conta corrente', pessoa: 'Mayara', rende_tipo: 'cdi', rende_pct: '' } }).ok);
+  const cad = lerCadastro_('contas').find((c) => c.nome === 'Conta Teste');
+  assert.strictEqual(cad.rende_tipo, 'cdi'); assert.strictEqual(cad.rende_pct, 100, 'CDI sem % vira 100%');
+  salvarCadastro_({ tipo: 'contas', item: { nome: 'Itaú cartão', rende_tipo: 'cdi', rende_pct: 100 } });
+  assert.strictEqual(lerCadastro_('contas').find((c) => c.nome === 'Itaú cartão').rende_tipo, '', 'cartão de crédito não rende');
+  assert.ok(!contasSaldo_().contas.some((c) => c.nome === 'Itaú cartão'), 'cartão de crédito fica fora');
+
+  // sem saldo conferido: sem saldo e sem renda inventada
+  let cs = contasSaldo_();
+  assert.strictEqual(cs.contas.find((c) => c.nome === 'Conta Teste').saldo, null);
+  assert.ok(!linhas().some((r) => r[col.origem] === 'rendimento_conta'), 'nada de rendimento sem saldo conferido');
+
+  // erros
+  assert.strictEqual(acertarConta_({ conta: 'Não existe', saldo: 10 }).erro, 'conta_desconhecida');
+  assert.strictEqual(acertarConta_({ conta: 'Itaú cartão', saldo: 10 }).erro, 'conta_desconhecida');
+  assert.strictEqual(acertarConta_({ conta: 'Conta Teste', saldo: 'abc' }).erro, 'saldo_invalido');
+  assert.strictEqual(acertarConta_({ conta: 'Conta Teste', saldo: '' }).erro, 'saldo_invalido');
+  assert.strictEqual(acertarConta_({ conta: 'Conta Teste', saldo: 10, origem: 'extrato', data: '2026-09-20' }).erro, 'data_invalida');
+
+  // o saldo final do extrato de 1º/9 é o ponto de partida (vale no fim daquele dia)
+  lancar_({ lancamentos: [
+    { uuid: 'ct-antes', data: '2026-08-30', tipo: 'receita', valor: 999, conta: 'Conta Teste', descricao: 'antes do extrato' },
+    { uuid: 'ct-mesmo-dia', data: '2026-09-01', tipo: 'despesa', valor: 77, conta: 'Conta Teste', descricao: 'já está no saldo do extrato' },
+    { uuid: 'ct-1', data: '2026-09-05', tipo: 'receita', valor: 500, conta: 'Conta Teste', descricao: 'pix recebido' },
+    { uuid: 'ct-2', data: '2026-09-10', tipo: 'despesa', valor: 200, conta: 'Conta Teste', categoria: 'Compras', descricao: 'mercado' },
+    { uuid: 'ct-3', data: '2026-09-11', tipo: 'guardar', valor: 100, conta: 'Conta Teste', categoria: 'Chile 2027' },
+    { uuid: 'ct-cartao', data: '2026-09-12', tipo: 'despesa', valor: 300, conta: 'Itaú cartão', descricao: 'no crédito' }
+  ] });
+  let a = acertarConta_({ conta: 'Conta Teste', saldo: '1000', origem: 'extrato', data: '2026-09-01' });
+  assert.ok(a.ok, JSON.stringify(a));
+  assert.strictEqual(a.acertado.diferenca, null, 'primeira conferência não tem diferença');
+
+  // a conta feita à mão: fim de cada dia, rendimento líquido de IR nos dias úteis
+  let saldo = 1000, rendeu = 0;
+  const movs = { '2026-09-05': 500, '2026-09-10': -200, '2026-09-11': -100 };
+  for (let d = new DataReal(Date.UTC(2026, 8, 1, 12)); d < new DataReal(Date.UTC(2026, 8, 16, 12)); d = new DataReal(d.getTime() + 86400000)) {
+    const iso = d.toISOString().slice(0, 10);
+    saldo += movs[iso] || 0;
+    if (uteis.includes(iso)) { const y = saldo * TAXA / 100 * (1 - 0.225); saldo += y; rendeu += y; }
+  }
+  const ct = a.contas.find((c) => c.nome === 'Conta Teste');
+  assert.ok(Math.abs(ct.saldo - saldo) < 0.011, `saldo ${ct.saldo} ≈ ${saldo}`);
+  assert.ok(Math.abs(ct.rendeu - rendeu) < 0.011, `rendeu ${ct.rendeu} ≈ ${rendeu}`);
+  assert.strictEqual(ct.entrou, 500); assert.strictEqual(ct.saiu, 300);
+  assert.deepStrictEqual(ct.conferido, { data: '2026-09-01', saldo: 1000, origem: 'extrato' });
+  assert.ok(ct.rende_por_mes > 0 && ct.rende_por_mes < 20);
+
+  // virou renda de setembro: uma linha só, atualizada, sem duplicar
+  const rend = () => linhas().filter((r) => r[col.origem] === 'rendimento_conta');
+  assert.strictEqual(rend().length, 1, 'uma linha de rendimento');
+  const lr = rend()[0];
+  assert.strictEqual(lr[col.uuid], 'rend-conta-teste-2026-09');
+  assert.strictEqual(lr[col.tipo], 'receita'); assert.strictEqual(lr[col.categoria], 'Rendimento');
+  assert.strictEqual(lr[col.pessoa], 'Mayara'); assert.strictEqual(lr[col.data], '2026-09-16');
+  assert.ok(Math.abs(lr[col.valor] - rendeu) < 0.011);
+  assert.strictEqual(atualizarRendimentosContas_(false).mudou, 0, 'uma vez por dia');
+  assert.strictEqual(atualizarRendimentosContas_(true).mudou, 0, 'nada mudou, nada reescrito');
+  assert.strictEqual(rend().length, 1);
+  assert.ok(Math.abs(contasSaldo_().contas.find((c) => c.nome === 'Conta Teste').saldo - saldo) < 0.011, 'a linha de rendimento não conta duas vezes no saldo');
+  const p = painel_({ mes: '2026-09' });
+  const semRend = linhas().filter((r) => r[col.status] === 'ok' && r[col.tipo] === 'receita' && String(r[col.data]).slice(0, 7) === '2026-09' && r[col.origem] !== 'rendimento_conta')
+    .reduce((t, r) => t + r[col.valor], 0);
+  assert.ok(Math.abs(p.receitas - (semRend + lr[col.valor])) < 0.011, 'o rendimento entra como renda do mês');
+
+  // acerto manual: o app achava X, o banco diz 1250 — a diferença aparece e o cálculo recomeça
+  const antes = contasSaldo_().contas.find((c) => c.nome === 'Conta Teste').saldo;
+  a = acertarConta_({ conta: 'Conta Teste', saldo: 1250 });
+  assert.ok(Math.abs(a.acertado.diferenca - (1250 - antes)) < 0.011);
+  let c2 = a.contas.find((c) => c.nome === 'Conta Teste');
+  assert.strictEqual(c2.saldo, 1250); assert.strictEqual(c2.rendeu, 0, 'hoje ainda não rendeu');
+  assert.ok(Math.abs(c2.rendeu_mes - rendeu) < 0.011, 'o que rendeu no mês continua');
+  assert.strictEqual(c2.acertos[0].origem, 'manual');
+  assert.ok(Math.abs(c2.acertos[0].diferenca - (1250 - antes)) < 0.011);
+  assert.strictEqual(c2.rendimentos[0].mes, '2026-09');
+
+  // lançado depois do acerto, no mesmo dia: mexe no saldo; fatura paga pela conta também
+  lancar_({ lancamentos: [{ uuid: 'ct-4', data: '2026-09-16', tipo: 'despesa', valor: 50, conta: 'Conta Teste', descricao: 'lanche' }] });
+  pagarFatura_({ cartao: 'Itaú cartão', mes: '2026-09', valor: 30, conta: 'Conta Teste', data: '2026-09-16' });
+  c2 = contasSaldo_().contas.find((c) => c.nome === 'Conta Teste');
+  assert.strictEqual(c2.saldo, 1170); assert.strictEqual(c2.saiu, 80);
+
+  // para a IA
+  assert.ok(contasResumo_().some((c) => c.conta === 'Conta Teste' && c.saldo === 1170 && c.rende === '100% do CDI'));
+
+  // deixou de render: a renda do mês volta a zero (a linha fica, para o histórico)
+  salvarCadastro_({ tipo: 'contas', item: { nome: 'Conta Teste', rende_tipo: '' } });
+  atualizarRendimentosContas_(false);
+  assert.strictEqual(rend()[0][col.valor], 0);
+  assert.strictEqual(contasSaldo_().contas.find((c) => c.nome === 'Conta Teste').rende.tipo, '');
+}
+console.log('\ndinheiro nas contas: ok');

@@ -76,7 +76,7 @@ export function detectarBanco(linhas) {
 
 /** Nubank, extrato da conta em PDF: dia → "Total de entradas/saídas" → movimentos (o sinal vem da seção). */
 export function lerNubankContaPdf(linhas) {
-  let titular = '', cpfMeio = '', inicio = '', fim = '';
+  let titular = '', cpfMeio = '', inicio = '', fim = '', saldoFinal = null;
   const movimentos = [];
   let dia = '', sinal = 0, atual = null, xContraparte = null, xOperacao = null;
 
@@ -87,6 +87,10 @@ export function lerNubankContaPdf(linhas) {
     const cpf = /•••\.(\d{3}\.\d{3})-••/.exec(txt);
     if (!cpfMeio && cpf && /CPF/.test(txt)) cpfMeio = cpf[1];
     const per = /(\d{2}) DE ([A-ZÇ]+) DE (\d{4}) a (\d{2}) DE ([A-ZÇ]+) DE (\d{4})/.exec(txt);
+    // Resumo do período: "Saldo final do período   0,00" (a mesma frase no topo vem sem valor)
+    if (saldoFinal == null && /^Saldo final do per[ií]odo/.test(txt) && its.length >= 2 && DINHEIRO.test(its[its.length - 1].t.trim())) {
+      saldoFinal = lerValor(its[its.length - 1].t);
+    }
     if (per && !inicio) {
       const mes = (n) => MESES_CURTOS[n.slice(0, 3).replace('Ç', 'C')] || 0;
       inicio = `${per[3]}-${z(mes(per[2]))}-${per[1]}`;
@@ -126,12 +130,14 @@ export function lerNubankContaPdf(linhas) {
     }
   }
   const lidos = movimentos.map((m) => ({ ...m, contraparte: nomeDaContraparte(m.detalhe) }));
-  return { banco: 'nubank_conta', rotulo: 'Nubank · conta', titular, cpfMeio, inicio, fim, movimentos: comIds('nubank', lidos) };
+  return { banco: 'nubank_conta', rotulo: 'Nubank · conta', titular, cpfMeio, inicio, fim,
+    saldoFinal: saldoFinal != null && fim ? { valor: saldoFinal, data: fim } : null,
+    movimentos: comIds('nubank', lidos) };
 }
 
 /** Itaú, extrato da conta em PDF: "dd/mm/aaaa  DESCRIÇÃO  valor  [saldo]"; "SALDO DO DIA" não é movimento. */
 export function lerItauContaPdf(linhas) {
-  let titular = '', inicio = '', fim = '', xValor = null, xSaldo = null;
+  let titular = '', inicio = '', fim = '', xValor = null, xSaldo = null, saldoFinal = null;
   const movimentos = [];
   for (const l of linhas) {
     const txt = textoDaLinha(l);
@@ -144,6 +150,14 @@ export function lerItauContaPdf(linhas) {
     const d = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec((l.itens[0]?.t || '').trim());
     if (!d) continue;
     const desc = (l.itens[1]?.t || '').trim();
+    if (/^SALDO DO DIA/i.test(desc)) {
+      // o saldo é o número mais perto da coluna "saldo"
+      const nums = l.itens.slice(2).filter((i) => DINHEIRO.test(i.t.trim()));
+      const s = xSaldo == null ? nums[nums.length - 1] : nums.sort((a, b) => Math.abs(a.x - xSaldo) - Math.abs(b.x - xSaldo))[0];
+      const data = `${d[3]}-${d[2]}-${d[1]}`;
+      if (s && (!saldoFinal || data > saldoFinal.data)) saldoFinal = { valor: lerValor(s.t), data };
+      continue;
+    }
     if (/^SALDO/i.test(desc)) continue;
     const valores = l.itens.slice(2).filter((i) => DINHEIRO.test(i.t.trim()));
     if (!valores.length) continue;
@@ -158,7 +172,7 @@ export function lerItauContaPdf(linhas) {
   }
   // o Itaú lista do mais novo para o mais antigo: em ordem de data fica mais fácil conferir
   movimentos.reverse();
-  return { banco: 'itau_conta', rotulo: 'Itaú · conta', titular, cpfMeio: '', inicio, fim, movimentos: comIds('itau', movimentos) };
+  return { banco: 'itau_conta', rotulo: 'Itaú · conta', titular, cpfMeio: '', inicio, fim, saldoFinal, movimentos: comIds('itau', movimentos) };
 }
 
 // --- CSV (Nubank) e OFX ------------------------------------------------------
@@ -218,7 +232,13 @@ export function lerOfx(texto) {
     };
   }).filter((m) => /^\d{4}-\d{2}-\d{2}$/.test(m.data) && !Number.isNaN(m.valor) && m.valor !== 0);
   const banco = /<ORG>([^<\r\n]*)/i.exec(texto)?.[1]?.trim() || 'banco';
-  return { banco: 'ofx', rotulo: `${banco} (OFX)`, titular: '', cpfMeio: '', movimentos: comIds(`ofx-${normal(banco)}`, movimentos) };
+  // Saldo do fim: <LEDGERBAL><BALAMT>…<DTASOF>aaaammdd
+  const ledger = /<LEDGERBAL>([\s\S]*?)(<\/LEDGERBAL>|$)/i.exec(texto)?.[1] || '';
+  const bal = Number(campo(ledger, 'BALAMT').replace(',', '.'));
+  const asof = campo(ledger, 'DTASOF');
+  const saldoFinal = ledger && campo(ledger, 'BALAMT') !== '' && !Number.isNaN(bal) && /^\d{8}/.test(asof)
+    ? { valor: Math.round(bal * 100) / 100, data: `${asof.slice(0, 4)}-${asof.slice(4, 6)}-${asof.slice(6, 8)}` } : null;
+  return { banco: 'ofx', rotulo: `${banco} (OFX)`, titular: '', cpfMeio: '', saldoFinal, movimentos: comIds(`ofx-${normal(banco)}`, movimentos) };
 }
 
 /** Lê qualquer arquivo suportado. `linhas` para PDF; `texto` para CSV/OFX. */

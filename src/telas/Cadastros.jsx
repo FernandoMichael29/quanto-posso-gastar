@@ -40,6 +40,8 @@ const TIPOS = {
   }
 };
 
+const RENDE_CONTA = [['', 'Não rende'], ['cdi', '% do CDI'], ['extrato', 'Vem do extrato']];
+
 export default function Cadastros({ cadastros, aoMudar }) {
   const [aberto, setAberto] = useState('contas');
   const [editando, setEditando] = useState(null);
@@ -168,6 +170,34 @@ export default function Cadastros({ cadastros, aoMudar }) {
             </>
           )}
 
+          {aberto === 'contas' && editando.tipo !== 'credito' && (
+            <div className="grupo-rende">
+              <span className="secao-titulo" style={{ margin: 0 }}>O saldo rende?</span>
+              <div className="opcoes3" role="radiogroup" aria-label="Como o saldo da conta rende">
+                {RENDE_CONTA.map(([v, rot]) => (
+                  <button key={v || 'nao'} type="button" role="radio" aria-checked={(editando.rende_tipo || '') === v}
+                    className={(editando.rende_tipo || '') === v ? 'on' : ''}
+                    onClick={() => setEditando({ ...editando, rende_tipo: v, rende_pct: v === 'cdi' ? (editando.rende_pct || 100) : '' })}>
+                    {rot}
+                  </button>
+                ))}
+              </div>
+              {editando.rende_tipo === 'cdi' && (
+                <div className="pct">
+                  <input id="cad-rende-pct" inputMode="decimal" autoComplete="off" aria-label="Quanto rende, em % do CDI"
+                    value={editando.rende_pct ?? ''} placeholder="100"
+                    onChange={(e) => setEditando({ ...editando, rende_pct: e.target.value.replace(/[^\d,.]/g, '').slice(0, 6) })} />
+                  <span>% do CDI</span>
+                </div>
+              )}
+              <p className="ajuda" style={{ margin: 0 }}>
+                {editando.rende_tipo === 'extrato'
+                  ? 'O banco já mostra o rendimento no extrato (o REND PAGO do Itaú): ele chega quando você importa o extrato.'
+                  : 'Nubank e Mercado Pago rendem 100% do CDI no saldo da conta. O rendimento entra como renda, um pouco por dia. O saldo você acerta em Mês → Dinheiro nas contas.'}
+              </p>
+            </div>
+          )}
+
           {aberto === 'contas' && (
             <div className="campo">
               <label htmlFor="cad-saldo">Saldo inicial</label>
@@ -242,6 +272,9 @@ export default function Cadastros({ cadastros, aoMudar }) {
                     ? `fecha ${item.dia_fechamento || '?'} · vence ${item.dia_vencimento}`
                     : null,
                   item.tipo === 'credito' && !item.dia_vencimento ? 'falta o ciclo' : null,
+                  aberto === 'contas' && item.tipo !== 'credito' && item.rende_tipo === 'cdi'
+                    ? `rende ${String(item.rende_pct || 100).replace('.', ',')}% do CDI` : null,
+                  aberto === 'contas' && item.tipo !== 'credito' && item.rende_tipo === 'extrato' ? 'rende (pelo extrato)' : null,
                   item.ativo ? null : 'desativado'
                 ].filter(Boolean).join(' · ') || '—'}
               </span>

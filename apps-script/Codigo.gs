@@ -31,7 +31,7 @@
 
 // Suba junto com VERSAO_APP em src/lib/versao.js — o app compara as duas e
 // avisa na tela quando só uma das metades foi publicada.
-var VERSAO = '2.12.0';
+var VERSAO = '2.14.0';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -56,7 +56,10 @@ var ABAS = {
   ],
   // As carteiras de onde o dinheiro sai: bancos, cartões, benefícios, espécie.
   // Cartão de crédito tem ciclo: fecha num dia, vence noutro.
-  contas: ['nome', 'tipo', 'pessoa', 'dia_fechamento', 'dia_vencimento', 'saldo_inicial', 'ativo'],
+  // rende_tipo: '' (não rende), 'cdi' (rende_pct % do CDI, estimado todo dia)
+  // ou 'extrato' (o banco mostra o rendimento; ele chega importando o extrato).
+  contas: ['nome', 'tipo', 'pessoa', 'dia_fechamento', 'dia_vencimento', 'saldo_inicial', 'ativo',
+           'rende_tipo', 'rende_pct'],
   // De onde a renda vem. Só se aplica a receitas.
   fontes: ['nome', 'pessoa', 'tipo', 'ativo'],
   pessoas: ['nome', 'ativo'],
@@ -82,7 +85,11 @@ var ABAS = {
   // rende_*: quanto o baú rende. tipo '' (não rende), 'cdi' (pct = % do CDI)
   // ou 'fixo' (pct = % ao ano). Com limite, o que passa dele rende `acima`.
   baus: ['nome', 'meta', 'objetivo', 'prazo', 'criado_em', 'ativo',
-         'rende_tipo', 'rende_pct', 'rende_limite', 'rende_acima']
+         'rende_tipo', 'rende_pct', 'rende_limite', 'rende_acima'],
+  // Saldos conferidos com o banco: o ponto de partida do saldo de cada conta.
+  // origem 'manual' (vale no momento em que foi digitado) ou 'extrato' (fim do
+  // dia). `calculado` é o que o app achava naquela hora — dá a diferença.
+  saldos: ['conta', 'data', 'saldo', 'origem', 'registrado_em', 'calculado']
 };
 
 // Status possíveis de um lançamento na planilha.
@@ -371,6 +378,11 @@ function doPost(e) {
       case 'lancamentos':      return json_(lancamentosDoMes_(pedido));
       case 'extrato':          return json_(extrato_(pedido));
       case 'conferir_importacao': return json_(conferirImportacao_(pedido));
+      case 'vapid':            return json_(vapidPublica_());
+      case 'inscrever':        return json_(inscrever_(pedido));
+      case 'desinscrever':     return json_(desinscrever_(pedido));
+      case 'avisos':           return json_(avisosDeHoje_());
+      case 'testar_aviso':     return json_(testarAviso_(pedido));
       case 'editar_lancamento':  return json_(editarLancamento_(pedido));
       case 'excluir_lancamento': return json_(excluirLancamento_(pedido));
       case 'confirmar_recebimento': return json_(confirmarRecebimento_(pedido));
@@ -385,6 +397,8 @@ function doPost(e) {
       case 'salvar_meta': return json_(salvarMeta_(pedido));
       case 'conquistar':  return json_(conquistar_(pedido));
       case 'baus':        return json_(baus_());
+      case 'contas_saldo':  return json_(contasSaldo_());
+      case 'acertar_conta': return json_(acertarConta_(pedido));
       case 'salvar_bau':  return json_(salvarBau_(pedido));
       case 'excluir_bau': return json_(excluirBau_(pedido));
       default:            return json_({ ok: false, erro: 'acao_desconhecida' });
@@ -1112,6 +1126,8 @@ function panorama_(pedido) {
     // Doze meses de calendário real: é o que a IA deve usar para projetar.
     previsao_12m: previsao12_(),
     baus: bausResumo_(),
+    // O saldo de verdade de cada conta (conferido com o banco + o que veio depois).
+    saldos_contas: contasResumo_(),
     memoria: lerMemoria_()
   };
 }
@@ -1613,6 +1629,7 @@ function pendencias_() {
 }
 
 function resumo_(pedido) {
+  rendimentoDoDia_();
   var mes = pedido.mes || Utilities.formatDate(new Date(), fuso_(), 'yyyy-MM');
   var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('lancamentos');
   var n = aba.getLastRow() - 1;
@@ -1932,6 +1949,7 @@ function pagarFatura_(pedido) {
  */
 function painel_(pedido) {
   var mes = (pedido.mes || mesAtual_()).slice(0, 7);
+  rendimentoDoDia_();   // o que as contas renderam até ontem já entra como renda
 
   var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('lancamentos');
   var n = aba.getLastRow() - 1;
@@ -3442,7 +3460,7 @@ function aprenderCategoria_(descricao, categoria) {
 // que apontam para aquele nome — eles continuam fazendo sentido no histórico.
 
 var CADASTROS = {
-  contas:     { aba: 'contas',     campos: ['nome', 'tipo', 'pessoa', 'dia_fechamento', 'dia_vencimento', 'saldo_inicial', 'ativo'] },
+  contas:     { aba: 'contas',     campos: ['nome', 'tipo', 'pessoa', 'dia_fechamento', 'dia_vencimento', 'saldo_inicial', 'ativo', 'rende_tipo', 'rende_pct'] },
   categorias: { aba: 'categorias', campos: ['categoria', 'grupo', 'tipo', 'palavras_chave', 'orcamento_mes', 'ativo'] },
   fontes:     { aba: 'fontes',     campos: ['nome', 'pessoa', 'tipo', 'ativo'] },
   pessoas:    { aba: 'pessoas',    campos: ['nome', 'ativo'] }
@@ -3467,6 +3485,7 @@ function cadastros_() {
 function lerCadastro_(tipo) {
   var def = CADASTROS[tipo];
   if (!def) return [];
+  if (tipo === 'contas') garantirAbaContas_();
   var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(def.aba);
   if (!aba) return [];
   var n = aba.getLastRow() - 1;
@@ -3503,6 +3522,14 @@ function salvarCadastro_(pedido) {
       return chaveNome_(e[chaveCampo]) === procurado;
     })[0];
 
+    if (tipo === 'contas' && (item.rende_tipo !== undefined || item.rende_pct !== undefined)) {
+      var rc = rendeContaDe_(item.rende_tipo, item.rende_pct);
+      // Cartão de crédito não tem saldo para render.
+      if (String(item.tipo || (achado && achado.tipo) || '') === 'credito') rc = { tipo: '', pct: 0 };
+      item.rende_tipo = rc.tipo;
+      item.rende_pct = rc.pct || '';
+      PROP.deleteProperty('RENDE_CONTAS_DIA');   // a renda do rendimento se refaz na próxima abertura
+    }
     var valores = def.campos.map(function (campo) {
       if (campo === chaveCampo) return nome;
       if (campo === 'ativo') return item.ativo === false || item.ativo === 'não' ? 'não' : 'sim';
@@ -4115,4 +4142,713 @@ function marcarReceitasFuturasComoAgendadas() {
     : 'Nenhuma receita futura para ajustar.';
   Logger.log(texto);
   return texto;
+}
+
+// ---------------------------------------------------------------------------
+// Avisos no celular (notificação do próprio app, Web Push)
+// ---------------------------------------------------------------------------
+// Todo dia ao meio-dia o script vê as contas fixas que vencem hoje, amanhã ou já
+// venceram sem lançamento e "cutuca" cada celular inscrito. O aviso vai VAZIO
+// (sem conteúdo): quem monta o texto é o service worker do app, que pergunta
+// ao script (ação `avisos`) o que mostrar. Assim não é preciso criptografar o
+// conteúdo — só assinar o pedido (VAPID, ECDSA P-256), feito aqui em JS puro.
+//
+// As chaves VAPID nascem sozinhas na primeira vez e moram nas propriedades do
+// script. Os celulares inscritos também (`INSCRICOES`).
+
+var SERVICOS_PUSH = [
+  /^https:\/\/fcm\.googleapis\.com\//,
+  /^https:\/\/[a-z0-9.-]*push\.services\.mozilla\.com\//,
+  /^https:\/\/web\.push\.apple\.com\//,
+  /^https:\/\/[a-z0-9.-]*\.notify\.windows\.com\//
+];
+var MAX_INSCRICOES = 10;
+var HORA_DOS_AVISOS = 12;   // meio-dia (entre 12h e 13h, no fuso da planilha)
+
+// --- Matemática da curva P-256 (BigInt) ---------------------------------------
+
+// Criada na primeira vez que é usada: se o script rodasse num motor sem BigInt,
+// só os avisos falhariam — o resto do app continua de pé.
+var EC_ = null;
+function ec_() {
+  if (EC_) return EC_;
+  var B = function (h) { return BigInt('0x' + h); };
+  EC_ = {
+    p: B('ffffffff00000001000000000000000000000000ffffffffffffffffffffffff'),
+    n: B('ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551'),
+    b: B('5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b'),
+    gx: B('6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296'),
+    gy: B('4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5'),
+    zero: BigInt(0), um: BigInt(1), dois: BigInt(2), tres: BigInt(3), oito: BigInt(8)
+  };
+  return EC_;
+}
+
+function modEc_(a, m) { var r = a % m; return r < ec_().zero ? r + m : r; }
+
+function invEc_(a, m) {
+  ec_();
+  var t = EC_.zero, novoT = EC_.um, r = m, novoR = modEc_(a, m);
+  while (novoR !== EC_.zero) {
+    var q = r / novoR, tmp;
+    tmp = t - q * novoT; t = novoT; novoT = tmp;
+    tmp = r - q * novoR; r = novoR; novoR = tmp;
+  }
+  return modEc_(t, m);
+}
+
+// Pontos em coordenadas jacobianas [X, Y, Z]; Z = 0 é o infinito.
+function dobrarEc_(P) {
+  ec_();
+  var p = EC_.p, X = P[0], Y = P[1], Z = P[2];
+  if (Z === EC_.zero || Y === EC_.zero) return [EC_.zero, EC_.um, EC_.zero];
+  var ZZ = modEc_(Z * Z, p);
+  var M = modEc_(EC_.tres * (X - ZZ) * (X + ZZ), p);          // a = −3
+  var YY = modEc_(Y * Y, p);
+  var S = modEc_(BigInt(4) * X * YY, p);
+  var X3 = modEc_(M * M - EC_.dois * S, p);
+  var Y3 = modEc_(M * (S - X3) - EC_.oito * YY * YY, p);
+  var Z3 = modEc_(EC_.dois * Y * Z, p);
+  return [X3, Y3, Z3];
+}
+
+function somarEc_(P, Q) {
+  ec_();
+  if (P[2] === EC_.zero) return Q;
+  if (Q[2] === EC_.zero) return P;
+  var p = EC_.p;
+  var Z1Z1 = modEc_(P[2] * P[2], p), Z2Z2 = modEc_(Q[2] * Q[2], p);
+  var U1 = modEc_(P[0] * Z2Z2, p), U2 = modEc_(Q[0] * Z1Z1, p);
+  var S1 = modEc_(P[1] * Q[2] * Z2Z2, p), S2 = modEc_(Q[1] * P[2] * Z1Z1, p);
+  if (U1 === U2) return S1 === S2 ? dobrarEc_(P) : [EC_.zero, EC_.um, EC_.zero];
+  var H = modEc_(U2 - U1, p), R = modEc_(S2 - S1, p);
+  var HH = modEc_(H * H, p), HHH = modEc_(H * HH, p), V = modEc_(U1 * HH, p);
+  var X3 = modEc_(R * R - HHH - EC_.dois * V, p);
+  var Y3 = modEc_(R * (V - X3) - S1 * HHH, p);
+  var Z3 = modEc_(H * P[2] * Q[2], p);
+  return [X3, Y3, Z3];
+}
+
+/** k·G em coordenadas comuns [x, y]. */
+function multiplicarEc_(k) {
+  ec_();
+  var R = [EC_.zero, EC_.um, EC_.zero], P = [EC_.gx, EC_.gy, EC_.um];
+  while (k > EC_.zero) {
+    if (k & EC_.um) R = somarEc_(R, P);
+    P = dobrarEc_(P);
+    k = k >> EC_.um;
+  }
+  var zi = invEc_(R[2], EC_.p), zi2 = modEc_(zi * zi, EC_.p);
+  return [modEc_(R[0] * zi2, EC_.p), modEc_(R[1] * zi2 * zi, EC_.p)];
+}
+
+// --- Bytes ---------------------------------------------------------------------
+
+function bytesSemSinal_(b) { return b.map(function (x) { return x < 0 ? x + 256 : x; }); }
+function bytesComSinal_(b) { return b.map(function (x) { return x > 127 ? x - 256 : x; }); }
+function bigDeBytes_(b) {
+  ec_();
+  return BigInt('0x' + (bytesSemSinal_(b).map(function (x) { return ('0' + x.toString(16)).slice(-2); }).join('') || '0'));
+}
+function bytesDeBig_(n, tamanho) {
+  var h = n.toString(16);
+  while (h.length < tamanho * 2) h = '0' + h;
+  var saida = [];
+  for (var i = 0; i < tamanho * 2; i += 2) saida.push(parseInt(h.substr(i, 2), 16));
+  return saida;
+}
+function b64url_(bytesSemSinal) {
+  return Utilities.base64EncodeWebSafe(bytesComSinal_(bytesSemSinal)).replace(/=+$/, '');
+}
+function sha256_(bytesSemSinal) {
+  return bytesSemSinal_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytesComSinal_(bytesSemSinal)));
+}
+function hmac_(chave, dados) {
+  return bytesSemSinal_(Utilities.computeHmacSha256Signature(bytesComSinal_(dados), bytesComSinal_(chave)));
+}
+function utf8_(texto) { return bytesSemSinal_(Utilities.newBlob(texto).getBytes()); }
+
+/** ECDSA P-256 com SHA-256 e k determinístico (RFC 6979). Devolve r‖s (64 bytes). */
+function assinarEs256_(mensagem, d) {
+  ec_();
+  var n = EC_.n;
+  var h = sha256_(mensagem);
+  var x = bytesDeBig_(d, 32);
+  var h1 = bytesDeBig_(modEc_(bigDeBytes_(h), n), 32);
+  var V = [], K = [];
+  for (var i = 0; i < 32; i++) { V.push(1); K.push(0); }
+  K = hmac_(K, V.concat([0], x, h1)); V = hmac_(K, V);
+  K = hmac_(K, V.concat([1], x, h1)); V = hmac_(K, V);
+  var e = bigDeBytes_(h);
+  for (var tentativa = 0; tentativa < 100; tentativa++) {
+    V = hmac_(K, V);
+    var k = bigDeBytes_(V);
+    if (k > EC_.zero && k < n) {
+      var r = modEc_(multiplicarEc_(k)[0], n);
+      var s = modEc_(invEc_(k, n) * (e + r * d), n);
+      if (r !== EC_.zero && s !== EC_.zero) return bytesDeBig_(r, 32).concat(bytesDeBig_(s, 32));
+    }
+    K = hmac_(K, V.concat([0])); V = hmac_(K, V);
+  }
+  throw new Error('assinatura');
+}
+
+/** As chaves VAPID deste script: criadas na primeira vez, guardadas nas propriedades. */
+function chavesVapid_() {
+  ec_();
+  var salva = PROP.getProperty('VAPID_PRIVADA');
+  if (!salva) {
+    var semente = utf8_(Utilities.getUuid() + Utilities.getUuid() + Date.now() + Utilities.getUuid());
+    var d = modEc_(bigDeBytes_(sha256_(semente)), EC_.n - EC_.um) + EC_.um;
+    salva = d.toString(16);
+    PROP.setProperty('VAPID_PRIVADA', salva);
+    PROP.deleteProperty('VAPID_PUBLICA');
+  }
+  var dd = BigInt('0x' + salva);
+  var publica = PROP.getProperty('VAPID_PUBLICA');
+  if (!publica) {
+    var Q = multiplicarEc_(dd);
+    publica = b64url_([4].concat(bytesDeBig_(Q[0], 32), bytesDeBig_(Q[1], 32)));
+    PROP.setProperty('VAPID_PUBLICA', publica);
+  }
+  return { d: dd, publica: publica };
+}
+
+/** O cabeçalho Authorization do pedido de aviso (JWT ES256 do VAPID). */
+function autorizacaoVapid_(endpoint) {
+  var chaves = chavesVapid_();
+  var origem = endpoint.match(/^https:\/\/[^/]+/)[0];
+  var email = '';
+  try { email = Session.getEffectiveUser().getEmail(); } catch (e) {}
+  var cab = b64url_(utf8_(JSON.stringify({ typ: 'JWT', alg: 'ES256' })));
+  var corpo = b64url_(utf8_(JSON.stringify({
+    aud: origem, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: 'mailto:' + (email || 'avisos@quanto-posso-gastar.app')
+  })));
+  var assinatura = b64url_(assinarEs256_(utf8_(cab + '.' + corpo), chaves.d));
+  return 'vapid t=' + cab + '.' + corpo + '.' + assinatura + ', k=' + chaves.publica;
+}
+
+// --- Inscrições --------------------------------------------------------------
+
+function lerInscricoes_() {
+  try { return JSON.parse(PROP.getProperty('INSCRICOES') || '[]'); } catch (e) { return []; }
+}
+function gravarInscricoes_(lista) { PROP.setProperty('INSCRICOES', JSON.stringify(lista.slice(-MAX_INSCRICOES))); }
+
+function vapidPublica_() { return { ok: true, chave: chavesVapid_().publica }; }
+
+function inscrever_(pedido) {
+  var endpoint = String((pedido.inscricao && pedido.inscricao.endpoint) || '');
+  if (!SERVICOS_PUSH.some(function (r) { return r.test(endpoint); })) return { ok: false, erro: 'servico_desconhecido' };
+  var lista = lerInscricoes_().filter(function (i) { return i.endpoint !== endpoint; });
+  lista.push({
+    endpoint: endpoint,
+    pessoa: String(pedido.pessoa || '').slice(0, 60),
+    aparelho: String(pedido.aparelho || '').slice(0, 60),
+    desde: hojeISO_()
+  });
+  gravarInscricoes_(lista);
+  ligarGatilhoAvisos_();
+  return { ok: true, inscritos: lista.length };
+}
+
+function desinscrever_(pedido) {
+  var endpoint = String(pedido.endpoint || '');
+  var lista = lerInscricoes_().filter(function (i) { return i.endpoint !== endpoint; });
+  gravarInscricoes_(lista);
+  return { ok: true, inscritos: lista.length };
+}
+
+/**
+ * Garante UM gatilho diário na hora de HORA_DOS_AVISOS. Se a hora mudou desde
+ * que o gatilho foi criado (era 8h), apaga o antigo e cria o novo. Devolve
+ * true quando precisou trocar.
+ */
+function ligarGatilhoAvisos_() {
+  var meus = ScriptApp.getProjectTriggers().filter(function (t) {
+    return t.getHandlerFunction() === 'avisarContasDoDia';
+  });
+  var horaCerta = String(PROP.getProperty('AVISOS_HORA') || '') === String(HORA_DOS_AVISOS);
+  if (meus.length === 1 && horaCerta) return false;
+  meus.forEach(function (t) { ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('avisarContasDoDia').timeBased().atHour(HORA_DOS_AVISOS).everyDays(1).create();
+  PROP.setProperty('AVISOS_HORA', String(HORA_DOS_AVISOS));
+  return meus.length > 0;
+}
+
+// --- O que avisar -------------------------------------------------------------
+
+/**
+ * As contas fixas do mês que pedem atenção hoje: vencem hoje, amanhã, ou já
+ * venceram e não foram lançadas. Devolve o texto pronto do aviso (ou nada).
+ */
+function avisosDeHoje_() {
+  var hoje = hojeISO_();
+  var dia = Number(hoje.slice(8, 10));
+  var teste = Number(PROP.getProperty('AVISO_TESTE') || 0);
+  if (teste && Date.now() - teste < 10 * 60 * 1000) {
+    PROP.deleteProperty('AVISO_TESTE');
+    return { ok: true, avisos: [{ titulo: '⚔️ Os avisos estão ligados', corpo: 'É assim que os chefes do mês vão te avisar: no dia, na véspera e quando atacarem.', tag: 'teste' }] };
+  }
+  var fixas = (painel_({ mes: hoje.slice(0, 7) }).fixas || []).filter(function (f) { return !f.lancado && f.dia; });
+  var atacando = fixas.filter(function (f) { return Number(f.dia) < dia; });
+  var hojeVence = fixas.filter(function (f) { return Number(f.dia) === dia; });
+  var amanha = fixas.filter(function (f) { return Number(f.dia) === dia + 1; });
+  var lista = [];
+  var reais = function (v) { return 'R$ ' + Number(v || 0).toFixed(2).replace('.', ','); };
+  var nomes = function (l) { return l.map(function (f) { return f.nome + ' ' + reais(f.valor); }).join(' · '); };
+  if (hojeVence.length) {
+    lista.push({ titulo: hojeVence.length === 1 ? '⚔️ O chefe ' + hojeVence[0].nome + ' ataca hoje' : '⚔️ ' + hojeVence.length + ' chefes atacam hoje',
+      corpo: nomes(hojeVence), tag: 'hoje' });
+  }
+  if (amanha.length) {
+    lista.push({ titulo: amanha.length === 1 ? '🛡️ ' + amanha[0].nome + ' vence amanhã' : '🛡️ ' + amanha.length + ' contas vencem amanhã',
+      corpo: nomes(amanha), tag: 'amanha' });
+  }
+  if (atacando.length) {
+    lista.push({ titulo: '🔥 ' + (atacando.length === 1 ? atacando[0].nome + ' está atacando' : atacando.length + ' chefes atacando'),
+      corpo: 'Venceu e não foi lançado: ' + nomes(atacando), tag: 'atacando' });
+  }
+  return { ok: true, avisos: lista };
+}
+
+/** Manda o "cutucão" para um celular. 404/410 = o celular saiu: some da lista. */
+function cutucar_(endpoint) {
+  var r = UrlFetchApp.fetch(endpoint, {
+    method: 'post',
+    headers: { Authorization: autorizacaoVapid_(endpoint), TTL: '43200', Urgency: 'high' },
+    payload: '',
+    muteHttpExceptions: true
+  });
+  return r.getResponseCode();
+}
+
+/** O gatilho diário (meio-dia). Só cutuca se houver o que avisar. */
+function avisarContasDoDia() {
+  // Gatilho da hora antiga (8h)? Troca pelo do meio-dia e não avisa agora.
+  if (ligarGatilhoAvisos_()) return { ok: true, enviados: 0, gatilho: 'trocado' };
+  var inscritos = lerInscricoes_();
+  if (!inscritos.length) return { ok: true, enviados: 0 };
+  if (!avisosDeHoje_().avisos.length) return { ok: true, enviados: 0 };
+  var ficam = [], enviados = 0;
+  inscritos.forEach(function (i) {
+    var codigo = 0;
+    try { codigo = cutucar_(i.endpoint); } catch (e) { codigo = 0; }
+    if (codigo === 404 || codigo === 410) return;
+    if (codigo >= 200 && codigo < 300) enviados++;
+    ficam.push(i);
+  });
+  gravarInscricoes_(ficam);
+  return { ok: true, enviados: enviados };
+}
+
+/** "Mandar um aviso de teste" nos Ajustes: cutuca só este celular, já. */
+function testarAviso_(pedido) {
+  var endpoint = String(pedido.endpoint || '');
+  if (!lerInscricoes_().some(function (i) { return i.endpoint === endpoint; })) return { ok: false, erro: 'nao_inscrito' };
+  PROP.setProperty('AVISO_TESTE', String(Date.now()));
+  var codigo = cutucar_(endpoint);
+  if (codigo === 404 || codigo === 410) { desinscrever_({ endpoint: endpoint }); return { ok: false, erro: 'inscricao_expirou' }; }
+  return codigo >= 200 && codigo < 300 ? { ok: true } : { ok: false, erro: 'push_' + codigo };
+}
+
+// ---------------------------------------------------------------------------
+// Dinheiro nas contas e rendimento automático do saldo
+// ---------------------------------------------------------------------------
+//
+// O saldo de uma conta não é a soma de tudo desde sempre: o app só conhece o
+// que foi lançado, e quase nunca é tudo. Então o saldo parte de um valor
+// CONFERIDO com o banco (aba `saldos`: você digita, ou o extrato importado traz
+// o saldo final) e anda com o que foi lançado depois dele — entradas, gastos no
+// débito/Pix, faturas pagas, o que foi para os baús ou voltou deles.
+//
+// Conta que rende "% do CDI" (Nubank, Mercado Pago…) ganha o rendimento dia
+// útil a dia útil sobre o saldo do fim do dia, já líquido de IR. Esse
+// rendimento entra como RENDA, um pouco por dia: uma linha por conta e por mês
+// em `lancamentos` (origem `rendimento_conta`) que o script atualiza uma vez
+// por dia — o livre para gastar e o ouro de hoje sobem junto.
+// Conta "vem do extrato" (Itaú REND PAGO) não é estimada: o rendimento chega
+// pela importação do extrato, como qualquer entrada.
+
+var TIPOS_RENDE_CONTA = ['', 'cdi', 'extrato'];
+var IR_CONTA = 0.225;          // dinheiro de conta gira rápido: quase sempre menos de 180 dias
+var ORIGEM_RENDE_CONTA = 'rendimento_conta';
+var ORIGENS_SALDO = ['manual', 'extrato'];
+var MAX_SALDO_CONTA = 100000000;
+
+/** O jeito que o saldo da conta rende, já conferido. */
+function rendeContaDe_(tipo, pct) {
+  tipo = String(tipo || '').trim().toLowerCase();
+  if (TIPOS_RENDE_CONTA.indexOf(tipo) < 0) tipo = '';
+  if (tipo !== 'cdi') return { tipo: tipo, pct: 0 };
+  var p = Number(String(pct === undefined || pct === null ? '' : pct).replace(',', '.'));
+  if (!(p > 0)) p = 100;
+  return { tipo: 'cdi', pct: Math.min(300, p) };
+}
+
+/** Planilha antiga: a aba `contas` ganha as colunas de rendimento sem perder nada. */
+var CONTAS_CONFERIDA_ = false;
+function garantirAbaContas_() {
+  if (CONTAS_CONFERIDA_) return;
+  CONTAS_CONFERIDA_ = true;
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var aba = ss.getSheetByName('contas');
+  if (!aba) return;
+  var largura = Math.max(aba.getLastColumn(), 1);
+  var cab = aba.getRange(1, 1, 1, largura).getValues()[0]
+    .map(function (c) { return String(c || '').trim(); });
+  var igual = ABAS.contas.every(function (c, i) { return cab[i] === c; });
+  if (!igual) prepararAba_(ss, 'contas');
+}
+
+function abaSaldos_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var aba = ss.getSheetByName('saldos');
+  if (!aba) { prepararAba_(ss, 'saldos'); aba = ss.getSheetByName('saldos'); }
+  return aba;
+}
+
+/** Contas que guardam dinheiro (cartão de crédito não: lá mora dívida). */
+function contasComSaldo_() {
+  return lerCadastro_('contas')
+    .filter(function (c) { return c.ativo && c.tipo !== 'credito'; })
+    .map(function (c) {
+      return { nome: c.nome, chave: chaveNome_(c.nome), tipo: c.tipo || '', pessoa: c.pessoa || '',
+               rende: rendeContaDe_(c.rende_tipo, c.rende_pct) };
+    });
+}
+
+function msDe_(v) {
+  if (v instanceof Date) return v.getTime();
+  var t = Date.parse(String(v || ''));
+  return isNaN(t) ? 0 : t;
+}
+
+/** Os saldos conferidos, do mais antigo para o mais novo. */
+function lerSaldosConferidos_() {
+  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('saldos');
+  if (!aba) return [];
+  var n = aba.getLastRow() - 1;
+  if (n <= 0) return [];
+  return aba.getRange(2, 1, n, ABAS.saldos.length).getValues()
+    .filter(function (r) { return r[0] && normalizarData_(r[1]); })
+    .map(function (r, i) {
+      return {
+        conta: String(r[0]), chave: chaveNome_(r[0]), data: normalizarData_(r[1]),
+        saldo: Number(r[2]) || 0, origem: String(r[3] || 'manual'),
+        registrado_em: msDe_(r[4]), calculado: r[5] === '' || r[5] === null || r[5] === undefined ? null : Number(r[5]),
+        ordem: i
+      };
+    })
+    .sort(function (a, b) {
+      return a.data < b.data ? -1 : a.data > b.data ? 1 : a.registrado_em - b.registrado_em || a.ordem - b.ordem;
+    });
+}
+
+/**
+ * Quanto um lançamento mexe no saldo da conta dele (+ entra, − sai), ou null
+ * quando não mexe: compra no crédito vira fatura, acerto de baú não é dinheiro
+ * da conta, e o rendimento automático é contado pelo próprio cálculo.
+ */
+function efeitoNaConta_(r, col, contasIdx) {
+  if (r[col.status] !== STATUS.OK) return null;
+  if (String(r[col.origem] || '') === ORIGEM_RENDE_CONTA) return null;
+  var v = Number(r[col.valor]) || 0;
+  switch (r[col.tipo]) {
+    case TIPO.RECEITA: return v;
+    case TIPO.DESPESA: return ehCartao_(contasIdx[chaveNome_(String(r[col.conta] || ''))]) ? null : -v;
+    case TIPO.FATURA: return -v;
+    case TIPO.GUARDAR: return -v;
+    case TIPO.RESGATAR: return v;
+    default: return null;
+  }
+}
+
+/**
+ * Refaz a vida de cada conta a partir do primeiro saldo conferido: dia a dia,
+ * conferências e lançamentos na ordem em que aconteceram, e o rendimento de
+ * cada dia útil sobre o saldo do fim do dia (hoje ainda não rendeu).
+ *
+ * Conferência manual vale no momento em que foi feita: lançamento do mesmo dia
+ * registrado depois dela ainda mexe no saldo. A do extrato vale no fim do dia.
+ */
+function estadoDasContas_(linhas, serie, hoje) {
+  var col = indiceColunas_();
+  var contasIdx = indiceContas_();
+  var contas = contasComSaldo_();
+  var conferidos = lerSaldosConferidos_();
+  var porChave = {};
+  contas.forEach(function (c) { porChave[c.chave] = { cfg: c, cps: [], movs: [] }; });
+  conferidos.forEach(function (cp) { if (porChave[cp.chave]) porChave[cp.chave].cps.push(cp); });
+
+  (linhas || []).forEach(function (r, i) {
+    var k = chaveNome_(String(r[col.conta] || ''));
+    var alvo = porChave[k];
+    if (!alvo || !alvo.cps.length) return;
+    var e = efeitoNaConta_(r, col, contasIdx);
+    if (e === null || !e) return;
+    var data = normalizarData_(r[col.data]);
+    if (!data || data > hoje || data < alvo.cps[0].data) return;   // antes da 1ª conferência não importa
+    alvo.movs.push({ data: data, valor: e, ms: msDe_(r[col.hora_registro]), ordem: i });
+  });
+
+  var aviso = { estimado: !!(serie && serie.estimado) };
+  var cdiDia = serie ? serie.ultima : Math.pow(1 + CDI_PADRAO_ANUAL, 1 / 252) - 1;
+
+  return contas.map(function (c) {
+    var a = porChave[c.chave];
+    var item = { nome: c.nome, tipo: c.tipo, pessoa: c.pessoa, rende: c.rende,
+                 saldo: null, conferido: null, entrou: 0, saiu: 0, rendeu: 0,
+                 por_mes: {}, rende_por_mes: 0, acertos: [], fim_do_dia: {} };
+    if (!a.cps.length) return item;
+
+    // Linha do tempo: cada coisa com o seu dia e o seu momento no dia.
+    var eventos = [];
+    a.cps.forEach(function (cp) {
+      eventos.push({ data: cp.data, ms: cp.origem === 'extrato' ? Infinity : cp.registrado_em, cp: cp, ordem: cp.ordem });
+    });
+    a.movs.forEach(function (m) {
+      // Do dia de uma conferência do extrato para trás, o extrato já contou tudo.
+      eventos.push({ data: m.data, ms: m.ms, mov: m.valor, ordem: 1e6 + m.ordem });
+    });
+    eventos.sort(function (x, y) {
+      return x.data < y.data ? -1 : x.data > y.data ? 1 : (x.ms - y.ms) || (x.ordem - y.ordem);
+    });
+
+    var cfgTaxa = { tipo: 'cdi', pct: c.rende.pct, acima: c.rende.pct, limite: 0 };
+    var saldo = null, ultimo = null, i = 0;
+    var d = eventos[0].data;
+    while (d <= hoje) {
+      while (i < eventos.length && eventos[i].data === d) {
+        var e = eventos[i++];
+        if (e.cp) {
+          var dif = saldo === null ? null : arred_(e.cp.saldo - saldo);
+          saldo = e.cp.saldo;
+          ultimo = e.cp;
+          item.entrou = 0; item.saiu = 0; item.rendeu = 0;
+          item.acertos.push({ data: e.cp.data, saldo: arred_(e.cp.saldo), origem: e.cp.origem,
+                              diferenca: e.cp.calculado !== null ? arred_(e.cp.saldo - e.cp.calculado) : dif });
+        } else if (saldo !== null) {
+          saldo += e.mov;
+          if (e.mov > 0) item.entrou += e.mov; else item.saiu -= e.mov;
+        }
+      }
+      if (saldo !== null) {
+        if (d < hoje && c.rende.tipo === 'cdi' && saldo > 0) {
+          var tx = taxaDoDia_(cfgTaxa, serie, d, aviso);
+          if (tx) {
+            var y = saldo * tx.ate * (1 - IR_CONTA);
+            saldo += y; item.rendeu += y;
+            somar_(item.por_mes, d.slice(0, 7), y);
+          }
+        }
+        item.fim_do_dia[d] = saldo;
+      }
+      d = diaISOMais_(d, 1);
+    }
+    while (i < eventos.length) { var resto = eventos[i++]; if (resto.mov && saldo !== null) saldo += resto.mov; }
+
+    item.saldo = arred_(saldo);
+    item.conferido = { data: ultimo.data, saldo: arred_(ultimo.saldo), origem: ultimo.origem };
+    item.entrou = arred_(item.entrou); item.saiu = arred_(item.saiu); item.rendeu = arred_(item.rendeu);
+    Object.keys(item.por_mes).forEach(function (m) { item.por_mes[m] = arred_(item.por_mes[m]); });
+    item.acertos = item.acertos.slice(-12).reverse();
+    if (c.rende.tipo === 'cdi') {
+      var mensal = Math.pow(1 + cdiDia * c.rende.pct / 100, DIAS_UTEIS_MES) - 1;
+      item.rende_por_mes = arred_(Math.max(0, saldo) * mensal * (1 - IR_CONTA));
+    }
+    return item;
+  }).map(function (item) {
+    item._estimado = !!aviso.estimado;
+    return item;
+  });
+}
+
+function algumaContaRende_() {
+  return contasComSaldo_().some(function (c) { return c.rende.tipo === 'cdi'; });
+}
+
+function uuidRendeConta_(conta, mes) {
+  return 'rend-' + semAcentoGS_(String(conta)).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + mes;
+}
+
+function ultimoDiaDoMes_(mes) {
+  var d = new Date(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)), 0).getDate();
+  return mes + '-' + (d < 10 ? '0' + d : d);
+}
+
+/**
+ * O rendimento vira renda, um pouco por dia: atualiza (ou cria) a linha do mês
+ * de cada conta que rende pelo CDI. Roda uma vez por dia — na primeira vez que
+ * o app abre o mês — ou na hora, depois de um acerto ou de mudar a conta.
+ * Só mexe no mês atual e no anterior: mês fechado há tempo não muda sozinho.
+ */
+function atualizarRendimentosContas_(forcar) {
+  var hoje = hojeISO_();
+  if (!forcar && PROP.getProperty('RENDE_CONTAS_DIA') === hoje) return { ok: true, mudou: 0 };
+  if (!lerSaldosConferidos_().length) {
+    PROP.setProperty('RENDE_CONTAS_DIA', hoje);
+    return { ok: true, mudou: 0 };
+  }
+  var trava = LockService.getScriptLock();
+  trava.waitLock(20000);
+  try {
+    var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('lancamentos');
+    var n = aba.getLastRow() - 1;
+    var col = indiceColunas_();
+    var linhas = n > 0 ? aba.getRange(2, 1, n, ABAS.lancamentos.length).getValues() : [];
+    var primeiro = lerSaldosConferidos_()[0].data;
+    var estados = estadoDasContas_(linhas, algumaContaRende_() ? serieCdi_(primeiro) : null, hoje);
+
+    var linhaDoUuid = {};
+    linhas.forEach(function (r, i) { linhaDoUuid[String(r[col.uuid])] = i; });
+    var mesHoje = hoje.slice(0, 7);
+    var meses = [mesAnterior_(mesHoje), mesHoje];
+    var novas = [], mudou = 0;
+
+    estados.forEach(function (c) {
+      if (c.saldo === null) return;
+      meses.forEach(function (mes) {
+        // Deixou de render pelo CDI: a linha do mês (se houver) volta a zero.
+        var valor = c.rende.tipo === 'cdi' ? arred_(c.por_mes[mes] || 0) : 0;
+        var uuid = uuidRendeConta_(c.nome, mes);
+        var data = mes === mesHoje ? hoje : ultimoDiaDoMes_(mes);
+        var i = linhaDoUuid[uuid];
+        if (i !== undefined) {
+          var r = linhas[i];
+          if (Math.abs((Number(r[col.valor]) || 0) - valor) < 0.005 && normalizarData_(r[col.data]) === data) return;
+          aba.getRange(i + 2, col.valor + 1).setValue(valor);
+          aba.getRange(i + 2, col.data + 1).setValue(data);
+          mudou++;
+          return;
+        }
+        if (valor < 0.01) return;
+        novas.push(linhaDe_({
+          uuid: uuid, data: data, tipo: TIPO.RECEITA, valor: valor, categoria: 'Rendimento',
+          descricao: 'Rendimento ' + c.nome, conta: c.nome, pessoa: c.pessoa,
+          origem: ORIGEM_RENDE_CONTA, confianca: 'automatico', status: STATUS.OK
+        }));
+      });
+    });
+    if (novas.length) {
+      aba.getRange(aba.getLastRow() + 1, 1, novas.length, ABAS.lancamentos.length).setValues(novas);
+      mudou += novas.length;
+    }
+    if (mudou) atualizarResumo_();
+    PROP.setProperty('RENDE_CONTAS_DIA', hoje);
+    return { ok: true, mudou: mudou };
+  } finally {
+    trava.releaseLock();
+  }
+}
+
+/** Antes de mostrar o mês: o rendimento de ontem já tem que estar lá. Nunca derruba a tela. */
+function rendimentoDoDia_() {
+  try { atualizarRendimentosContas_(false); } catch (e) { /* amanhã tenta de novo */ }
+}
+
+/** Mês → Resumo, "Dinheiro nas contas". */
+function contasSaldo_() {
+  rendimentoDoDia_();
+  var hoje = hojeISO_();
+  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('lancamentos');
+  var n = aba.getLastRow() - 1;
+  var linhas = n > 0 ? aba.getRange(2, 1, n, ABAS.lancamentos.length).getValues() : [];
+  var conferidos = lerSaldosConferidos_();
+  var precisaCdi = conferidos.length && algumaContaRende_();
+  var serie = precisaCdi ? serieCdi_(conferidos[0].data) : null;
+  var estados = estadoDasContas_(linhas, serie, hoje);
+  var mes = hoje.slice(0, 7);
+
+  // O que já entrou como renda em cada mês (as linhas automáticas, como estão na planilha).
+  var col = indiceColunas_();
+  var entrou = {};
+  linhas.forEach(function (r) {
+    if (String(r[col.origem] || '') !== ORIGEM_RENDE_CONTA || r[col.status] !== STATUS.OK) return;
+    var k = chaveNome_(String(r[col.conta] || ''));
+    if (!entrou[k]) entrou[k] = [];
+    entrou[k].push({ mes: normalizarData_(r[col.data]).slice(0, 7), valor: arred_(Number(r[col.valor]) || 0) });
+  });
+
+  var total = 0, rendeuMes = 0;
+  var lista = estados.map(function (c) {
+    if (c.saldo !== null) total += c.saldo;
+    rendeuMes += c.por_mes[mes] || 0;
+    var hist = (entrou[chaveNome_(c.nome)] || []).sort(function (a, b) { return a.mes < b.mes ? 1 : -1; }).slice(0, 12);
+    return {
+      nome: c.nome, tipo: c.tipo, pessoa: c.pessoa, rende: c.rende,
+      saldo: c.saldo, conferido: c.conferido,
+      entrou: c.entrou, saiu: c.saiu, rendeu: c.rendeu,
+      rendeu_mes: arred_(c.por_mes[mes] || 0), rende_por_mes: c.rende_por_mes,
+      rendimentos: hist, acertos: c.acertos
+    };
+  });
+  return {
+    ok: true,
+    contas: lista,
+    total: arred_(total),
+    rendeu_mes: arred_(rendeuMes),
+    cdi_data: serie ? serie.ultima_data : '',
+    cdi_anual: serie && serie.ultima ? Math.round((Math.pow(1 + serie.ultima, 252) - 1) * 10000) / 100 : null,
+    estimado: estados.some(function (c) { return c._estimado && c.rende.tipo === 'cdi' && c.saldo !== null; }),
+    ir: IR_CONTA
+  };
+}
+
+/**
+ * "Acertar com o banco": o saldo que o banco mostra vira o ponto de partida.
+ * Do app vem `data` vazia (agora, manual); do extrato importado vem o dia do
+ * saldo final (vale no fim daquele dia). Guarda também o que o app calculava,
+ * para mostrar a diferença.
+ */
+function acertarConta_(pedido) {
+  var nome = String(pedido.conta || '').trim();
+  var conta = contasComSaldo_().filter(function (c) { return c.chave === chaveNome_(nome); })[0];
+  if (!conta) return { ok: false, erro: 'conta_desconhecida' };
+  var saldo = Number(String(pedido.saldo === undefined ? '' : pedido.saldo).replace(',', '.'));
+  if (!isFinite(saldo) || Math.abs(saldo) > MAX_SALDO_CONTA || String(pedido.saldo).trim() === '') {
+    return { ok: false, erro: 'saldo_invalido' };
+  }
+  saldo = arred_(saldo);
+  var hoje = hojeISO_();
+  var origem = ORIGENS_SALDO.indexOf(pedido.origem) >= 0 ? pedido.origem : 'manual';
+  var data = pedido.data ? normalizarData_(pedido.data) : hoje;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(data) || data > hoje) return { ok: false, erro: 'data_invalida' };
+  if (origem === 'manual') data = hoje;
+
+  var trava = LockService.getScriptLock();
+  trava.waitLock(20000);
+  var calculado = null;
+  try {
+    var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('lancamentos');
+    var n = aba.getLastRow() - 1;
+    var linhas = n > 0 ? aba.getRange(2, 1, n, ABAS.lancamentos.length).getValues() : [];
+    var conferidos = lerSaldosConferidos_();
+    var serie = conferidos.length && conta.rende.tipo === 'cdi' ? serieCdi_(conferidos[0].data) : null;
+    var antes = estadoDasContas_(linhas, serie, hoje).filter(function (c) { return chaveNome_(c.nome) === conta.chave; })[0];
+    if (antes && antes.saldo !== null) {
+      // Manual: o que o app mostrava agora. Extrato: como o app via o fim daquele dia.
+      if (origem === 'manual') calculado = antes.saldo;
+      else if (antes.fim_do_dia[data] !== undefined) calculado = arred_(antes.fim_do_dia[data]);
+    }
+    abaSaldos_().appendRow([conta.nome, data, saldo, origem, new Date(), calculado === null ? '' : calculado]);
+  } finally {
+    trava.releaseLock();
+  }
+  try { atualizarRendimentosContas_(true); } catch (e) { /* o saldo já foi guardado */ }
+  var r = contasSaldo_();
+  r.acertado = { conta: conta.nome, saldo: saldo, data: data, diferenca: calculado === null ? null : arred_(saldo - calculado) };
+  return r;
+}
+
+/** Para a IA: quanto tem em cada conta e quanto rende. */
+function contasResumo_() {
+  if (!lerSaldosConferidos_().length) return [];
+  try {
+    return contasSaldo_().contas.filter(function (c) { return c.saldo !== null; }).map(function (c) {
+      return { conta: c.nome, saldo: c.saldo, conferido_em: c.conferido.data,
+               rende: c.rende.tipo === 'cdi' ? c.rende.pct + '% do CDI' : (c.rende.tipo === 'extrato' ? 'rendimento vem do extrato' : 'não rende'),
+               rende_por_mes_liquido: c.rende_por_mes };
+    });
+  } catch (e) { return []; }
 }

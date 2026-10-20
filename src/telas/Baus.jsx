@@ -433,7 +433,7 @@ function LinhaBau({ bau, algumRende, aoAbrir }) {
 
 // --- janelas ------------------------------------------------------------------
 
-function useSaida(aoFechar, ocupado) {
+export function useSaida(aoFechar, ocupado) {
   const [saindo, setSaindo] = useState(false);
   function fechar() {
     if (ocupado || saindo) return;
@@ -443,7 +443,7 @@ function useSaida(aoFechar, ocupado) {
   return [saindo, fechar];
 }
 
-function Modal({ rotulo, saindo, aoFechar, children }) {
+export function Modal({ rotulo, saindo, aoFechar, children }) {
   return (
     <div className={`modal ${saindo ? 'saindo' : ''}`} role="dialog" aria-modal="true" aria-label={rotulo}>
       <div className="modal-fundo" onClick={aoFechar} />
@@ -452,7 +452,7 @@ function Modal({ rotulo, saindo, aoFechar, children }) {
   );
 }
 
-function CampoValor({ id, valor, aoMudar, rotulo }) {
+export function CampoValor({ id, valor, aoMudar, rotulo }) {
   return (
     <label className={`valor-px ${valor ? '' : 'zerado'}`} htmlFor={id}>
       <span className="moeda px">R$</span>

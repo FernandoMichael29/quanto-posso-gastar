@@ -18,6 +18,7 @@ import { calcularMana } from './lib/mana.js';
 import { totalNosBaus } from './lib/baus.js';
 import Baus from './telas/Baus.jsx';
 import Importar from './telas/Importar.jsx';
+import Avisos from './componentes/Avisos.jsx';
 import { SpriteBau } from './componentes/Item.jsx';
 import EscolherPersonagem from './telas/EscolherPersonagem.jsx';
 import Personagem from './componentes/Personagem.jsx';
@@ -60,7 +61,13 @@ export default function App() {
   // 'verificando' enquanto o app checa a planilha; 'bloqueado' significa que
   // nunca houve conversa bem-sucedida com ela, e aí nada é mostrado.
   const [acesso, setAcesso] = useState(() => (acessoValidado() ? 'liberado' : 'verificando'));
-  const [aba, setAba] = useState('novo');
+  // ?aba=mes abre direto numa aba (é para onde o toque no aviso de conta leva)
+  const [aba, setAba] = useState(() => {
+    try {
+      const pedida = new URLSearchParams(window.location.search).get('aba');
+      return ['novo', 'mes', 'perguntar', 'historico', 'ajustes'].includes(pedida) ? pedida : 'novo';
+    } catch { return 'novo'; }
+  });
   // Os baús não moram na barra de baixo: abrem pela pílula do topo e o
   // "voltar" leva para a aba em que você estava.
   const [abaAntes, setAbaAntes] = useState('novo');
@@ -306,6 +313,9 @@ export default function App() {
             </div>
             <p className="secao-titulo">Equipamento</p>
             <Armario heroi={personagem} />
+            <hr className="divisor" />
+            <p className="secao-titulo">Avisos de conta fixa</p>
+            <Avisos pessoa={pessoaPadrao} />
             <hr className="divisor" />
             <p className="secao-titulo">Contas fixas e rendas mensais</p>
             <Mensais cadastros={cadastros} mes={resumo?.mes} aoMudar={tudo} />

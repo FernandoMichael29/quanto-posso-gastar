@@ -2,7 +2,7 @@
 // quando o sinal volta — mesmo com o app fechado.
 
 // Mudou o nome: o cache antigo (com o ícone do microfone) é apagado na ativação.
-const CACHE = 'qpg-v2';
+const CACHE = 'qpg-v3';
 const ESSENCIAIS = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', (evento) => {
@@ -147,3 +147,53 @@ async function enviarPendentes() {
     // Sem drama: o app sincroniza na próxima vez que for aberto.
   }
 }
+
+
+// --------------------------------------------------------------------------
+// Avisos de conta fixa (Web Push)
+// --------------------------------------------------------------------------
+// O script da planilha manda um "cutucão" vazio; o texto vem daqui: o service
+// worker pergunta ao script (ação `avisos`) o que mostrar, com a config que o
+// app espelhou no IndexedDB. Todo cutucão precisa virar uma notificação.
+
+self.addEventListener('push', (evento) => {
+  evento.waitUntil(mostrarAvisos());
+});
+
+async function mostrarAvisos() {
+  let avisos = null;
+  try {
+    const db = await abrirBanco();
+    const config = (await lerTudo(db)).find((i) => i.uuid === '__config__');
+    if (config?.url && config?.token) {
+      const r = await fetch(config.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ acao: 'avisos', token: config.token })
+      }).then((x) => x.json());
+      if (r.ok) avisos = r.avisos || [];
+    }
+  } catch {
+    avisos = null;
+  }
+  if (avisos === null) avisos = [{ titulo: '⚔️ Chefes do mês', corpo: 'Tem conta para olhar hoje. Toque para abrir.', tag: 'geral' }];
+  if (!avisos.length) avisos = [{ titulo: '✅ Tudo em dia', corpo: 'Nenhuma conta fixa pedindo atenção agora.', tag: 'em-dia' }];
+  await Promise.all(avisos.map((a) => self.registration.showNotification(a.titulo, {
+    body: a.corpo,
+    tag: `qpg-${a.tag || 'aviso'}`,
+    renotify: true,
+    icon: './icone-192.png',
+    data: { url: './?aba=mes' }
+  })));
+}
+
+self.addEventListener('notificationclick', (evento) => {
+  evento.notification.close();
+  const alvo = new URL(evento.notification.data?.url || './', self.registration.scope).href;
+  evento.waitUntil((async () => {
+    const janelas = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const aberta = janelas.find((j) => j.url.startsWith(self.registration.scope));
+    if (aberta) { await aberta.focus(); return aberta.navigate(alvo).catch(() => {}); }
+    return self.clients.openWindow(alvo);
+  })());
+});

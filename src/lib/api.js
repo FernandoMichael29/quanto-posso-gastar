@@ -124,6 +124,12 @@ export const api = {
   // feitos no script: só vem para cá a página que cabe na tela.
   // importar extrato: o que já foi importado e o que já foi lançado à mão
   conferirImportacao: (movimentos) => chamar('conferir_importacao', { movimentos }, { prazo: 40000 }),
+  vapid: () => chamar('vapid', {}),
+  inscrever: (inscricao, pessoa, aparelho) => chamar('inscrever', { inscricao, pessoa, aparelho }),
+  desinscrever: (endpoint) => chamar('desinscrever', { endpoint }),
+  testarAviso: (endpoint) => chamar('testar_aviso', { endpoint }, { prazo: 30000 }),
+  contasSaldo: () => chamar('contas_saldo', {}, { prazo: 30000 }),
+  acertarConta: (conta, saldo, extra = {}) => chamar('acertar_conta', { conta, saldo, ...extra }, { prazo: 30000 }),
   extrato: (busca, inicio = 0, limite = 30, mes = '') =>
     chamar('extrato', { busca: busca || '', inicio, limite, mes: mes || '' }, { prazo: 30000 }),
   editarLancamento: (uuid, campos) => chamar('editar_lancamento', { uuid, campos }),

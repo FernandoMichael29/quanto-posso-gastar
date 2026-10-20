@@ -21,7 +21,10 @@ const nubank = agruparLinhas([
     [775, [i(376, 'Ana Lima Souza')]],
     [762, [i(363, 'CPF'), i(386, '•••.111.222-••'), i(442, 'Agência'), i(484, '0001'), i(509, 'Conta')]],
     [699, [i(57, '01 DE OUTUBRO DE 2026'), i(171, 'a'), i(178, '19 DE OUTUBRO DE 2026'), i(469, 'VALORES EM R$')]],
+    [680, [i(57, 'Saldo final do período')]],
+    [640, [i(337, 'Saldo inicial'), i(509, '367,12')]],
     [630, [i(337, 'Total de entradas'), i(497, '+10.711,11')]],
+    [600, [i(337, 'Saldo final do período'), i(505, '1.234,56')]],
     [561, [i(57, 'Movimentações')]],
     [539, [i(58, '06 OUT 2026'), i(120, 'Total de entradas'), i(492, '+ 1.000,00')]],
     [518, [i(120, 'Transferência recebida pelo Pix via'), i(261, 'ANA LIMA SOUZA - •••.111.222-'), i(500, '1.000,00')]],
@@ -49,6 +52,7 @@ assert.deepStrictEqual([nu.inicio, nu.fim], ['2026-10-01', '2026-10-19']);
 assert.deepStrictEqual(nu.movimentos.map((m) => [m.data, m.valor]), [
   ['2026-10-06', 1000], ['2026-10-06', -119.9], ['2026-10-06', -119.9], ['2026-10-06', -500], ['2026-10-06', -416.1], ['2026-10-08', 100]
 ], 'sinal pela seção (entradas/saídas); o resumo do topo não entra');
+assert.deepStrictEqual(nu.saldoFinal, { valor: 1234.56, data: '2026-10-19' }, 'saldo final do período, no último dia');
 assert.strictEqual(nu.movimentos[0].operacao, 'Transferência recebida pelo Pix via Open Banking', 'linha de baixo completa a operação');
 assert.ok(nu.movimentos[4].detalhe.includes('BRADESCO'), 'continuação na página seguinte vai para o movimento certo');
 assert.notStrictEqual(nu.movimentos[1].id, nu.movimentos[2].id, 'dois boletos iguais no mesmo dia são dois movimentos');
@@ -70,14 +74,16 @@ const itau = agruparLinhas([pagina([
   [645, [i(28, 'extrato conta / lançamentos')]],
   [630, [i(28, 'período de visualização: 21/08/2026 até 20/10/2026')]],
   [597, [i(31, 'data'), i(96, 'lançamentos'), i(411, 'valor (R$)'), i(516, 'saldo (R$)')]],
-  [572, [i(31, '20/10/2026'), i(96, 'SALDO DO DIA'), i(542, '0,00')]],
+  [572, [i(31, '20/10/2026'), i(96, 'SALDO DO DIA'), i(542, '1.500,00')]],
   [553, [i(31, '20/10/2026'), i(96, 'REMUNERACAO/SALARIO'), i(415, '2.045,98')]],
   [534, [i(31, '20/10/2026'), i(96, 'PIX TRANSF ANA LIM20/10'), i(411, '-2.045,99')]],
-  [497, [i(31, '06/10/2026'), i(96, 'REND PAGO APLIC AUT MAIS'), i(438, '0,01')]]
+  [497, [i(31, '06/10/2026'), i(96, 'REND PAGO APLIC AUT MAIS'), i(438, '0,01')]],
+  [478, [i(31, '06/10/2026'), i(96, 'SALDO DO DIA'), i(542, '12,00')]]
 ])]);
 const it = lerExtrato({ linhas: itau });
 assert.strictEqual(it.banco, 'itau_conta');
 assert.deepStrictEqual(it.movimentos.map((m) => m.valor), [0.01, -2045.99, 2045.98], 'saldo do dia fica de fora; do mais antigo para o mais novo');
+assert.deepStrictEqual(it.saldoFinal, { valor: 1500, data: '2026-10-20' }, 'o SALDO DO DIA mais novo');
 const tItau = it.movimentos.map((m) => classificar(m, { titular: it.titular, categorias: [{ categoria: 'Salário', tipo: 'receita', palavras: [] }, { categoria: 'Rendimento', tipo: 'receita', palavras: [] }] }));
 assert.deepStrictEqual(tItau.map((t) => t.tipo), ['receita', 'fora', 'receita'], 'PIX TRANSF com o nome cortado da titular é entre contas');
 assert.deepStrictEqual(tItau.map((t) => t.categoria), ['Rendimento', '', 'Salário']);
@@ -90,9 +96,11 @@ const cartao = lerCsv('date,title,amount\n2026-10-03,Padaria Pão Dourado,18.50\
 assert.strictEqual(cartao.banco, 'nubank_cartao');
 assert.deepStrictEqual(cartao.movimentos.map((m) => m.valor), [-18.5, 500], 'compra no cartão é saída');
 assert.strictEqual(classificar(cartao.movimentos[1], {}).tipo, 'fora', 'pagamento da fatura fica fora');
-const ofx = lerOfx('<OFX><ORG>ITAU<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20261006120000<TRNAMT>-45.99<FITID>X1<MEMO>PIX TIM<STMTTRN><TRNTYPE>CREDIT<DTPOSTED>20261007<TRNAMT>10.00<FITID>X2<NAME>JOSE<MEMO>PIX RECEBIDO</OFX>');
+const ofx = lerOfx('<OFX><ORG>ITAU<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20261006120000<TRNAMT>-45.99<FITID>X1<MEMO>PIX TIM<STMTTRN><TRNTYPE>CREDIT<DTPOSTED>20261007<TRNAMT>10.00<FITID>X2<NAME>JOSE<MEMO>PIX RECEBIDO<LEDGERBAL><BALAMT>1234.56<DTASOF>20261019120000</LEDGERBAL></OFX>');
 assert.deepStrictEqual(ofx.movimentos.map((m) => [m.data, m.valor]), [['2026-10-06', -45.99], ['2026-10-07', 10]]);
 assert.notStrictEqual(ofx.movimentos[0].id, ofx.movimentos[1].id);
+assert.deepStrictEqual(ofx.saldoFinal, { valor: 1234.56, data: '2026-10-19' });
+assert.strictEqual(conta.saldoFinal, undefined, 'CSV não traz saldo');
 assert.strictEqual(lerExtrato({ texto: 'qualquer coisa' }), null, 'arquivo desconhecido');
 assert.strictEqual(palavraDoMovimento({ contraparte: 'UNASP VIRTUAL UNIDADE DE ENSINO' }), 'unasp virtual ensino');
 

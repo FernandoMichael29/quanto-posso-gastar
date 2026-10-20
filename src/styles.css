@@ -2346,3 +2346,41 @@ select.chip { max-width: 100%; }
 .aprender { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; line-height: 1.4; color: var(--ink-2); }
 .aprender input { margin-top: 2px; width: 18px; height: 18px; accent-color: var(--accent); }
 .importado-fim { display: grid; justify-items: center; gap: 10px; text-align: center; }
+
+/* Avisos de conta fixa (Ajustes) */
+.cartao.avisos { position: relative; }
+.avisos-ligado { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--ink); }
+.ajuda.ruim { color: var(--crit); }
+
+/* --- Dinheiro nas contas (Mês → Resumo) ------------------------------------ */
+.nas-contas { gap: var(--e3); }
+.nas-contas .cab { display: grid; gap: 4px; }
+.nas-contas .cab .total { font-size: 26px; color: var(--ink); line-height: 1.1; }
+.nas-contas .rend { font-size: 13px; line-height: 1.45; color: var(--muted); }
+.nas-contas .rend b { color: var(--verde-texto); font-weight: 600; }
+.nas-contas .bolsas { display: grid; }
+.bolsa {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center;
+  padding: 10px 0; border: 0; border-top: 1px solid var(--line); background: none;
+  color: inherit; font: inherit; text-align: left; cursor: pointer; width: 100%;
+}
+.bolsa:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+.bolsa .moeda {
+  width: 36px; height: 36px; border-radius: 8px; display: grid; place-items: center;
+  border: 1.5px solid var(--line); font-size: 18px; line-height: 1;
+}
+.bolsa .n { display: grid; gap: 2px; min-width: 0; }
+.bolsa .n strong { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.bolsa .n small { font-size: 12px; color: var(--muted); }
+.bolsa .v { display: grid; justify-items: end; gap: 2px; text-align: right; }
+.bolsa .v .px { font-size: 15px; color: var(--ink); white-space: nowrap; }
+.bolsa .v .px.neg { color: var(--crit); }
+.bolsa .v small { font-size: 12px; white-space: nowrap; }
+.bolsa .v .verde { color: var(--verde-texto); }
+.bolsa .informar { font-size: 13px; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.nas-contas .conferido { font-size: 12px; line-height: 1.45; color: var(--muted); }
+.conta-aberta { gap: var(--e3); }
+.conta-aberta .icone-conta { display: grid; place-items: center; font-size: 34px; width: 64px; height: 64px; }
+.conta-aberta .sub b { color: #8af08a; }
+.folha-bau .dif { padding: 10px 12px; border-radius: var(--raio-p); background: var(--accent-soft); font-size: 13px; line-height: 1.45; }
+
