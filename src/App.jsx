@@ -17,6 +17,7 @@ import { calcularOuro } from './lib/ouro.js';
 import { calcularMana } from './lib/mana.js';
 import { totalNosBaus } from './lib/baus.js';
 import Baus from './telas/Baus.jsx';
+import Importar from './telas/Importar.jsx';
 import { SpriteBau } from './componentes/Item.jsx';
 import EscolherPersonagem from './telas/EscolherPersonagem.jsx';
 import Personagem from './componentes/Personagem.jsx';
@@ -280,12 +281,16 @@ export default function App() {
         {aba === 'baus' && (
           <Baus cadastros={cadastros} fila={fila} aoMudarFila={tudo} aoVoltar={() => setAba(abaAntes)} />
         )}
+        {aba === 'importar' && (
+          <Importar cadastros={cadastros} pessoaPadrao={pessoaPadrao} aoVoltar={() => setAba('fila')} aoMudarFila={tudo} />
+        )}
         {aba === 'fila' && (
           <>
             <button className="btn discreto voltar" onClick={() => setAba('novo')}>
               ‹ Voltar
             </button>
-            <Pendentes fila={fila} aoMudarFila={recarregarFila} cadastros={cadastros} aoMudarDados={recarregarDados} />
+            <Pendentes fila={fila} aoMudarFila={recarregarFila} cadastros={cadastros} aoMudarDados={recarregarDados}
+              aoImportar={() => setAba('importar')} />
           </>
         )}
         {aba === 'ajustes' && (

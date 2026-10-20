@@ -18,7 +18,7 @@ import SeletorMesAno, { rotuloMes } from './SeletorMesAno.jsx';
 
 const POR_VEZ = 30;
 
-export default function Extrato({ cadastros, aoMudarDados, mes, aoMudarMes, aoTornarMensal }) {
+export default function Extrato({ cadastros, aoMudarDados, mes, aoMudarMes, aoTornarMensal, aoImportar }) {
   const [busca, setBusca] = useState('');
   const [mesLocal, setMesLocal] = useState('');
   const controlado = mes !== undefined;
@@ -99,6 +99,9 @@ export default function Extrato({ cadastros, aoMudarDados, mes, aoMudarMes, aoTo
       <div className="extrato-topo">
         <p className="secao-titulo">{mesAtivo ? 'Lançamentos do mês' : 'Tudo o que você já lançou'}</p>
         <SeletorMesAno valor={mesAtivo} aoMudar={mudarMes} meses={meses} todos={!controlado} />
+        {aoImportar && (
+          <button type="button" className="btn discreto pequeno importar-btn" onClick={aoImportar}>⇩ Importar extrato do banco</button>
+        )}
       </div>
 
       <div className="busca">

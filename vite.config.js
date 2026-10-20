@@ -6,5 +6,7 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   base: process.env.BASE || '/quanto-posso-gastar/',
-  build: { outDir: 'dist' }
+  // o pdf.js (importar extrato em PDF) usa sintaxe ES2022
+  build: { outDir: 'dist', target: 'es2022' },
+  optimizeDeps: { esbuildOptions: { target: 'es2022' } }
 });

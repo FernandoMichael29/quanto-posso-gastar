@@ -576,3 +576,31 @@ console.log('\nrendimento dos baús: ok');
   assert.ok(ult.some((u) => u.uuid === 'dupla1' && u.pessoa === 'Fernando'), 'os últimos trazem quem lançou');
 }
 console.log('\nmissão em dupla: ok');
+
+// 32. importar extrato: o que já foi importado e o que já foi lançado à mão
+{
+  lancar_({ lancamentos: [
+    { uuid: 'manual-a', data: '2026-09-10', valor: 119.93, categoria: 'Compras', descricao: 'internet' },
+    { uuid: 'manual-b', data: '2026-09-11', valor: 50.37, categoria: 'Compras', descricao: 'mercado' },
+    { uuid: 'imp-ja', data: '2026-09-12', valor: 33, categoria: 'Compras', descricao: 'Padaria' }
+  ] });
+  const r = conferirImportacao_({ movimentos: [
+    { id: 'imp-ja', data: '2026-09-12', valor: 33, tipo: 'despesa' },
+    { id: 'imp-1', data: '2026-09-12', valor: 119.93, tipo: 'despesa' },   // 2 dias depois: é o "internet"
+    { id: 'imp-2', data: '2026-09-11', valor: 50.37, tipo: 'despesa' },
+    { id: 'imp-3', data: '2026-09-11', valor: 50.37, tipo: 'despesa' },      // o segundo 50 não tem par
+    { id: 'imp-4', data: '2026-09-11', valor: 50.37, tipo: 'receita' },      // tipo diferente não combina
+    { id: 'imp-5', data: '2026-09-20', valor: 119.93, tipo: 'despesa' }    // longe demais
+  ] });
+  assert.deepStrictEqual(r.importados, ['imp-ja'], 'importado antes: o id virou uuid');
+  assert.strictEqual(r.parecidos['imp-1'].uuid, 'manual-a');
+  assert.strictEqual(r.parecidos['imp-2'].uuid, 'manual-b');
+  assert.ok(!r.parecidos['imp-3'], 'cada lançamento explica um movimento só');
+  assert.ok(!r.parecidos['imp-4'] && !r.parecidos['imp-5']);
+  // palavra-chave do extrato
+  abas.categorias.dados.push(['Internet', 'Casa', 'despesa', '', 0, 'sim']);
+  lancar_({ lancamentos: [{ uuid: 'imp-6', data: '2026-09-13', valor: 119.93, categoria: 'Internet', descricao: 'Elevar Telecom Ltda', palavra_chave: 'elevar telecom', aprender_categoria: true, origem: 'importado' }] });
+  const internet = abas.categorias.dados.find((c) => c[0] === 'Internet');
+  assert.ok(String(internet[3]).includes('elevar telecom'), 'aprendeu a palavra do extrato: ' + internet[3]);
+}
+console.log('\nimportar extrato: ok');

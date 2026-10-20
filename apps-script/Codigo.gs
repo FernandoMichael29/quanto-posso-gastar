@@ -31,7 +31,7 @@
 
 // Suba junto com VERSAO_APP em src/lib/versao.js — o app compara as duas e
 // avisa na tela quando só uma das metades foi publicada.
-var VERSAO = '2.11.0';
+var VERSAO = '2.12.0';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -370,6 +370,7 @@ function doPost(e) {
       case 'excluir_cadastro': return json_(excluirCadastro_(pedido));
       case 'lancamentos':      return json_(lancamentosDoMes_(pedido));
       case 'extrato':          return json_(extrato_(pedido));
+      case 'conferir_importacao': return json_(conferirImportacao_(pedido));
       case 'editar_lancamento':  return json_(editarLancamento_(pedido));
       case 'excluir_lancamento': return json_(excluirLancamento_(pedido));
       case 'confirmar_recebimento': return json_(confirmarRecebimento_(pedido));
@@ -491,7 +492,8 @@ function lancar_(pedido) {
       // Você trocou a categoria que o app sugeriu: a descrição vira palavra-chave
       // da categoria certa, e a próxima frase igual já chega classificada.
       if (l.aprender_categoria) {
-        var a = aprenderCategoria_(l.descricao, l.categoria);
+        // Do extrato do banco vem a palavra pronta ("elevar telecom"); à mão, a descrição.
+        var a = aprenderCategoria_(l.palavra_chave || l.descricao, l.categoria);
         if (a) aprendidos.push(a);
       }
 
@@ -648,6 +650,66 @@ function pessoaDaConta_(nomeConta) {
     return chaveNome_(c.nome) === alvo;
   })[0];
   return conta ? (conta.pessoa || '') : '';
+}
+
+// ---------------------------------------------------------------------------
+// Importar extrato: o que do arquivo do banco já está na planilha
+// ---------------------------------------------------------------------------
+
+var MAX_IMPORTAR = 600;
+var DIAS_PARECIDO = 3;
+
+/**
+ * Recebe os movimentos lidos do extrato ({ id, data, valor (sem sinal), tipo })
+ * e diz: quais já foram importados antes (o id vira uuid) e quais parecem já
+ * ter sido lançados à mão — mesmo tipo, mesmo valor, até 3 dias de diferença.
+ * Cada lançamento da planilha só "explica" um movimento (o mais perto na data).
+ * O tipo "fora" (fatura, transferência) é comparado com pagamentos de fatura.
+ */
+function conferirImportacao_(pedido) {
+  var lista = (pedido.movimentos || []).slice(0, MAX_IMPORTAR);
+  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('lancamentos');
+  var existentes = uuidsExistentes_(aba);
+  var importados = [];
+  var pendentes = [];
+  lista.forEach(function (m) {
+    if (existentes[String(m.id)]) importados.push(m.id);
+    else pendentes.push(m);
+  });
+  if (!pendentes.length) return { ok: true, importados: importados, parecidos: {} };
+
+  var datas = pendentes.map(function (m) { return String(m.data || ''); }).filter(Boolean).sort();
+  var de = diaISOMais_(datas[0], -DIAS_PARECIDO), ate = diaISOMais_(datas[datas.length - 1], DIAS_PARECIDO);
+  var col = indiceColunas_();
+  var n = aba.getLastRow() - 1;
+  var candidatos = [];
+  if (n > 0) {
+    aba.getRange(2, 1, n, ABAS.lancamentos.length).getValues().forEach(function (r) {
+      if (r[col.status] === STATUS.EXCLUIDO) return;
+      var data = normalizarData_(r[col.data]);
+      if (!data || data < de || data > ate) return;
+      candidatos.push({ uuid: r[col.uuid], data: data, tipo: r[col.tipo] || TIPO.DESPESA,
+        valor: Math.abs(Number(r[col.valor]) || 0), descricao: r[col.descricao] || '', categoria: r[col.categoria] || '',
+        usado: false });
+    });
+  }
+  var tipoQueCombina = function (t) { return t === 'fora' ? TIPO.FATURA : t; };
+  var parecidos = {};
+  pendentes.forEach(function (m) {
+    var alvo = tipoQueCombina(m.tipo || TIPO.DESPESA);
+    var valor = Math.abs(Number(m.valor) || 0);
+    var melhor = null, dist = 99;
+    candidatos.forEach(function (c) {
+      if (c.usado || c.tipo !== alvo || Math.abs(c.valor - valor) > 0.009) return;
+      var d = Math.abs(diasEntre_(c.data, m.data));
+      if (d <= DIAS_PARECIDO && d < dist) { melhor = c; dist = d; }
+    });
+    if (melhor) {
+      melhor.usado = true;
+      parecidos[m.id] = { uuid: melhor.uuid, data: melhor.data, descricao: melhor.descricao, categoria: melhor.categoria };
+    }
+  });
+  return { ok: true, importados: importados, parecidos: parecidos };
 }
 
 function uuidsExistentes_(aba) {
