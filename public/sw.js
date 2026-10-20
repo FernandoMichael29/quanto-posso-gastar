@@ -1,7 +1,8 @@
 // Service worker: deixa o app abrir sem internet e sincroniza a fila sozinho
 // quando o sinal volta — mesmo com o app fechado.
 
-const CACHE = 'qpg-v1';
+// Mudou o nome: o cache antigo (com o ícone do microfone) é apagado na ativação.
+const CACHE = 'qpg-v2';
 const ESSENCIAIS = ['./', './index.html', './manifest.webmanifest'];
 
 self.addEventListener('install', (evento) => {

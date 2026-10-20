@@ -1,12 +1,12 @@
 {
   "name": "Quanto Posso Gastar",
   "short_name": "Gastar",
-  "description": "Fale o gasto, ele vai para a sua planilha.",
+  "description": "Registre o gasto e veja quanto ainda pode gastar hoje.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#EFF2F1",
+  "background_color": "#141626",
   "theme_color": "#0F7B6C",
   "lang": "pt-BR",
   "icons": [

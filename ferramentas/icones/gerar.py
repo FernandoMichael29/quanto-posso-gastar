@@ -34,6 +34,10 @@ abas, t2 = folha(ABAS, 24, 'abas.png')
 from conquistas import CONQUISTAS
 medalhas, t3 = folha(CONQUISTAS, 32, 'conquistas.png')
 
+# o ícone do atalho na tela inicial (public/), desenhado com o mesmo motor
+import app_icones
+publicos = app_icones.gerar_publicos(os.path.join(RAIZ, 'public'))
+
 sem_acento = str.maketrans('áàâãäéèêëíìîïóòôõöúùûüç', 'aaaaaeeeeiiiiooooouuuuc')
 chave = lambda n: n.lower().translate(sem_acento)
 js = ['// Gerado por ferramentas/icones/gerar.py — não edite à mão.',
@@ -56,4 +60,5 @@ js += ['};', '']
 with open(os.path.join(RAIZ, 'src', 'lib', 'icones.js'), 'w', encoding='utf-8', newline='\n') as f:
     f.write('\n'.join(js))
 print(f'{len(itens)} itens → icones.png {t1}; {len(abas)} abas → abas.png {t2}; '
-      f'{len(medalhas)} medalhas → conquistas.png {t3}; índice em src/lib/icones.js')
+      f'{len(medalhas)} medalhas → conquistas.png {t3}; índice em src/lib/icones.js; '
+      f'ícone do app → public/ ({", ".join(publicos)})')
