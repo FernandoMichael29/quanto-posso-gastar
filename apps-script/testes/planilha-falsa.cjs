@@ -24,6 +24,7 @@ Aba.prototype.getRange = function (l, c, nl, nc) {
         var linha = aba.dados[l - 1 + i];
         for (var j = 0; j < v[i].length; j++) linha[c - 1 + j] = v[i][j];
       }
+      return this;
     },
     setValue: function (x) { aba.getRange(l, c, 1, 1).setValues([[x]]); },
     setNumberFormat: function () { return this; },
@@ -33,4 +34,5 @@ Aba.prototype.getRange = function (l, c, nl, nc) {
     clearContent: function () { return this; }
   };
 };
+Aba.prototype.setFrozenRows = function () {};
 module.exports = { Aba: Aba };

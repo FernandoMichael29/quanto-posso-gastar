@@ -2,10 +2,12 @@
 import folha from '../assets/icones.png';
 import folhaAbas from '../assets/abas.png';
 import folhaConquistas from '../assets/conquistas.png';
+import folhaBaus from '../assets/baus.png';
 
 export const FOLHA = folha;
 export const FOLHA_ABAS = folhaAbas;
 export const FOLHA_CONQUISTAS = folhaConquistas;
+export const FOLHA_BAUS = folhaBaus;
 
 // Categoria (minúscula, sem acento) → coluna na folha de 32 px.
 export const COLUNA = {
@@ -51,4 +53,12 @@ export const MEDALHA = {
   trinca: 5,
   formiguinha: 6,
   guardiao: 7,
+};
+
+// Estado do baú (vazio → cheio) → coluna na folha de baús (32 px).
+export const BAU = {
+  vazio: 0,
+  comecando: 1,
+  metade: 2,
+  cheio: 3,
 };

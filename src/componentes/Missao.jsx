@@ -152,13 +152,16 @@ export default function Missao({ painel, aoMudar }) {
                   </div>
                   <div className="hp xp" style={{ '--p': `${Math.round(missao.fracao * 100)}%` }}
                     role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(missao.fracao * 100)}
-                    aria-label="quanto da missão já está garantido"><i /></div>
+                    aria-label="quanto da missão já está garantido"><i />
+                    {missao.garantido > 0 && <b className="garantido" style={{ width: `${Math.min(100, Math.round((missao.garantido / missao.meta) * 100))}%` }} />}
+                  </div>
                 </div>
                 <p className="sub">
                   {missao.cumprida
                     ? 'O ouro de hoje já deixa a missão separada.'
                     : <>Faltam <strong>{formatarBRL(missao.falta)}</strong>. O ouro de hoje já deixa a missão separada.</>}
                   {missao.cumpridasSeguidas > 1 && ` ${missao.cumpridasSeguidas} meses seguidos cumprindo.`}
+                  {missao.garantido > 0 && ` ${formatarBRL(missao.garantido)} já estão trancados em baús.`}
                 </p>
               </>
             ) : (

@@ -4,6 +4,7 @@ import Capa from '../../componentes/Capa.jsx';
 import { semAcento, soNumero } from '../../lib/parser.js';
 import { diaDe } from '../../lib/datas.js';
 import { ehFuturo } from './util.js';
+import { ehBau } from '../../lib/baus.js';
 
 /**
  * O que aconteceu no mês: busca, filtro por pessoa e páginas.
@@ -95,14 +96,15 @@ export default function AbaLancamentos({ lista, pessoas, carregando, ocupado, ao
               <button
                 type="button"
                 className={`item clicavel ${l.status === 'agendado' ? 'agendado' : ''} ${ocupado === `lanc:${l.uuid}` ? 'ocupado' : ''}`}
-                onClick={() => aoAbrir(l)}
+                // movimento de baú se edita dentro do baú
+                onClick={() => { if (!ehBau(l.tipo)) aoAbrir(l); }}
                 disabled={ocupado === `lanc:${l.uuid}`}
               >
                 <span className="corpo">
                   <span className="titulo">{l.descricao || l.categoria || '(sem descrição)'}</span>
                   <span className="meta">
                     {[
-                      l.categoria,
+                      ehBau(l.tipo) ? `Baú · ${l.categoria}` : l.categoria,
                       l.conta,
                       l.pessoa,
                       Number(l.parcelas_total) > 1 ? `parcela ${l.parcela_atual}/${l.parcelas_total}` : null
@@ -111,8 +113,8 @@ export default function AbaLancamentos({ lista, pessoas, carregando, ocupado, ao
                   </span>
                   {l.status === 'agendado' && <span className="marca-agendado">agendado · ainda não conta</span>}
                 </span>
-                <span className={`num ${l.tipo === 'receita' ? 'receita' : ''}`}>
-                  {l.tipo === 'receita' ? '+' : '−'}{soNumero(l.valor)}
+                <span className={`num ${l.tipo === 'receita' ? 'receita' : l.tipo === 'guardar' ? 'guardou' : l.tipo === 'resgatar' ? 'resgatou' : ''}`}>
+                  {l.tipo === 'receita' || l.tipo === 'resgatar' ? '+' : '−'}{soNumero(l.valor)}
                 </span>
                 <Capa quando={ocupado === `lanc:${l.uuid}`} />
               </button>

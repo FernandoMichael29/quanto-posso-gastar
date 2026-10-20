@@ -63,7 +63,7 @@ export default function Hud({ dados, efeito }) {
     frase = <>Passou <strong>{formatarBRL(-dados.ouro)}</strong> do ouro de hoje.{dados.amanha != null && <> Amanhã: {formatarBRL(dados.amanha)} por dia.</>}</>;
   } else if (dados.livre <= 0) {
     frase = dados.reserva > 0 && dados.livre + dados.reserva > 0
-      ? <>Sem ouro hoje: faltam <strong>{formatarBRL(-dados.livre)}</strong> para cumprir a missão de guardar {formatarBRL(dados.reserva)}.</>
+      ? <>Sem ouro hoje: faltam <strong>{formatarBRL(-dados.livre)}</strong> para cumprir a missão de guardar {formatarBRL(dados.meta)}.</>
       : <>O mês já está <strong>{formatarBRL(-(dados.livre + (dados.reserva || 0)))}</strong> no vermelho.</>;
   } else {
     frase = <>Dá pra gastar isso hoje sem apertar o resto do mês{dados.reserva > 0 ? ' — com a missão já separada' : ''}. {dados.dias > 1 ? `Faltam ${dados.dias} dias.` : 'Último dia do mês.'}</>;

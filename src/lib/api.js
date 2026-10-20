@@ -142,6 +142,10 @@ export const api = {
   // Missão do mês (0 desliga) e conquistas ganhas: guardadas no script.
   salvarMeta: (valor) => chamar('salvar_meta', { valor }),
   conquistar: (ids) => chamar('conquistar', { ids }),
+  // Baús: lista com saldo e histórico; criar, editar e renomear; arquivar (só vazio).
+  baus: () => chamar('baus', {}, { prazo: 30000 }),
+  salvarBau: (campos) => chamar('salvar_bau', campos),
+  excluirBau: (nome) => chamar('excluir_bau', { nome }),
   // A análise lê vários meses e chama o modelo grande: precisa de mais fôlego.
   // `anterior` é a análise que está na tela: leva o contexto para a IA não
   // recalcular tudo quando você faz uma pergunta de continuação.

@@ -360,3 +360,61 @@ assert.deepStrictEqual(conquistar_({ ids: ['fase_limpa'] }).novas, [], 'a mesma 
 assert.deepStrictEqual(Object.keys(painel_({ mes: '2026-09' }).conquistas).sort(), ['fase_limpa', 'primeira_missao'], 'o painel traz as conquistas');
 assert.strictEqual(conquistar_({ ids: 'fase_limpa' }).ok, true, 'ids que não são lista não quebram');
 console.log('\nmissão e conquistas: ok');
+
+// 28. baús: guardar sai do mês sem virar gasto, e o histórico acompanha o nome
+const pAntes = painel_({ mes: '2026-09' });
+assert.deepStrictEqual(baus_().baus, [], 'sem baús ainda (a aba nasce sozinha)');
+assert.strictEqual(salvarBau_({ nome: '  Viagem   Chile ', meta: 6000, objetivo: 'Santiago', prazo: '2027-07' }).ok, true);
+assert.strictEqual(salvarBau_({ nome: 'viagem chile', meta: 1 }).erro, 'nome_repetido', 'nome repetido (sem acento/caixa) é recusado');
+assert.strictEqual(salvarBau_({ nome: '' }).erro, 'nome_vazio');
+capturar_({ uuid: 'bau1', lancamento: { tipo: 'guardar', valor: 300, categoria: 'Viagem Chile', data: '2026-09-16', conta: 'Nubank Fernando', origem: 'bau' } });
+capturar_({ uuid: 'bau2', lancamento: { tipo: 'guardar', valor: 200, categoria: 'Viagem Chile', data: '2026-08-10', conta: 'Nubank Fernando', origem: 'bau' } });
+capturar_({ uuid: 'bau3', lancamento: { tipo: 'resgatar', valor: 50, categoria: 'Viagem Chile', data: '2026-09-16', conta: 'Nubank Fernando', origem: 'bau' } });
+
+let bs = baus_();
+let chile = bs.baus.find((b) => b.nome === 'Viagem Chile');
+assert.strictEqual(chile.saldo, 450, '300 + 200 − 50');
+assert.strictEqual(chile.guardado_mes, 250, 'só setembro: 300 − 50');
+assert.strictEqual(chile.meta, 6000);
+assert.strictEqual(chile.prazo, '2027-07');
+assert.deepStrictEqual(chile.movimentos.map((m) => m.data), ['2026-09-16', '2026-09-16', '2026-08-10'], 'histórico do mais novo para o mais antigo');
+assert.strictEqual(bs.total, 450);
+
+const pDepois = painel_({ mes: '2026-09' });
+assert.strictEqual(pDepois.guardado_mes, 250, 'o painel conta o guardado do mês');
+assert.strictEqual(pDepois.previsao.guardado, 250);
+assert.strictEqual(pDepois.baus_total, 450);
+assert.strictEqual(arred_(pDepois.despesas - pAntes.despesas), 0, 'guardar não é gasto');
+assert.strictEqual(arred_(pDepois.receitas - pAntes.receitas), 0, 'resgatar não é renda');
+assert.strictEqual(arred_(pDepois.previsao.sobra - pAntes.previsao.sobra), 0, 'a sobra do mês continua a mesma (o guardado faz parte dela)');
+assert.ok(!pDepois.por_categoria.some((c) => c.nome === 'Viagem Chile'), 'baú não aparece como categoria');
+assert.strictEqual(arred_(pDepois.saiu_caixa - pAntes.saiu_caixa), 250, 'mas o dinheiro saiu da conta');
+assert.strictEqual(pDepois.evolucao.find((e) => e.mes === '2026-08').guardado, 200, 'evolução guarda o guardado de cada mês');
+const resumo28 = resumo_({ mes: '2026-09' });
+assert.ok(!resumo28.por_categoria.some((c) => c.categoria === 'Viagem Chile'), 'o resumo também não conta como gasto');
+
+// renomear leva o histórico junto, e renomear categoria não mexe em baú
+abas.categorias.dados.push(['Viagem Chile', 'Variável', 'despesa', '', 0, 'sim']);
+renomearNosLancamentos_('categorias', 'Viagem Chile', 'Viagens');
+assert.strictEqual(baus_().baus.find((b) => b.nome === 'Viagem Chile').saldo, 450, 'renomear a CATEGORIA não mexe no baú de mesmo nome');
+assert.strictEqual(salvarBau_({ nome_antigo: 'Viagem Chile', nome: 'Chile 2027', meta: 6000 }).ok, true);
+bs = baus_();
+assert.strictEqual(bs.baus.length, 1, 'renomear não cria baú novo');
+assert.strictEqual(bs.baus[0].nome, 'Chile 2027');
+assert.strictEqual(bs.baus[0].saldo, 450, 'o dinheiro foi junto');
+
+// arquivar: só vazio
+assert.strictEqual(excluirBau_({ nome: 'Chile 2027' }).erro, 'bau_com_dinheiro');
+salvarBau_({ nome: 'Vazio', meta: 100 });
+assert.strictEqual(excluirBau_({ nome: 'vazio' }).ok, true);
+assert.ok(!baus_().baus.some((b) => b.nome === 'Vazio'), 'arquivado some da lista');
+
+// editar um movimento de baú não ensina palavra-chave para categoria nenhuma
+const antesPal = JSON.stringify(abas.categorias.dados);
+editarLancamento_({ uuid: 'bau1', campos: { descricao: 'mercado', categoria: 'Chile 2027' } });
+assert.strictEqual(JSON.stringify(abas.categorias.dados), antesPal, 'nada aprendido');
+
+// o que a IA recebe
+if (!abas.memoria) abas.memoria = new Aba(['fato', 'origem', 'data', 'ativo']);
+assert.ok(panorama_({}).baus.some((b) => b.nome === 'Chile 2027' && b.saldo === 450), 'a análise sabe dos baús');
+console.log('\nbaús: ok');

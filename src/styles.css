@@ -1907,3 +1907,136 @@ select.chip { max-width: 100%; }
   100% { opacity: 1; transform: none; }
 }
 @keyframes brilhar-medalha { 50% { filter: brightness(1.6); } }
+
+/* =========================================================================
+   Baús — caixinhas para guardar dinheiro
+   Janela escura como o HUD; dourado é dinheiro guardado.
+   ========================================================================= */
+
+/* Dourado legível nos dois fundos: mais escuro no claro, mais vivo no escuro. */
+:root { --ouro-texto: #a8700c; }
+@media (prefers-color-scheme: dark) { :root:not([data-tema]), :root[data-tema="auto"] { --ouro-texto: #e8b83a; } }
+:root[data-tema="grafite"], :root[data-tema="oled"] { --ouro-texto: #e8b83a; }
+
+/* A pílula do topo: o total guardado, abre os baús de qualquer aba. */
+.topo-acoes { display: flex; align-items: center; gap: 6px; flex: none; }
+.pastilha.bau-p {
+  gap: 5px;
+  padding: 3px 10px 3px 6px;
+  font-family: var(--fonte-pixel);
+  font-size: 12.5px;
+  color: var(--ouro-texto);
+  border-color: color-mix(in srgb, #f6c63c 55%, var(--line));
+}
+.pastilha.bau-p .sprite { width: 22px; height: 22px; }
+/* Tela estreita: a pílula da fila vira só o pontinho, para os dois caberem. */
+@media (max-width: 380px) {
+  .topo-acoes .pastilha .rotulo-fila { display: none; }
+  .topo-acoes .pastilha:not(.bau-p) { padding: 9px; }
+}
+
+.sprite.bau { background-repeat: no-repeat; image-rendering: pixelated; }
+
+.janela-bau {
+  display: grid;
+  gap: 8px;
+  margin: 3px;
+  padding: 12px 14px 13px;
+  color: #e8ebf5;
+  background: #141626;
+  box-shadow: 0 -3px 0 0 #c9cedd, 0 3px 0 0 #c9cedd, -3px 0 0 0 #c9cedd, 3px 0 0 0 #c9cedd;
+}
+.janela-bau.cheio { box-shadow: 0 -3px 0 0 #8af08a, 0 3px 0 0 #8af08a, -3px 0 0 0 #8af08a, 3px 0 0 0 #8af08a; }
+.janela-bau .sub { margin: 0; font-size: 12.5px; line-height: 1.45; color: #b4b9cc; }
+.janela-bau .sub strong.pos { color: #8af08a; font-weight: 600; }
+.janela-bau .sub strong.neg { color: #ff8a7a; font-weight: 600; }
+.rotulo-px { font-family: var(--fonte-pixel); font-size: 12px; letter-spacing: .12em; color: #9aa0b8; }
+.saldo-bau {
+  font-family: var(--fonte-pixel);
+  font-size: 24px;
+  line-height: 1.05;
+  color: #f6c63c;
+  text-shadow: 2px 2px 0 #5a2a12;
+  font-variant-numeric: tabular-nums;
+}
+.saldo-bau.grande { font-size: 32px; }
+
+.cab-bau { display: flex; gap: 14px; align-items: center; }
+.cab-bau .slot.grande { width: 76px; height: 76px; }
+.cab-bau-texto { display: grid; gap: 4px; min-width: 0; }
+.cab-bau h2 { margin: 0; font-size: 18px; color: #fff; overflow-wrap: anywhere; }
+.janela-bau .objetivo { margin: 0; font-size: 13px; line-height: 1.45; color: #b4b9cc; overflow-wrap: anywhere; }
+.link-editar {
+  padding: 0; border: 0; background: none;
+  font-size: 13px; color: #8fd2ff; text-decoration: underline; text-underline-offset: 3px;
+}
+.meta-bau { display: grid; gap: 4px; }
+.janela-bau .legenda {
+  display: flex; justify-content: space-between; gap: var(--e2);
+  font-family: var(--fonte-pixel); font-size: 12px; letter-spacing: .06em; color: #c9cedd;
+  font-variant-numeric: tabular-nums;
+}
+.janela-bau .legenda span:last-child { color: #f6c63c; letter-spacing: 0; }
+.janela-bau .legenda b { color: #fff; font-weight: 400; }
+.hp.cheio-bau { --c1: #b6f5a0; --c2: #4cc65a; --c3: #237a3a; }
+
+.botoes-bau { display: grid; grid-template-columns: 1.4fr 1fr; gap: 10px; align-items: center; }
+.botoes-bau .btn-px { font-size: 16px; padding: 12px; }
+.btn-px.claro {
+  color: #141626;
+  background: linear-gradient(#e8ebf5 0 18%, #c9cedd 18% 78%, #9aa0b8 78%);
+  box-shadow: 0 -4px 0 0 #3a3e50, 0 4px 0 0 #3a3e50, -4px 0 0 0 #3a3e50, 4px 0 0 0 #3a3e50, 0 8px 0 0 #1c1e2a;
+}
+
+.item .num.guardou { color: var(--ouro-texto); }
+.item .num.resgatou { color: var(--crit); }
+.item .num.bau { color: var(--muted); }
+
+/* A lista de baús */
+.bau-linha {
+  display: flex; gap: 12px; align-items: center; width: 100%;
+  padding: 12px var(--e4); border: 0; border-bottom: 1px solid var(--line-soft);
+  background: none; text-align: left; color: var(--ink);
+  transition: background var(--rapido) var(--curva);
+}
+.bau-linha:last-child { border-bottom: 0; }
+.bau-linha:hover { background: var(--hover); }
+.bau-linha:active { background: var(--press); }
+.bau-linha .slot { width: 52px; height: 52px; }
+.bau-linha .corpo { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.bau-linha .t { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.bau-linha .t strong { font-weight: 600; font-size: 14.5px; overflow-wrap: anywhere; }
+.bau-linha .t .px { font-size: 14px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.bau-linha .m { font-size: 12.5px; color: var(--muted); }
+.bau-linha .hp { height: 10px; margin: 3px 2px; }
+.bau-linha .hp::after { background: repeating-linear-gradient(90deg, transparent 0 7px, #0c0e17 7px 9px); }
+.selo-cheio { font-size: 11px; letter-spacing: .08em; color: #10261c; background: #8af08a; padding: 1px 5px; }
+
+.novo-bau {
+  display: flex; justify-content: center; width: 100%;
+  padding: 14px; border: 2px dashed var(--line); border-radius: var(--raio);
+  background: none; color: var(--muted); font-size: 14px; letter-spacing: .08em;
+}
+.novo-bau:hover { background: var(--hover); color: var(--ink); }
+.btn.arquivar { align-self: center; }
+
+/* Folha de guardar / resgatar */
+.alterna button.on.guardar {
+  border-color: #e8b83a; color: var(--ouro-texto);
+  background: color-mix(in srgb, #e8b83a 14%, transparent);
+}
+.alterna button.on.resgatar {
+  border-color: var(--crit); color: var(--crit);
+  background: var(--crit-soft);
+}
+.folha-bau .secao-titulo b { color: var(--ouro-texto); font-weight: 400; }
+.janela-bau.previa { gap: 6px; }
+.janela-bau.previa .hp { height: 14px; }
+
+/* Missão: a parte do XP que já está trancada em baú, mais forte. */
+.hp.xp .garantido {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(#fffbe0 0 28%, #ffd84a 28% 72%, #c07a14 72%);
+}
+.conta-livre dd.ouro { color: var(--ouro-texto); }

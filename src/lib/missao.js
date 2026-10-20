@@ -75,11 +75,15 @@ export function calcularMissao(painel, fila = [], opcoes = {}) {
   const meta = metaDoMes(painel.metas, mes);
   const p = pendentesDoMes(fila, { mes, hoje, desde: opcoes.desde || 0 });
   const guardado = arred((Number(painel.previsao.sobra) || 0) + p.livre);
+  // A parte da missão que já está trancada em baú (não volta a ser gasta sem
+  // um resgate de propósito).
+  const garantido = arred(Math.max(0, (Number(painel.guardado_mes) || 0) + p.guardado));
   const fechados = mesesFechados(painel, mes);
 
   return {
     meta,
     guardado,
+    garantido,
     fracao: meta > 0 ? Math.max(0, Math.min(1, guardado / meta)) : null,
     cumprida: meta > 0 && guardado >= meta,
     falta: meta > 0 ? arred(Math.max(0, meta - guardado)) : 0,

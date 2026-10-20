@@ -31,7 +31,7 @@
 
 // Suba junto com VERSAO_APP em src/lib/versao.js — o app compara as duas e
 // avisa na tela quando só uma das metades foi publicada.
-var VERSAO = '2.8.0';
+var VERSAO = '2.9.0';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -76,7 +76,10 @@ var ABAS = {
   // `analise_json` guarda a análise inteira (projeção, premissas, sugestões).
   // É o que permite reabrir uma resposta sem pagar outra chamada de IA — e
   // recuperar a última quando a resposta não chega no celular.
-  conversas: ['data', 'pergunta', 'resposta', 'modelo', 'custo_estimado', 'analise_json']
+  conversas: ['data', 'pergunta', 'resposta', 'modelo', 'custo_estimado', 'analise_json'],
+  // Caixinhas para guardar dinheiro. O que entra e sai de cada uma mora em
+  // `lancamentos` (tipo guardar/resgatar, nome do baú na categoria).
+  baus: ['nome', 'meta', 'objetivo', 'prazo', 'criado_em', 'ativo']
 };
 
 // Status possíveis de um lançamento na planilha.
@@ -86,7 +89,9 @@ var ABAS = {
 var TIPO = {
   DESPESA: 'despesa',
   RECEITA: 'receita',
-  FATURA: 'fatura'   // pagamento de fatura de cartão: sai do caixa, não é gasto novo
+  FATURA: 'fatura',  // pagamento de fatura de cartão: sai do caixa, não é gasto novo
+  GUARDAR: 'guardar',   // dinheiro que vai para um baú: sai do mês, mas não é gasto
+  RESGATAR: 'resgatar'  // dinheiro que volta de um baú para o mês
 };
 
 var STATUS = {
@@ -374,6 +379,9 @@ function doPost(e) {
       case 'painel':      return json_(painel_(pedido));
       case 'salvar_meta': return json_(salvarMeta_(pedido));
       case 'conquistar':  return json_(conquistar_(pedido));
+      case 'baus':        return json_(baus_());
+      case 'salvar_bau':  return json_(salvarBau_(pedido));
+      case 'excluir_bau': return json_(excluirBau_(pedido));
       default:            return json_({ ok: false, erro: 'acao_desconhecida' });
     }
   } catch (err) {
@@ -458,6 +466,12 @@ function lancar_(pedido) {
     lista.forEach(function (l) {
       if (!l.uuid) { l.uuid = Utilities.getUuid(); }
       if (existentes[l.uuid]) { duplicados.push(l.uuid); return; }
+      if (ehBau_(l.tipo)) {
+        l.categoria = String(l.categoria || 'Baú').trim() || 'Baú';
+        l.repete = false;
+        l.parcelas_total = '';
+        l.aprender_categoria = false;
+      }
       // Quem marca o uuid como visto é o laço das parcelas, logo abaixo — a
       // primeira parcela reusa o uuid da compra, e marcar aqui faria ela ser
       // confundida com uma duplicata e nada seria gravado.
@@ -969,7 +983,7 @@ function panorama_(pedido) {
   var porMes = {};
   var porCategoria = {};
 
-  meses.forEach(function (k) { porMes[k] = { mes: k, receitas: 0, despesas: 0, lancamentos: 0 }; });
+  meses.forEach(function (k) { porMes[k] = { mes: k, receitas: 0, despesas: 0, guardado: 0, lancamentos: 0 }; });
 
   if (n > 0) {
     aba.getRange(2, 1, n, ABAS.lancamentos.length).getValues().forEach(function (r) {
@@ -977,6 +991,10 @@ function panorama_(pedido) {
       var k = normalizarData_(r[col.data]).slice(0, 7);
       if (!porMes[k]) return;
       var v = Number(r[col.valor]) || 0;
+      // Pagamento de fatura não é gasto novo (as compras já contaram) e baú
+      // não é gasto nem renda: sem isso a análise via gasto em dobro.
+      if (r[col.tipo] === TIPO.FATURA) return;
+      if (ehBau_(r[col.tipo])) { porMes[k].guardado += sinalBau_(r[col.tipo]) * v; return; }
       porMes[k].lancamentos++;
       if (r[col.tipo] === 'receita') porMes[k].receitas += v;
       else {
@@ -1027,6 +1045,7 @@ function panorama_(pedido) {
     saldo_estimado: Math.round((saldoInicial + movimento) * 100) / 100,
     // Doze meses de calendário real: é o que a IA deve usar para projetar.
     previsao_12m: previsao12_(),
+    baus: bausResumo_(),
     memoria: lerMemoria_()
   };
 }
@@ -1541,6 +1560,7 @@ function resumo_(pedido) {
   linhas.forEach(function (r) {
     if (r[col.status] !== STATUS.OK) return;
     if (r[col.tipo] === TIPO.FATURA) return; // já contado nas compras
+    if (ehBau_(r[col.tipo])) return;          // guardar não é gasto, resgatar não é renda
     var data = normalizarData_(r[col.data]);
     if (data.indexOf(mes) !== 0) return;
     var valor = Number(r[col.valor]) || 0;
@@ -1868,14 +1888,15 @@ function painel_(pedido) {
 
   var serie = {};
   meses.forEach(function (k) {
-    serie[k] = { mes: k, receitas: 0, despesas: 0, receitas_previstas: 0, despesas_previstas: 0 };
+    serie[k] = { mes: k, receitas: 0, despesas: 0, receitas_previstas: 0, despesas_previstas: 0, guardado: 0 };
   });
 
   var mesHoje = mesAtual_();
 
-  var totais = { receitas: 0, despesas: 0, lancamentos: 0, credito: 0, caixa: 0 };
+  var totais = { receitas: 0, despesas: 0, lancamentos: 0, credito: 0, caixa: 0, guardado: 0 };
   var porCategoria = {}, porConta = {}, porPessoa = {}, porFonte = {}, porGrupo = {};
   var porDia = {};
+  var saldoBaus = 0;
   // Gasto livre de hoje: o que saiu hoje e NÃO estava previsto. Conta fixa paga
   // e parcela de compra antiga já estavam reservadas na previsão — pagar o
   // aluguel hoje não pode zerar o "ouro de hoje".
@@ -1896,6 +1917,17 @@ function painel_(pedido) {
     var mesLinha = data.slice(0, 7);
     var valor = Number(r[col.valor]) || 0;
     var tipo = r[col.tipo];
+
+    // Baú: guardar não é gasto e resgatar não é renda. O dinheiro sai (ou
+    // volta) do mês e é contado à parte: total dos baús e guardado do mês.
+    if (ehBau_(tipo)) {
+      if (r[col.status] !== STATUS.OK) return;
+      var s = sinalBau_(tipo) * valor;
+      saldoBaus += s;
+      if (serie[mesLinha]) serie[mesLinha].guardado += s;
+      if (mesLinha === mes) { totais.guardado += s; totais.caixa += s; }
+      return;
+    }
 
     // Renda agendada é previsão, não caixa: entra na linha pontilhada do gráfico.
     if (r[col.status] === STATUS.AGENDADO) {
@@ -2077,6 +2109,7 @@ function painel_(pedido) {
         despesas: arred_(s.despesas),
         receitas_previstas: arred_(s.receitas_previstas),
         despesas_previstas: arred_(s.despesas_previstas),
+        guardado: arred_(s.guardado),
         saldo: arred_(s.receitas + s.receitas_previstas - s.despesas - s.despesas_previstas)
       };
     }),
@@ -2100,8 +2133,12 @@ function painel_(pedido) {
       ja_sobrou: arred_(totais.receitas - totais.despesas),
       ainda_entra: aReceberTotal,
       ainda_sai: previstoTotal,
-      sobra: arred_(totais.receitas - totais.despesas + aReceberTotal - previstoTotal)
+      sobra: arred_(totais.receitas - totais.despesas + aReceberTotal - previstoTotal),
+      // o que já foi para os baús neste mês: faz parte da sobra, mas não está livre
+      guardado: arred_(totais.guardado)
     },
+    guardado_mes: arred_(totais.guardado),
+    baus_total: arred_(saldoBaus),
     gasto_livre_hoje: arred_(gastoLivreHoje),
     orcamentos: orcamentos,
     // a missão do mês (com vigência) e as conquistas já ganhas
@@ -2184,6 +2221,213 @@ function conquistar_(pedido) {
     return { ok: true, conquistas: ganhas, novas: novas };
   } finally {
     trava.releaseLock();
+  }
+}
+
+// --- Baús: caixinhas para guardar dinheiro -----------------------------------
+// Cada baú é uma linha na aba `baus` (nome, meta, pra que é, até quando). O
+// dinheiro que entra e sai dele são linhas normais em `lancamentos`, com tipo
+// `guardar` ou `resgatar` e o nome do baú na coluna categoria — assim passam
+// pela mesma fila do app, funcionam sem internet e aparecem no extrato.
+//
+// Guardar não é gasto: não entra em categoria, orçamento nem "para onde foi".
+// Mas o dinheiro sai do mês, e por isso o painel conta o guardado à parte.
+
+var MAX_NOME_BAU = 40;
+var MAX_OBJETIVO_BAU = 300;
+
+function ehBau_(tipo) {
+  return tipo === TIPO.GUARDAR || tipo === TIPO.RESGATAR;
+}
+
+/** Guardar soma no baú, resgatar tira. */
+function sinalBau_(tipo) {
+  if (tipo === TIPO.GUARDAR) return 1;
+  if (tipo === TIPO.RESGATAR) return -1;
+  return 0;
+}
+
+/** A aba nasce na primeira vez que alguém mexe em baú — sem rodar configurar() de novo. */
+function abaBaus_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss.getSheetByName('baus')) prepararAba_(ss, 'baus');
+  return ss.getSheetByName('baus');
+}
+
+function lerBaus_() {
+  var aba = abaBaus_();
+  var n = aba.getLastRow() - 1;
+  if (n <= 0) return [];
+  return aba.getRange(2, 1, n, ABAS.baus.length).getValues()
+    .map(function (r, i) {
+      return {
+        linha: i + 2,
+        nome: String(r[0] || '').trim(),
+        meta: arred_(r[1]),
+        objetivo: String(r[2] || ''),
+        prazo: normalizarMes_(r[3]),
+        criado_em: normalizarData_(r[4]),
+        ativo: r[5] !== 'não' && r[5] !== false
+      };
+    })
+    .filter(function (b) { return b.nome; });
+}
+
+/**
+ * Os baús ativos com saldo, o guardado neste mês, o total por mês (para o app
+ * calcular o ritmo) e o histórico de cada um, do mais novo para o mais antigo.
+ * Baú que tem dinheiro mas sumiu da aba (apagado à mão) aparece mesmo assim:
+ * dinheiro guardado não pode desaparecer da tela.
+ */
+function baus_() {
+  var cadastro = lerBaus_();
+  var mesHoje = mesAtual_();
+  var porChave = {};
+  var arquivados = {};
+  var lista = [];
+
+  cadastro.forEach(function (b) {
+    var k = chaveNome_(b.nome);
+    if (!b.ativo) { arquivados[k] = true; return; }
+    var item = {
+      nome: b.nome, meta: b.meta, objetivo: b.objetivo, prazo: b.prazo, criado_em: b.criado_em,
+      saldo: 0, guardado_mes: 0, por_mes: {}, movimentos: []
+    };
+    porChave[k] = item;
+    lista.push(item);
+  });
+
+  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('lancamentos');
+  var n = aba.getLastRow() - 1;
+  var col = indiceColunas_();
+  if (n > 0) {
+    aba.getRange(2, 1, n, ABAS.lancamentos.length).getValues().forEach(function (r, i) {
+      if (!ehBau_(r[col.tipo]) || r[col.status] !== STATUS.OK) return;
+      var nome = String(r[col.categoria] || 'Baú');
+      var k = chaveNome_(nome);
+      if (arquivados[k] && !porChave[k]) return;
+      var b = porChave[k];
+      if (!b) {
+        b = porChave[k] = {
+          nome: nome, meta: 0, objetivo: '', prazo: '', criado_em: '', sem_cadastro: true,
+          saldo: 0, guardado_mes: 0, por_mes: {}, movimentos: []
+        };
+        lista.push(b);
+      }
+      var data = normalizarData_(r[col.data]);
+      var valor = Number(r[col.valor]) || 0;
+      var s = sinalBau_(r[col.tipo]) * valor;
+      b.saldo += s;
+      somar_(b.por_mes, data.slice(0, 7), s);
+      if (data.slice(0, 7) === mesHoje) b.guardado_mes += s;
+      var item = lancamentoDe_(r, col, data);
+      item._ordem = ordemDe_(data, r[col.hora_registro], i);
+      b.movimentos.push(item);
+    });
+  }
+
+  var total = 0, doMes = 0;
+  lista.forEach(function (b) {
+    b.saldo = arred_(b.saldo);
+    b.guardado_mes = arred_(b.guardado_mes);
+    Object.keys(b.por_mes).forEach(function (m) { b.por_mes[m] = arred_(b.por_mes[m]); });
+    b.movimentos = ordenarDoMaisNovo_(b.movimentos).slice(0, 300);
+    total += b.saldo;
+    doMes += b.guardado_mes;
+  });
+
+  return { ok: true, mes: mesHoje, total: arred_(total), guardado_mes: arred_(doMes), baus: lista };
+}
+
+/**
+ * Cria ou edita um baú. Com `nome_antigo` diferente do nome, é renomear: o
+ * histórico inteiro passa para o nome novo, senão o dinheiro ficaria no baú
+ * velho. Nome repetido entre baús ativos é recusado.
+ */
+function salvarBau_(pedido) {
+  var nome = String(pedido.nome || '').replace(/\s+/g, ' ').trim().slice(0, MAX_NOME_BAU);
+  if (!nome) return { ok: false, erro: 'nome_vazio' };
+  var meta = Math.round(Math.max(0, Number(pedido.meta) || 0) * 100) / 100;
+  if (meta > 100000000) return { ok: false, erro: 'valor_invalido' };
+  var prazo = /^\d{4}-\d{2}$/.test(String(pedido.prazo || '')) ? String(pedido.prazo) : '';
+  var objetivo = String(pedido.objetivo || '').trim().slice(0, MAX_OBJETIVO_BAU);
+  var antigo = String(pedido.nome_antigo || '').trim();
+
+  var trava = LockService.getScriptLock();
+  trava.waitLock(15000);
+  try {
+    var aba = abaBaus_();
+    var cadastro = lerBaus_();
+    var chave = chaveNome_(nome);
+    var chaveAntiga = antigo ? chaveNome_(antigo) : chave;
+    var existente = cadastro.filter(function (b) { return chaveNome_(b.nome) === chaveAntiga; })[0];
+    var conflito = cadastro.filter(function (b) {
+      return b.ativo && chaveNome_(b.nome) === chave && b !== existente;
+    })[0];
+    if (conflito) return { ok: false, erro: 'nome_repetido' };
+    // Criar (sem nome antigo) com o nome de um baú ativo é repetir; com o de um
+    // arquivado, é trazer ele de volta.
+    if (!antigo && existente && existente.ativo) return { ok: false, erro: 'nome_repetido' };
+
+    var linha = [nome, meta, objetivo, prazo, existente ? existente.criado_em : hojeISO_(), 'sim'];
+    if (existente) {
+      aba.getRange(existente.linha, 1, 1, ABAS.baus.length).setValues([linha]);
+    } else {
+      aba.getRange(aba.getLastRow() + 1, 1, 1, ABAS.baus.length).setValues([linha]);
+    }
+    if (antigo && antigo !== nome) renomearBau_(antigo, nome);
+
+    return { ok: true, bau: { nome: nome, meta: meta, objetivo: objetivo, prazo: prazo, criado_em: linha[4] } };
+  } finally {
+    trava.releaseLock();
+  }
+}
+
+/** Arquiva o baú. Só vazio: dinheiro guardado não some com um toque. */
+function excluirBau_(pedido) {
+  var alvo = chaveNome_(pedido.nome);
+  if (!alvo) return { ok: false, erro: 'nome_vazio' };
+  var atual = baus_().baus.filter(function (b) { return chaveNome_(b.nome) === alvo; })[0];
+  if (!atual) return { ok: false, erro: 'nao_encontrado' };
+  if (Math.abs(atual.saldo) >= 0.01) return { ok: false, erro: 'bau_com_dinheiro', saldo: atual.saldo };
+
+  var trava = LockService.getScriptLock();
+  trava.waitLock(15000);
+  try {
+    var aba = abaBaus_();
+    var b = lerBaus_().filter(function (x) { return chaveNome_(x.nome) === alvo; })[0];
+    if (b) aba.getRange(b.linha, ABAS.baus.indexOf('ativo') + 1).setValue('não');
+    return { ok: true };
+  } finally {
+    trava.releaseLock();
+  }
+}
+
+/** O histórico do baú acompanha o nome novo (só linhas de baú, nunca gastos). */
+function renomearBau_(de, para) {
+  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('lancamentos');
+  var n = aba.getLastRow() - 1;
+  if (n <= 0) return;
+  var col = indiceColunas_();
+  var tipos = aba.getRange(2, col.tipo + 1, n, 1).getValues();
+  var faixa = aba.getRange(2, col.categoria + 1, n, 1);
+  var cats = faixa.getValues();
+  var alvo = chaveNome_(de);
+  var mudou = false;
+  for (var i = 0; i < n; i++) {
+    if (ehBau_(tipos[i][0]) && chaveNome_(cats[i][0]) === alvo) { cats[i][0] = para; mudou = true; }
+  }
+  if (mudou) faixa.setValues(cats);
+}
+
+/** O total guardado em cada baú, para a IA saber que esse dinheiro existe. */
+function bausResumo_() {
+  try {
+    return baus_().baus.map(function (b) {
+      return { nome: b.nome, saldo: b.saldo, meta: b.meta, objetivo: b.objetivo, prazo: b.prazo };
+    });
+  } catch (e) {
+    return [];
   }
 }
 
@@ -2541,7 +2785,7 @@ function editarLancamento_(pedido) {
     // continuam sendo de cada uma.
     var irmas = propagarNoGrupo_(aba, col, pedido.uuid, valores, mudou);
 
-    var aprendido = mudou.indexOf('categoria') >= 0
+    var aprendido = mudou.indexOf('categoria') >= 0 && !ehBau_(String(valores[col.tipo]))
       ? aprenderCategoria_(valores[col.descricao], valores[col.categoria])
       : null;
 
@@ -2903,10 +3147,14 @@ function renomearNosLancamentos_(tipo, de, para) {
   var indice = col[coluna];
   var faixa = aba.getRange(2, indice + 1, n, 1);
   var valores = faixa.getValues();
+  // Baú usa a coluna categoria para o próprio nome: renomear uma categoria
+  // não pode arrastar o dinheiro guardado num baú que se chame igual.
+  var tipos = coluna === 'categoria' ? aba.getRange(2, col.tipo + 1, n, 1).getValues() : null;
   var alvo = chaveNome_(de);
   var mudou = false;
 
   for (var i = 0; i < valores.length; i++) {
+    if (tipos && ehBau_(tipos[i][0])) continue;
     if (chaveNome_(valores[i][0]) === alvo) { valores[i][0] = para; mudou = true; }
   }
   if (mudou) faixa.setValues(valores);

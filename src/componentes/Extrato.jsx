@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ehBau } from '../lib/baus.js';
 import Capa from './Capa.jsx';
 import Esqueleto from './Esqueleto.jsx';
 import Item from './Item.jsx';
@@ -178,6 +179,20 @@ export default function Extrato({ cadastros, aoMudarDados }) {
 }
 
 function Linha({ l, ocupado, aoAbrir }) {
+  // Movimento de baú se edita dentro do baú; aqui só aparece.
+  if (ehBau(l.tipo)) {
+    const guardou = l.tipo === 'guardar';
+    return (
+      <div className="item extrato">
+        <Item tipo={l.tipo} />
+        <span className="corpo">
+          <span className="meta">Baú · {l.categoria}</span>
+          <span className="titulo">{l.descricao || (guardou ? 'Guardado' : 'Resgatado')}</span>
+        </span>
+        <span className={`num ${guardou ? 'guardou' : 'resgatou'}`}>{guardou ? '→ ' : '← '}{formatarBRL(l.valor)}</span>
+      </div>
+    );
+  }
   const receita = l.tipo === 'receita';
   const agendado = l.status === 'agendado';
   const parcela = Number(l.parcelas_total) > 1 ? ` · ${l.parcela_atual}/${l.parcelas_total}` : '';
@@ -202,7 +217,7 @@ function Linha({ l, ocupado, aoAbrir }) {
 }
 
 /** A lista já vem ordenada; aqui só se junta o que é do mesmo dia. */
-function agruparPorDia(itens) {
+export function agruparPorDia(itens) {
   const grupos = [];
   itens.forEach((l) => {
     const ultimo = grupos[grupos.length - 1];
@@ -216,7 +231,7 @@ const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
   'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 
 /** "hoje", "ontem", "17 de outubro" — e o ano só quando não é este. */
-function rotuloDia(iso) {
+export function rotuloDia(iso) {
   const [a, m, d] = String(iso || '').split('-').map(Number);
   if (!a || !m || !d) return 'sem data';
 

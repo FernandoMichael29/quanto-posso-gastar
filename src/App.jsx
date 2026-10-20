@@ -15,6 +15,9 @@ import { mesDeHoje, mesPorExtenso } from './lib/datas.js';
 import { ABA, FOLHA_ABAS } from './lib/icones.js';
 import { calcularOuro } from './lib/ouro.js';
 import { calcularMana } from './lib/mana.js';
+import { totalNosBaus } from './lib/baus.js';
+import Baus from './telas/Baus.jsx';
+import { SpriteBau } from './componentes/Item.jsx';
 
 const CACHE = 'qpg.cadastros';
 // O painel do mês fica guardado para o ouro de hoje aparecer na hora em que o
@@ -50,6 +53,9 @@ export default function App() {
   // nunca houve conversa bem-sucedida com ela, e aí nada é mostrado.
   const [acesso, setAcesso] = useState(() => (acessoValidado() ? 'liberado' : 'verificando'));
   const [aba, setAba] = useState('novo');
+  // Os baús não moram na barra de baixo: abrem pela pílula do topo e o
+  // "voltar" leva para a aba em que você estava.
+  const [abaAntes, setAbaAntes] = useState('novo');
   const [fila, setFila] = useState([]);
   const [cadastros, setCadastros] = useState(cadastrosSalvos);
   const [resumo, setResumo] = useState(null);
@@ -149,6 +155,8 @@ export default function App() {
     () => calcularMana(painel.painel?.mes === mesDeHoje() ? painel.painel : null, fila, { desde: painel.em }),
     [painel, fila]
   );
+  const totalBaus = useMemo(() => totalNosBaus(painel.painel, fila, { desde: painel.em }), [painel, fila]);
+  const abrirBaus = () => { if (aba !== 'baus') setAbaAntes(aba); setAba('baus'); };
   const tudo = () => { recarregarFila(); recarregarDados(); };
 
   if (acesso === 'verificando') {
@@ -193,6 +201,13 @@ export default function App() {
 
         {/* A fila mora aqui em cima: quando há algo esperando, ela se anuncia
             e abre com um toque; quando não há, só informa se está online. */}
+        <div className="topo-acoes">
+        {/* O total guardado nos baús: abre a tela deles de qualquer aba. */}
+        <button type="button" className="pastilha bau-p" onClick={abrirBaus}
+          aria-label={`Baús: ${totalBaus.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} guardados`}>
+          <SpriteBau estado={totalBaus > 0 ? 'metade' : 'vazio'} tamanho={22} />
+          R$ {Math.round(totalBaus).toLocaleString('pt-BR')}
+        </button>
         <button
           type="button"
           className={`pastilha ${esperando ? 'alerta' : ''}`}
@@ -200,8 +215,9 @@ export default function App() {
           aria-label={esperando ? `${esperando} lançamentos na fila` : 'Ver a fila'}
         >
           <span className={`ponto ${esperando ? 'pendente' : (online ? 'on' : 'off')}`} aria-hidden="true" />
-          {esperando ? `${esperando} na fila` : (online ? 'online' : 'offline')}
+          <span className="rotulo-fila">{esperando ? `${esperando} na fila` : (online ? 'online' : 'offline')}</span>
         </button>
+        </div>
       </header>
 
       <main className="conteudo">
@@ -223,6 +239,9 @@ export default function App() {
         {aba === 'mes' && <Mes cadastros={cadastros} aoMudarDados={tudo} />}
         {aba === 'perguntar' && <Perguntar aoVerHistorico={() => setAba('historico')} />}
         {aba === 'historico' && <Historico />}
+        {aba === 'baus' && (
+          <Baus cadastros={cadastros} fila={fila} aoMudarFila={tudo} aoVoltar={() => setAba(abaAntes)} />
+        )}
         {aba === 'fila' && (
           <>
             <button className="btn discreto voltar" onClick={() => setAba('novo')}>

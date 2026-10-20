@@ -7,7 +7,8 @@
 //   ouro de hoje  = por dia − gasto livre de hoje
 //
 // Com missão do mês (meta de guardar), ela sai do livre antes de tudo: o ouro
-// é o que dá para gastar e ainda cumprir a missão.
+// é o que dá para gastar e ainda cumprir a missão. O que já foi para os baús
+// também saiu do livre — e conta para a missão, que só separa o que falta.
 //
 // Assim gastar 42 hoje tira 42 do ouro de hoje — e não 42 ÷ 12. Conta fixa
 // paga e parcela antiga não entram no "gasto livre": já estavam reservadas.
@@ -35,7 +36,7 @@ export function diasRestantes(agora = new Date()) {
  * depois de registrar — e às vezes subia de volta antes de cair de vez.
  */
 export function pendentesDoMes(fila, { mes, hoje, desde = 0 }) {
-  const soma = { livre: 0, hoje: 0, receitas: 0, porCategoria: {} };
+  const soma = { livre: 0, hoje: 0, receitas: 0, guardado: 0, porCategoria: {} };
   for (const item of fila || []) {
     const l = item.lancamento;
     if (!l || !String(l.data || '').startsWith(mes)) continue;
@@ -44,6 +45,9 @@ export function pendentesDoMes(fila, { mes, hoje, desde = 0 }) {
     // Parcelado: neste mês pesa só a primeira parcela.
     const vezes = Number(l.parcelas_total) > 1 ? Number(l.parcelas_total) : 1;
     const valor = (Number(l.valor) || 0) / vezes;
+    // Baú: não é gasto nem renda (não entra no livre, no gasto de hoje nem em
+    // categoria); vai para o guardado do mês.
+    if (l.tipo === 'guardar' || l.tipo === 'resgatar') { soma.guardado += (l.tipo === 'guardar' ? 1 : -1) * valor; continue; }
     if (l.tipo === 'receita') { soma.livre += valor; soma.receitas += valor; continue; }
     if (l.tipo === 'fatura') continue;
     soma.livre -= valor;
@@ -67,8 +71,12 @@ export function calcularOuro(painel, fila = [], opcoes = {}) {
   if (painel.mes && painel.mes !== mes) return null;   // virou o mês: o painel é velho
 
   const p = pendentesDoMes(fila, { mes, hoje, desde: opcoes.desde || 0 });
-  const reserva = metaDoMes(painel.metas, mes);
-  const livre = (Number(painel.previsao.sobra) || 0) + p.livre - reserva;
+  // O guardado nos baús saiu do livre. A missão separa só o que ainda falta
+  // guardar: guardar em direção a ela não derruba o ouro duas vezes.
+  const guardado = (Number(painel.guardado_mes) || 0) + p.guardado;
+  const meta = metaDoMes(painel.metas, mes);
+  const reserva = Math.max(0, meta - Math.max(0, guardado));
+  const livre = (Number(painel.previsao.sobra) || 0) + p.livre - guardado - reserva;
   const gastoHoje = (Number(painel.gasto_livre_hoje) || 0) + p.hoje;
   const dias = diasRestantes(agora);
   const porDia = Math.max(0, livre + gastoHoje) / dias;
@@ -79,7 +87,9 @@ export function calcularOuro(painel, fila = [], opcoes = {}) {
     porDia: arred(porDia),
     gastoHoje: arred(gastoHoje),
     livre: arred(livre),
-    reserva,
+    reserva: arred(reserva),
+    meta,
+    guardado: arred(guardado),
     total: arred(total),
     // a vida do mês: quanto do dinheiro do mês ainda está livre
     vida: total > 0 ? Math.min(1, Math.max(0, livre / total)) : null,

@@ -33,6 +33,8 @@ from abas import ABAS
 abas, t2 = folha(ABAS, 24, 'abas.png')
 from conquistas import CONQUISTAS
 medalhas, t3 = folha(CONQUISTAS, 32, 'conquistas.png')
+from baus import BAUS
+estados, t4 = folha(BAUS, 32, 'baus.png')
 
 # o ícone do atalho na tela inicial (public/), desenhado com o mesmo motor
 import app_icones
@@ -44,10 +46,12 @@ js = ['// Gerado por ferramentas/icones/gerar.py — não edite à mão.',
       "import folha from '../assets/icones.png';",
       "import folhaAbas from '../assets/abas.png';",
       "import folhaConquistas from '../assets/conquistas.png';",
+      "import folhaBaus from '../assets/baus.png';",
       '',
       'export const FOLHA = folha;',
       'export const FOLHA_ABAS = folhaAbas;',
       'export const FOLHA_CONQUISTAS = folhaConquistas;',
+      'export const FOLHA_BAUS = folhaBaus;',
       '',
       '// Categoria (minúscula, sem acento) → coluna na folha de 32 px.',
       'export const COLUNA = {']
@@ -56,9 +60,12 @@ js += ['};', '', '// Aba → coluna na folha de 24 px.', 'export const ABA = {']
 js += [f"  {n}: {i}," for i, n in enumerate(abas)]
 js += ['};', '', '// Conquista → coluna na folha de medalhas (32 px).', 'export const MEDALHA = {']
 js += [f"  {n}: {i}," for i, n in enumerate(medalhas)]
+js += ['};', '', '// Estado do baú (vazio → cheio) → coluna na folha de baús (32 px).', 'export const BAU = {']
+js += [f"  {n}: {i}," for i, n in enumerate(estados)]
 js += ['};', '']
 with open(os.path.join(RAIZ, 'src', 'lib', 'icones.js'), 'w', encoding='utf-8', newline='\n') as f:
     f.write('\n'.join(js))
 print(f'{len(itens)} itens → icones.png {t1}; {len(abas)} abas → abas.png {t2}; '
-      f'{len(medalhas)} medalhas → conquistas.png {t3}; índice em src/lib/icones.js; '
+      f'{len(medalhas)} medalhas → conquistas.png {t3}; {len(estados)} baús → baus.png {t4}; '
+      f'índice em src/lib/icones.js; '
       f'ícone do app → public/ ({", ".join(publicos)})')

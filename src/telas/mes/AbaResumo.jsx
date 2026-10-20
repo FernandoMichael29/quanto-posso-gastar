@@ -20,7 +20,9 @@ export default function AbaResumo({ painel, aoMudar }) {
   const [corte, setCorte] = useState('categoria');
 
   const aberto = mesAberto(painel);
-  const livre = aberto && painel.previsao ? painel.previsao.sobra : (painel.saldo || 0);
+  // O que foi para os baús faz parte da sobra, mas não está mais livre.
+  const guardado = (aberto && painel.previsao?.guardado) || 0;
+  const livre = aberto && painel.previsao ? painel.previsao.sobra - guardado : (painel.saldo || 0);
   const dadosCorte = painel[CORTES.find((c) => c.id === corte).campo] || [];
 
   return (
@@ -58,8 +60,14 @@ export default function AbaResumo({ painel, aoMudar }) {
                 <dt>Ainda sai</dt>
                 <dd className="warn">{comSinal(-painel.previsao.ainda_sai)}</dd>
               </div>
+              {guardado !== 0 && (
+                <div>
+                  <dt>{guardado > 0 ? 'Foi para os baús' : 'Voltou dos baús'}</dt>
+                  <dd className="ouro">{comSinal(-guardado)}</dd>
+                </div>
+              )}
               <div className="total">
-                <dt>Sobra no fim do mês</dt>
+                <dt>{guardado ? 'Livre no fim do mês' : 'Sobra no fim do mês'}</dt>
                 <dd className={livre < 0 ? 'neg' : 'pos'}>{comSinal(livre)}</dd>
               </div>
             </dl>
