@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Sprite } from './Item.jsx';
 import { formatarBRL } from '../lib/parser.js';
+import Personagem from './Personagem.jsx';
+import { humorDoHeroi, reacaoAoLancamento } from '../lib/personagem.js';
 
 // A janela de jogo no topo da tela Novo: o ouro de hoje e a vida do mês.
 // A conta mora em lib/ouro.js; aqui é só o desenho e a animação.
@@ -29,9 +31,24 @@ function useContagem(alvo, passos = 8, duracao = 480) {
   return mostrado;
 }
 
-export default function Hud({ dados, efeito }) {
+export default function Hud({ dados, efeito, heroi, hoje, ultimoLancamento }) {
   const ouro = useContagem(dados ? Math.max(0, dados.ouro) : null);
   const [treme, setTreme] = useState(false);
+  // O herói reage ao que acabou de entrar e depois volta ao humor do mês.
+  const [reacao, setReacao] = useState(null);
+  const vezes = useRef(0);
+  useEffect(() => {
+    if (!efeito) return;
+    vezes.current += 1;
+    setReacao({ anim: reacaoAoLancamento(efeito, dados), vez: vezes.current });
+  }, [efeito]); // eslint-disable-line react-hooks/exhaustive-deps
+  const humor = humorDoHeroi(dados, { hoje, ultimoLancamento });
+  const retrato = heroi ? (
+    <span className={`retrato-heroi ${humor.anim}`}>
+      <Personagem id={heroi.id} tamanho={88} base={humor.anim} anim={reacao?.anim} vez={reacao?.vez || 0}
+        aoTerminar={() => setReacao(null)} rotulo={`${heroi.nome}: ${humor.motivo}`} />
+    </span>
+  ) : <span className="slot"><Sprite categoria="Salário" receita /></span>;
 
   // Gasto é "dano": a janela treme quando ele entra.
   useEffect(() => {
@@ -49,7 +66,7 @@ export default function Hud({ dados, efeito }) {
             <div className="hud-rotulo">OURO DE HOJE</div>
             <div className="ouro zerado">R$ …</div>
           </div>
-          <span className="slot"><Sprite categoria="Salário" receita /></span>
+          {retrato}
         </div>
         <p className="sub">Lendo a planilha…</p>
       </div>
@@ -76,10 +93,10 @@ export default function Hud({ dados, efeito }) {
           <div className="hud-rotulo">OURO DE HOJE</div>
           <div className={`ouro ${dados.ouro <= 0 ? 'zerado' : ''}`}>{formatarBRL(ouro)}</div>
         </div>
-        <span className="slot"><Sprite categoria="Salário" receita /></span>
+        {retrato}
       </div>
 
-      <p className="sub">{frase}</p>
+      <p className="sub">{frase}{heroi && humor.anim === 'dormindo' && <> {heroi.nome} {humor.motivo} — lance algo para acordar.</>}</p>
 
       {vida != null && (
         <div className="hud-vida">

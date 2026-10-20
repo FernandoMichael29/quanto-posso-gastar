@@ -4,6 +4,8 @@ import Capa from './Capa.jsx';
 import Sanfona from './Sanfona.jsx';
 import { valorQueVale } from './Compromissos.jsx';
 import { formatarBRL } from '../lib/parser.js';
+import Personagem, { useReacao } from './Personagem.jsx';
+import { personagemSalvo } from '../lib/personagem.js';
 
 // Contas fixas como chefes de fase. Cada conta tem a vida cheia até ser
 // lançada; lançar é o golpe final — a barra esvazia e cai o carimbo.
@@ -20,6 +22,9 @@ const soma = (lista) => lista.reduce((a, i) => a + valorQueVale(i), 0);
 export default function Chefes({ itens, ocupado, aoAbrir }) {
   const [visto, setVisto] = useState(() => assinatura(itens));
   const [abatidos, setAbatidos] = useState(() => new Set());
+  // O herói de quem está jogando: ataca o chefe que caiu e comemora a fase limpa.
+  const [heroi] = useState(personagemSalvo);
+  const [reacao, reagir] = useReacao();
 
   // Guardar o que mudou desde a última vez, durante o desenho (o jeito do
   // React para "estado que depende do anterior"). Comparar por assinatura:
@@ -29,7 +34,10 @@ export default function Chefes({ itens, ocupado, aoAbrir }) {
     const antes = new Map(visto.split('|').map((s) => [s.slice(0, s.lastIndexOf(':')), s.endsWith(':1')]));
     const caiu = itens.filter((i) => i.lancado && antes.get(i.nome) === false).map((i) => i.nome);
     setVisto(agora);
-    if (caiu.length) setAbatidos((s) => new Set([...s, ...caiu]));
+    if (caiu.length) {
+      setAbatidos((s) => new Set([...s, ...caiu]));
+      reagir('ataque', itens.every((i) => i.lancado) ? 'vitoria' : null);
+    }
   }
 
   if (!itens.length) return null;
@@ -49,7 +57,13 @@ export default function Chefes({ itens, ocupado, aoAbrir }) {
         <span className="ajuda" style={{ margin: 0 }}>{nDerrotados} de {itens.length} derrotados</span>
       </div>
 
-      <div className={`placar-chefes ${restante === 0 ? 'limpo' : ''}`}>
+      <div className={`placar-chefes ${restante === 0 ? 'limpo' : ''} ${heroi ? 'com-heroi' : ''}`}>
+        {heroi && (
+          <span className="heroi-placar">
+            <Personagem id={heroi.id} tamanho={80} {...reacao} />
+          </span>
+        )}
+        <div className="placar-corpo">
         <div className="legenda">
           <span>{restante === 0 ? 'FASE LIMPA' : 'VIDA DOS CHEFES'}</span>
           <span>{formatarBRL(restante)}</span>
@@ -66,6 +80,7 @@ export default function Chefes({ itens, ocupado, aoAbrir }) {
               ? <><strong>{atacando} {atacando === 1 ? 'chefe atacando' : 'chefes atacando'}</strong> — venceu e não foi lançado.</>
               : `${formatarBRL(total)} no total. Lançou, derrotou.`}
         </p>
+        </div>
       </div>
 
       {vivos.length > 0 && (

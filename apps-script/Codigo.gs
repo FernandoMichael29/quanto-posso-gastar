@@ -31,7 +31,7 @@
 
 // Suba junto com VERSAO_APP em src/lib/versao.js — o app compara as duas e
 // avisa na tela quando só uma das metades foi publicada.
-var VERSAO = '2.10.0';
+var VERSAO = '2.11.0';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -1592,7 +1592,7 @@ function resumo_(pedido) {
     recentes.push({
       uuid: r[col.uuid], data: data, tipo: r[col.tipo],
       valor: Number(r[col.valor]) || 0, categoria: r[col.categoria],
-      descricao: r[col.descricao], status: r[col.status],
+      descricao: r[col.descricao], status: r[col.status], pessoa: r[col.pessoa] || '',
       _ordem: ordemDe_(data, r[col.hora_registro], i)
     });
   });
@@ -1901,6 +1901,8 @@ function painel_(pedido) {
   var porCategoria = {}, porConta = {}, porPessoa = {}, porFonte = {}, porGrupo = {};
   var porDia = {};
   var saldoBaus = 0;
+  // Quem guardou quanto neste mês (a missão em dupla). '' = lançamento sem dono.
+  var guardadoPorPessoa = {};
   // Gasto livre de hoje: o que saiu hoje e NÃO estava previsto. Conta fixa paga
   // e parcela de compra antiga já estavam reservadas na previsão — pagar o
   // aluguel hoje não pode zerar o "ouro de hoje".
@@ -1931,7 +1933,10 @@ function painel_(pedido) {
       var s = sinalBau_(tipo) * valor;
       saldoBaus += s;
       if (serie[mesLinha]) serie[mesLinha].guardado += s;
-      if (mesLinha === mes) { totais.guardado += s; totais.caixa += s; }
+      if (mesLinha === mes) {
+        totais.guardado += s; totais.caixa += s;
+        somar_(guardadoPorPessoa, String(r[col.pessoa] || '').trim(), s);
+      }
       return;
     }
 
@@ -2144,6 +2149,11 @@ function painel_(pedido) {
       guardado: arred_(totais.guardado)
     },
     guardado_mes: arred_(totais.guardado),
+    guardado_por_pessoa: Object.keys(guardadoPorPessoa).reduce(function (o, k) {
+      var v = arred_(guardadoPorPessoa[k]);
+      if (Math.abs(v) >= 0.01) o[k] = v;
+      return o;
+    }, {}),
     // com o que os baús renderam até hoje (só calcula se algum rende)
     baus_total: arred_(totalDosBaus_(saldoBaus, linhas)),
     gasto_livre_hoje: arred_(gastoLivreHoje),

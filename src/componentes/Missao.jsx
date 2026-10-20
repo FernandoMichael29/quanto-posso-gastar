@@ -4,6 +4,8 @@ import { FOLHA_CONQUISTAS, MEDALHA } from '../lib/icones.js';
 import { api } from '../lib/api.js';
 import { formatarBRL, soNumero } from '../lib/parser.js';
 import { hojeISO } from '../lib/datas.js';
+import { guardadoEmDupla } from '../lib/personagem.js';
+import { Rosto } from './Personagem.jsx';
 
 // A missão do mês (guardar um valor, a barra de XP) e as conquistas, na aba
 // Resumo do Mês. A conta mora em lib/missao.js; aqui é o desenho, a edição da
@@ -62,6 +64,8 @@ function EditarMeta({ inicial, ocupado, aoSalvar, aoCancelar, foco = false }) {
  */
 export default function Missao({ painel, aoMudar }) {
   const missao = useMemo(() => calcularMissao(painel), [painel]);
+  // A missão em dupla: o que já está trancado em baú, separado por quem guardou.
+  const dupla = useMemo(() => guardadoEmDupla(painel.guardado_por_pessoa), [painel]);
   const [editando, setEditando] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState(null);
@@ -153,15 +157,35 @@ export default function Missao({ painel, aoMudar }) {
                   <div className="hp xp" style={{ '--p': `${Math.round(missao.fracao * 100)}%` }}
                     role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(missao.fracao * 100)}
                     aria-label="quanto da missão já está garantido"><i />
-                    {missao.garantido > 0 && <b className="garantido" style={{ width: `${Math.min(100, Math.round((missao.garantido / missao.meta) * 100))}%` }} />}
+                    {missao.garantido > 0 && !dupla.length && <b className="garantido" style={{ width: `${Math.min(100, Math.round((missao.garantido / missao.meta) * 100))}%` }} />}
+                    {dupla.length > 0 && (() => {
+                      let x = 0;
+                      return dupla.map((d) => {
+                        const w = Math.max(0, Math.min(100 - x, (d.valor / missao.meta) * 100));
+                        const pedaco = <b key={d.id} className="garantido parte" style={{ left: `${x}%`, width: `${w}%`, '--cor': d.personagem?.dupla || '#c9cedd' }} />;
+                        x += w;
+                        return pedaco;
+                      });
+                    })()}
                   </div>
                 </div>
+                {dupla.length > 0 && (
+                  <div className="dupla" aria-label="quem guardou quanto neste mês">
+                    {dupla.map((d) => (
+                      <span key={d.id} className="dupla-quem" style={{ '--cor': d.personagem?.dupla || '#c9cedd' }}>
+                        {d.personagem ? <Rosto id={d.id} tamanho={22} /> : <i className="sem-dono px" aria-hidden="true">?</i>}
+                        <span>{d.personagem ? d.personagem.nome : 'Sem dono'}</span>
+                        <b className="px">{formatarBRL(d.valor)}</b>
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <p className="sub">
                   {missao.cumprida
                     ? 'O ouro de hoje já deixa a missão separada.'
                     : <>Faltam <strong>{formatarBRL(missao.falta)}</strong>. O ouro de hoje já deixa a missão separada.</>}
                   {missao.cumpridasSeguidas > 1 && ` ${missao.cumpridasSeguidas} meses seguidos cumprindo.`}
-                  {missao.garantido > 0 && ` ${formatarBRL(missao.garantido)} já estão trancados em baús.`}
+                  {missao.garantido > 0 && ` ${formatarBRL(missao.garantido)} já estão trancados em baús${dupla.length > 1 ? ' — guardados em dupla' : ''}.`}
                 </p>
               </>
             ) : (

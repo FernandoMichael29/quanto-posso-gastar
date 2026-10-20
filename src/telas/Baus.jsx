@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Item, { SpriteBau } from '../componentes/Item.jsx';
 import Capa from '../componentes/Capa.jsx';
+import Personagem, { useReacao } from '../componentes/Personagem.jsx';
+import { personagemSalvo, pessoaDoPersonagem } from '../lib/personagem.js';
 import { agruparPorDia, rotuloDia } from '../componentes/Extrato.jsx';
 import { api } from '../lib/api.js';
 import { enfileirar, ESTADO, novoId } from '../lib/db.js';
@@ -61,6 +63,10 @@ export default function Baus({ cadastros, fila, aoMudarFila, aoVoltar }) {
   const [folha, setFolha] = useState(null);         // { modo, valor, data, conta, descricao }
   const [movimento, setMovimento] = useState(null); // movimento sendo editado
   const [acerto, setAcerto] = useState(null);       // { valor } — saldo do app do banco
+  // O herói dentro do baú: joga a moeda ao guardar, conta ao resgatar.
+  const [heroi] = useState(personagemSalvo);
+  const [reacao, reagir] = useReacao();
+  const estreito = typeof window !== 'undefined' && window.innerWidth <= 380;
   const [ocupado, setOcupado] = useState(false);
 
   const carregar = useCallback(async () => {
@@ -81,6 +87,15 @@ export default function Baus({ cadastros, fila, aoMudarFila, aoVoltar }) {
   const contas = (cadastros.contas || []).filter((c) => c.tipo !== 'credito' && c.ativo !== false);
   const contaPadrao = contas.some((c) => c.nome === lembrar(CHAVE_CONTA)) ? lembrar(CHAVE_CONTA) : (contas[0]?.nome || '');
 
+  /** O que o herói faz com cada movimento (e se o baú encheu, comemora depois). */
+  function reagirAo(modo, valor, bauAntes) {
+    if (modo === GUARDAR) {
+      const encheu = bauAntes && bauAntes.meta > 0 && bauAntes.saldo < bauAntes.meta && bauAntes.saldo + valor >= bauAntes.meta;
+      reagir('moeda', encheu ? 'vitoria' : null);
+    } else if (modo === RESGATAR) reagir('contando');
+    else reagir(valor >= 0 ? 'vitoria' : 'triste');
+  }
+
   /** Guardar e resgatar entram na fila, como qualquer lançamento. */
   async function movimentar(nomeBau, modo, valor, extra = {}) {
     await enfileirar({
@@ -94,6 +109,8 @@ export default function Baus({ cadastros, fila, aoMudarFila, aoVoltar }) {
         descricao: (extra.descricao || '').trim(),
         data: extra.data || hojeISO(),
         conta: 'conta' in extra ? extra.conta : contaPadrao,
+        // quem guardou: a missão em dupla soma por pessoa
+        pessoa: pessoaDoPersonagem(heroi, cadastros.pessoas),
         origem: modo === RENDIMENTO ? 'acerto' : 'bau'
       }
     });
@@ -175,6 +192,7 @@ export default function Baus({ cadastros, fila, aoMudarFila, aoVoltar }) {
               <h2>{bau.nome}</h2>
               <span className="saldo-bau">{formatarBRL(bau.saldo)}</span>
             </div>
+            {heroi && <span className="heroi-bau"><Personagem id={heroi.id} tamanho={estreito ? 60 : 76} {...reacao} /></span>}
           </div>
           {r && (
             <>
@@ -247,6 +265,7 @@ export default function Baus({ cadastros, fila, aoMudarFila, aoVoltar }) {
             aoFechar={() => setFolha(null)}
             aoConfirmar={() => {
               movimentar(bau.nome, folha.modo, folha.valor, folha);
+              reagirAo(folha.modo, folha.valor, bau);
               setFolha(null);
             }}
           />
@@ -260,6 +279,7 @@ export default function Baus({ cadastros, fila, aoMudarFila, aoVoltar }) {
             aoFechar={() => setAcerto(null)}
             aoConfirmar={(diferenca) => {
               movimentar(bau.nome, RENDIMENTO, diferenca, { conta: '', descricao: `Banco mostrava ${formatarBRL(acerto.valor)}` });
+              reagirAo(RENDIMENTO, diferenca, bau);
               setAcerto(null);
             }}
           />
@@ -363,7 +383,7 @@ function LinhaMovimento({ m, aoAbrir }) {
   const sinalTxt = acerto ? (v >= 0 ? '+' : '−') : m.tipo === GUARDAR ? '+' : '−';
   return (
     <button type="button" className="item clicavel extrato" disabled={m.pendente} onClick={aoAbrir}>
-      <Item tipo={m.tipo} />
+      <Item tipo={m.tipo} pessoa={m.pessoa} />
       <span className="corpo">
         <span className="meta">{acerto ? 'Acerto com o banco' : (m.conta || 'sem conta')}{m.pendente ? ' · enviando…' : ''}</span>
         <span className="titulo">{m.descricao || (acerto ? 'Saldo do banco' : m.tipo === GUARDAR ? 'Guardado' : 'Resgatado')}</span>

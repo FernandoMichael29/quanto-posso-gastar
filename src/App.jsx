@@ -20,7 +20,11 @@ import Baus from './telas/Baus.jsx';
 import { SpriteBau } from './componentes/Item.jsx';
 import EscolherPersonagem from './telas/EscolherPersonagem.jsx';
 import Personagem from './componentes/Personagem.jsx';
-import { personagemSalvo, pessoaDoPersonagem, salvarPersonagem } from './lib/personagem.js';
+import { atualizarLiberados, personagemSalvo, pessoaDoPersonagem, salvarPersonagem } from './lib/personagem.js';
+import { Armario, EquipamentoNovo } from './componentes/Equipamentos.jsx';
+import RelatorioAventura from './componentes/RelatorioAventura.jsx';
+import { deveMostrarRelatorio, marcarRelatorioVisto, mesAnterior, relatorioVisto } from './lib/relatorio.js';
+import { hojeISO } from './lib/datas.js';
 
 const CACHE = 'qpg.cadastros';
 // O painel do mês fica guardado para o ouro de hoje aparecer na hora em que o
@@ -68,6 +72,10 @@ export default function App() {
   // Quem joga neste celular. Sem escolha, a primeira tela depois de conectar é "Quem está jogando?".
   const [personagem, setPersonagem] = useState(personagemSalvo);
   const [trocandoHeroi, setTrocandoHeroi] = useState(false);
+  // Nos primeiros dias do mês, uma vez por celular: o relatório do mês que fechou.
+  // Conquista que liberou equipamento: o herói aparece vestido, comemorando.
+  const [equipNovo, setEquipNovo] = useState(null);
+  const [relatorio, setRelatorio] = useState(() => (deveMostrarRelatorio(hojeISO(), relatorioVisto()) ? mesAnterior(hojeISO()) : null));
 
   const recarregarFila = useCallback(async () => setFila(await listar()), []);
 
@@ -102,6 +110,8 @@ export default function App() {
     const pn = await api.painel();
     if (pn.ok) {
       setPainel({ painel: pn, em: pedidoEm });
+      const novos = atualizarLiberados(pn.conquistas);
+      if (novos.length) setEquipNovo(novos[novos.length - 1]);
       try {
         localStorage.setItem(CACHE_PAINEL, JSON.stringify(pn));
         localStorage.setItem(`${CACHE_PAINEL}.em`, String(pedidoEm));
@@ -169,6 +179,11 @@ export default function App() {
     return (
       <div className="app">
         <main className="conteudo porta">
+          {/* Os dois caminhando enquanto a planilha responde. */}
+          <div className="caminhada" aria-hidden="true">
+            <Personagem id="fernando" base="andando" tamanho={96} />
+            <Personagem id="mayara" base="andando" tamanho={96} />
+          </div>
           <div className="cartao pensando">
             <span className="girando" aria-hidden="true" />
             <span>Falando com a sua planilha…</span>
@@ -258,9 +273,9 @@ export default function App() {
         {/* A chave por aba faz o conteúdo entrar de novo a cada troca: é o
             fade que separa uma tela da outra em vez do corte seco. */}
         <div className="vista" key={aba}>
-        {aba === 'novo' && <Novo cadastros={cadastros} resumo={resumo} ouro={ouro} mana={mana} aoMudarFila={tudo} pessoaPadrao={pessoaPadrao} />}
+        {aba === 'novo' && <Novo cadastros={cadastros} resumo={resumo} ouro={ouro} mana={mana} aoMudarFila={tudo} pessoaPadrao={pessoaPadrao} heroi={personagem} fila={fila} />}
         {aba === 'mes' && <Mes cadastros={cadastros} aoMudarDados={tudo} />}
-        {aba === 'perguntar' && <Perguntar aoVerHistorico={() => setAba('historico')} />}
+        {aba === 'perguntar' && <Perguntar aoVerHistorico={() => setAba('historico')} heroi={personagem} />}
         {aba === 'historico' && <Historico />}
         {aba === 'baus' && (
           <Baus cadastros={cadastros} fila={fila} aoMudarFila={tudo} aoVoltar={() => setAba(abaAntes)} />
@@ -284,6 +299,8 @@ export default function App() {
               </span>
               <button type="button" className="btn discreto pequeno" onClick={() => setTrocandoHeroi(true)}>Trocar</button>
             </div>
+            <p className="secao-titulo">Equipamento</p>
+            <Armario heroi={personagem} />
             <hr className="divisor" />
             <p className="secao-titulo">Contas fixas e rendas mensais</p>
             <Mensais cadastros={cadastros} mes={resumo?.mes} aoMudar={tudo} />
@@ -296,6 +313,15 @@ export default function App() {
         )}
         </div>
       </main>
+
+      {equipNovo && !relatorio && (
+        <EquipamentoNovo heroi={personagem} visual={equipNovo} aoFechar={() => setEquipNovo(null)} />
+      )}
+
+      {relatorio && online && (
+        <RelatorioAventura mes={relatorio} heroi={personagem}
+          aoFechar={(visto) => { if (visto) marcarRelatorioVisto(relatorio); setRelatorio(null); }} />
+      )}
 
       {/* Registrar é o que mais se faz: por isso a moeda mora no meio, maior. */}
       <footer className="rodape">

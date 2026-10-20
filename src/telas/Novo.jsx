@@ -32,11 +32,26 @@ function ontemISO() {
   return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`;
 }
 
+/**
+ * O dia do lançamento mais recente que já aconteceu (o da planilha ou o da
+ * fila deste celular). Vazio quando não há nenhum — aí o herói não dorme.
+ */
+function ultimoLancamento(resumo, fila = []) {
+  const hoje = hojeISO();
+  const z = (n) => String(n).padStart(2, '0');
+  const diaDe = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`; };
+  // Da fila vale o dia em que foi lançado aqui (um gasto de semana passada lançado hoje também acorda o herói).
+  const dias = [...(resumo?.ultimos || []).map((l) => l.data), ...fila.map((i) => (i.criado_em ? diaDe(i.criado_em) : i.lancamento?.data))]
+    .map((d) => String(d || '').slice(0, 10))
+    .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && d <= hoje);
+  return dias.length ? dias.sort().pop() : '';
+}
+
 const vazio = (tipo, conta, pessoa) => ({
   tipo, valor: 0, descricao: '', categoria: '', data: hojeISO(), conta: conta || '', pessoa: pessoa || '', fonte: ''
 });
 
-export default function Novo({ cadastros, resumo, ouro, mana, aoMudarFila, pessoaPadrao = '' }) {
+export default function Novo({ cadastros, resumo, ouro, mana, aoMudarFila, pessoaPadrao = '', heroi, fila }) {
   // "De quem" já vem com quem está jogando neste celular (o personagem).
   const [l, setL] = useState(() => vazio('despesa', lembrar(CHAVE_CONTA), pessoaPadrao));
   const padraoAntes = useRef(pessoaPadrao);
@@ -223,7 +238,7 @@ export default function Novo({ cadastros, resumo, ouro, mana, aoMudarFila, pesso
 
   return (
     <>
-      <Hud dados={ouro} efeito={efeito} />
+      <Hud dados={ouro} efeito={efeito} heroi={heroi} hoje={hojeISO()} ultimoLancamento={ultimoLancamento(resumo, fila)} />
 
       {recado && (
         <div className={`aviso ${recado.tom} ${recado.desfazer ? 'com-acao' : ''}`} role="status">
@@ -407,7 +422,7 @@ export default function Novo({ cadastros, resumo, ouro, mana, aoMudarFila, pesso
           <div className="lista">
             {resumo.ultimos.slice(0, 5).map((u) => (
               <div className="item extrato" key={u.uuid}>
-                <Item categoria={u.categoria} receita={u.tipo === 'receita'} tipo={u.tipo} />
+                <Item categoria={u.categoria} receita={u.tipo === 'receita'} tipo={u.tipo} pessoa={u.pessoa} />
                 <span className="corpo">
                   <span className="meta">{u.tipo === 'guardar' || u.tipo === 'resgatar' || u.tipo === 'rendimento' ? `Baú · ${u.categoria}` : (u.categoria || 'Sem categoria')} · {diaOuHoje(u.data)}</span>
                   <span className="titulo">{u.descricao || u.categoria}</span>

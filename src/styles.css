@@ -2205,3 +2205,103 @@ select.chip { max-width: 100%; }
 .quem-joga .slot { width: 64px; height: 64px; display: grid; place-items: center; overflow: hidden; }
 .quem-joga .texto { flex: 1; min-width: 0; display: grid; gap: 2px; }
 .quem-joga .texto span { font-size: 12.5px; color: var(--muted); }
+
+/* O herói no HUD: muda de humor com o ouro de hoje */
+.retrato-heroi { position: relative; flex: none; width: 88px; height: 88px; margin: -10px -6px -14px 0; }
+.pensando-heroi { flex: none; width: 72px; height: 72px; margin: -10px 0; }
+.caminhada { display: flex; justify-content: center; gap: 4px; margin-bottom: var(--e3); }
+
+/* O herói no placar dos chefes e dentro do baú */
+.placar-corpo { display: grid; gap: 6px; min-width: 0; }
+.placar-chefes.com-heroi { grid-template-columns: auto 1fr; align-items: center; column-gap: 10px; }
+.heroi-placar { width: 80px; height: 80px; margin: -8px -4px -10px -8px; }
+.heroi-bau { flex: none; width: 76px; height: 76px; margin: -6px -8px -10px auto; }
+.cab-bau .cab-bau-texto { flex: 1; }
+@media (max-width: 380px) { .heroi-bau { width: 60px; height: 60px; margin-right: -10px; } .cab-bau { gap: 10px; } }
+
+/* Missão em dupla: cada um com sua cor dentro da barra, e o rostinho embaixo */
+.hp.xp .garantido.parte {
+  inset: 0 auto 0 auto;
+  background: linear-gradient(color-mix(in srgb, #fff 55%, var(--cor)) 0 28%, var(--cor) 28% 72%, color-mix(in srgb, #000 40%, var(--cor)) 72%);
+  box-shadow: inset -2px 0 0 #0c0e17;
+}
+.dupla { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 6px; }
+.dupla-quem { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: #c9cedd; }
+.dupla-quem .rosto, .dupla-quem .sem-dono { box-shadow: 0 0 0 2px var(--cor); background-color: #141626; }
+.dupla-quem .sem-dono { width: 22px; height: 22px; display: inline-grid; place-items: center; font-style: normal; font-size: 13px; color: #9aa0b8; }
+.dupla-quem b { font-weight: 400; font-size: 12.5px; color: var(--cor); }
+
+/* O rostinho de quem lançou, no canto do quadradinho */
+.rosto { display: inline-block; flex: none; background-repeat: no-repeat; image-rendering: pixelated; }
+.slot { position: relative; }
+.slot .rosto-canto {
+  position: absolute; right: -5px; bottom: -5px;
+  background-color: #141626; box-shadow: 0 0 0 1.5px var(--surface), 0 0 0 2.5px var(--line);
+}
+
+/* Relatório da aventura: noite no acampamento, os dois heróis e os números do mês */
+.modal.relatorio .modal-corpo { padding: 0; background: none; border: 0; box-shadow: none; }
+.relatorio-janela {
+  display: grid; gap: 10px; margin: 3px; padding: 16px 16px 18px;
+  color: #e8ebf5; background: #141626;
+  box-shadow: 0 -3px 0 0 #f6c63c, 0 3px 0 0 #f6c63c, -3px 0 0 0 #f6c63c, 3px 0 0 0 #f6c63c, 0 12px 40px rgba(0, 0, 0, .5);
+}
+.relatorio-janela .rotulo-px { margin: 0; text-align: center; }
+.relatorio-janela h2 { margin: -4px 0 0; text-align: center; font-size: 24px; color: #f6c63c; text-shadow: 2px 2px 0 #5a2a12; letter-spacing: .04em; }
+.acampamento {
+  position: relative; height: 118px; display: flex; justify-content: center; align-items: flex-end; gap: 4px; overflow: hidden;
+  background: linear-gradient(#0b0d1f 0 72%, #2a2414 72%);
+}
+.acampamento .estrelas {
+  position: absolute; inset: 0 0 30% 0; pointer-events: none;
+  background-image: radial-gradient(1.5px 1.5px at 12% 20%, #fff 50%, transparent 51%), radial-gradient(1.5px 1.5px at 30% 55%, #c9cedd 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 52% 18%, #fff 50%, transparent 51%), radial-gradient(1.5px 1.5px at 74% 40%, #c9cedd 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 90% 15%, #fff 50%, transparent 51%), radial-gradient(1.5px 1.5px at 64% 65%, #9aa0b8 50%, transparent 51%);
+}
+.acampamento .personagem { position: relative; z-index: 1; margin-bottom: 2px; }
+.acampamento .personagem.primeiro { order: -1; }
+.acampamento .fogueira {
+  position: relative; z-index: 1; order: 0; width: 22px; height: 26px; margin: 0 -2px 10px;
+  background:
+    linear-gradient(#ffe066, #ffe066) 9px 6px / 4px 8px no-repeat,
+    linear-gradient(#ff9a2e, #ff9a2e) 6px 10px / 10px 8px no-repeat,
+    linear-gradient(#e2412c, #e2412c) 4px 14px / 14px 6px no-repeat,
+    linear-gradient(#6b3a1c, #6b3a1c) 1px 20px / 20px 4px no-repeat;
+  animation: chama .5s steps(2) infinite;
+}
+@keyframes chama { 50% { transform: scaleY(.88) translateY(2px); } }
+@media (prefers-reduced-motion: reduce) { .acampamento .fogueira { animation: none; } }
+.relatorio-frase { margin: 0; text-align: center; font-size: 14px; line-height: 1.45; color: #c9cedd; }
+.relatorio-frase .pos, .relatorio-numeros .pos { color: #8af08a; }
+.relatorio-frase .neg, .relatorio-numeros .neg { color: #ff8a7a; }
+.relatorio-numeros { margin: 0; display: grid; gap: 5px; }
+.relatorio-numeros div { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
+.relatorio-numeros dt { color: #b4b9cc; }
+.relatorio-numeros dd { margin: 0; text-align: right; font-family: var(--fonte-pixel); color: #fff; font-variant-numeric: tabular-nums; }
+.relatorio-numeros dd.ouro { color: #f6c63c; }
+.relatorio-medalhas { display: grid; gap: 6px; }
+.relatorio-medalhas > div { display: flex; flex-wrap: wrap; gap: 8px 12px; }
+.medalha-mes { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: #c9cedd; }
+.medalha-mes .slot { width: 34px; height: 34px; }
+.ver-relatorio { margin-top: var(--e2); }
+.acampamento .personagem:not(.primeiro) { order: 1; }
+
+/* Equipamentos: o armário em Ajustes e o aviso de equipamento novo */
+.armario { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.armario-item {
+  position: relative; display: grid; justify-items: center; align-content: start; gap: 4px;
+  padding: 10px 6px; border: 1.5px solid var(--line); border-radius: var(--raio-p);
+  background: var(--surface); color: var(--ink); text-align: center;
+}
+.armario-item.on { border-color: var(--accent); background: var(--accent-soft); }
+.armario-item.trancado { cursor: default; }
+.armario-item.trancado .armario-palco .personagem { filter: brightness(0) opacity(.45); }
+.armario-palco { width: 64px; height: 64px; display: grid; place-items: center; background: #141626; border-radius: 4px; }
+.armario-nome { font-size: 12.5px; font-weight: 600; line-height: 1.25; }
+.armario-como { font-size: 11px; line-height: 1.3; color: var(--muted); }
+.selo-vestido { position: absolute; top: -9px; padding: 1px 5px; font-size: 10px; color: #10261c; background: #8af08a; }
+.equip-novo .acampamento { height: 132px; }
+.acampamento.brilho::before {
+  content: ''; position: absolute; left: 50%; bottom: 0; width: 160px; height: 160px; margin-left: -80px;
+  background: radial-gradient(circle, rgba(246, 198, 60, .35), transparent 65%);
+}

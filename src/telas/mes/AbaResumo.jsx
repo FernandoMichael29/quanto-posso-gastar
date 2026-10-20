@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import RelatorioAventura from '../../componentes/RelatorioAventura.jsx';
+import { personagemSalvo } from '../../lib/personagem.js';
+import { mesDeHoje } from '../../lib/datas.js';
 import Barras from '../../componentes/Barras.jsx';
 import GraficoEvolucao from '../../componentes/GraficoEvolucao.jsx';
 import Sanfona from '../../componentes/Sanfona.jsx';
@@ -17,6 +20,7 @@ const CORTES = [
 
 /** Quanto sobra, e a prova: a conta montada, o gráfico e para onde foi. */
 export default function AbaResumo({ painel, aoMudar }) {
+  const [relatorio, setRelatorio] = useState(false);
   const [corte, setCorte] = useState('categoria');
 
   const aberto = mesAberto(painel);
@@ -100,6 +104,14 @@ export default function AbaResumo({ painel, aoMudar }) {
 
       {/* Guardar como missão (XP) e as medalhas: o lado de jogo do mês. */}
       <Missao painel={painel} aoMudar={aoMudar} />
+
+      {/* Mês que já fechou: o relatório da aventura pode ser revisto aqui. */}
+      {painel.mes && painel.mes < mesDeHoje() && (
+        <button type="button" className="btn-px claro ver-relatorio" onClick={() => setRelatorio(true)}>
+          RELATÓRIO DA AVENTURA
+        </button>
+      )}
+      {relatorio && <RelatorioAventura mes={painel.mes} heroi={personagemSalvo()} aoFechar={() => setRelatorio(false)} />}
 
       <GraficoEvolucao evolucao={painel.evolucao} mesAtual={painel.mes} />
 

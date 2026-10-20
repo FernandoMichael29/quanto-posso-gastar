@@ -1,4 +1,6 @@
 import { BAU, COLUNA, FOLHA, FOLHA_BAUS } from '../lib/icones.js';
+import { Rosto } from './Personagem.jsx';
+import { personagemDaPessoa } from '../lib/personagem.js';
 
 // O item de inventário de cada categoria (os desenhos de ferramentas/icones/).
 // Mora aqui porque três telas mostram o mesmo item: o extrato, o inventário
@@ -37,24 +39,21 @@ export function SpriteBau({ estado = 'metade', tamanho = 32 }) {
   );
 }
 
-/** O quadradinho de inventário com o item dentro. Movimento de baú mostra o baú. */
-export default function Item({ categoria, receita, tipo }) {
+/**
+ * O quadradinho de inventário com o item dentro. Movimento de baú mostra o
+ * baú. Com `pessoa`, o rostinho de quem lançou fica no canto.
+ */
+export default function Item({ categoria, receita, tipo, pessoa }) {
+  let dentro;
   // rendimento (e acerto com o banco): o "%" verde, na fonte de pixel
-  if (tipo === 'rendimento' || tipo === 'rendeu') {
-    return (
-      <span className="slot" aria-hidden="true"><span className="moeda-rende">%</span></span>
-    );
-  }
-  if (tipo === 'guardar' || tipo === 'resgatar') {
-    return (
-      <span className="slot" aria-hidden="true">
-        <SpriteBau estado={tipo === 'guardar' ? 'cheio' : 'vazio'} />
-      </span>
-    );
-  }
+  if (tipo === 'rendimento' || tipo === 'rendeu') dentro = <span className="moeda-rende">%</span>;
+  else if (tipo === 'guardar' || tipo === 'resgatar') dentro = <SpriteBau estado={tipo === 'guardar' ? 'cheio' : 'vazio'} />;
+  else dentro = <Sprite categoria={categoria} receita={receita} />;
+  const quem = pessoa ? personagemDaPessoa(pessoa) : null;
   return (
     <span className="slot" aria-hidden="true">
-      <Sprite categoria={categoria} receita={receita} />
+      {dentro}
+      {quem && <Rosto id={quem.id} tamanho={18} className="rosto-canto" />}
     </span>
   );
 }

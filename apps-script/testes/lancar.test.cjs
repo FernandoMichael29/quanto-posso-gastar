@@ -560,3 +560,19 @@ console.log('\nextrato por mês: ok');
   CacheService = { getScriptCache: () => ({ get: () => null, put: () => {} }) };
 }
 console.log('\nrendimento dos baús: ok');
+
+// 31. missão em dupla: quem guardou quanto no mês, e quem lançou nos últimos
+{
+  const antes = painel_({ mes: '2026-09' }).guardado_por_pessoa || {};
+  capturar_({ uuid: 'dupla1', lancamento: { tipo: 'guardar', valor: 120, categoria: 'Chile 2027', data: '2026-09-16', pessoa: 'Fernando', origem: 'bau' } });
+  capturar_({ uuid: 'dupla2', lancamento: { tipo: 'guardar', valor: 80, categoria: 'Chile 2027', data: '2026-09-15', pessoa: 'Mayara', origem: 'bau' } });
+  capturar_({ uuid: 'dupla3', lancamento: { tipo: 'resgatar', valor: 30, categoria: 'Chile 2027', data: '2026-09-16', pessoa: 'Mayara', origem: 'bau' } });
+  capturar_({ uuid: 'dupla4', lancamento: { tipo: 'guardar', valor: 999, categoria: 'Chile 2027', data: '2026-08-20', pessoa: 'Mayara', origem: 'bau' } });
+  capturar_({ uuid: 'dupla5', lancamento: { tipo: 'rendimento', valor: 5, categoria: 'Chile 2027', data: '2026-09-16', pessoa: 'Mayara', origem: 'acerto' } });
+  const pp = painel_({ mes: '2026-09' }).guardado_por_pessoa;
+  assert.strictEqual(arred_((pp.Fernando || 0) - (antes.Fernando || 0)), 120, 'Fernando guardou 120');
+  assert.strictEqual(arred_((pp.Mayara || 0) - (antes.Mayara || 0)), 50, 'Mayara: 80 − 30; agosto e acerto não contam');
+  const ult = resumo_({ mes: '2026-09' }).ultimos;
+  assert.ok(ult.some((u) => u.uuid === 'dupla1' && u.pessoa === 'Fernando'), 'os últimos trazem quem lançou');
+}
+console.log('\nmissão em dupla: ok');

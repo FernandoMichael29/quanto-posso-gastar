@@ -200,7 +200,7 @@ function Linha({ l, ocupado, aoAbrir }) {
     const v = Number(l.valor) || 0;
     return (
       <div className="item extrato">
-        <Item tipo={l.tipo} />
+        <Item tipo={l.tipo} pessoa={l.pessoa} />
         <span className="corpo">
           <span className="meta">Baú · {l.categoria}</span>
           <span className="titulo">Acerto com o banco</span>
@@ -213,7 +213,7 @@ function Linha({ l, ocupado, aoAbrir }) {
     const guardou = l.tipo === 'guardar';
     return (
       <div className="item extrato">
-        <Item tipo={l.tipo} />
+        <Item tipo={l.tipo} pessoa={l.pessoa} />
         <span className="corpo">
           <span className="meta">Baú · {l.categoria}</span>
           <span className="titulo">{l.descricao || (guardou ? 'Guardado' : 'Resgatado')}</span>
@@ -233,7 +233,7 @@ function Linha({ l, ocupado, aoAbrir }) {
       onClick={aoAbrir}
       disabled={ocupado}
     >
-      <Item categoria={l.categoria} receita={receita} />
+      <Item categoria={l.categoria} receita={receita} pessoa={l.pessoa} />
       <span className="corpo">
         <span className="meta">{l.categoria || (receita ? 'Entrada' : 'Sem categoria')}{parcela}</span>
         <span className="titulo">{l.descricao || l.texto_falado || l.categoria || '—'}</span>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Analise from '../componentes/Analise.jsx';
+import Personagem from '../componentes/Personagem.jsx';
 import { api, configurado } from '../lib/api.js';
 import { escutar, ERRO_VOZ, temReconhecimento } from '../lib/voz.js';
 import { guardar, lerCache, sincronizar } from '../lib/conversas.js';
@@ -30,7 +31,7 @@ const ERROS = {
   acao_desconhecida: 'O script da planilha está numa versão antiga: cole o Codigo.gs novo e implante com "Nova versão".'
 };
 
-export default function Perguntar({ aoVerHistorico }) {
+export default function Perguntar({ aoVerHistorico, heroi }) {
   const [pergunta, setPergunta] = useState('');
   const [pensando, setPensando] = useState(false);
   const [analise, setAnalise] = useState(null);
@@ -212,7 +213,10 @@ export default function Perguntar({ aoVerHistorico }) {
 
       {pensando && (
         <div className="cartao pensando">
-          <span className="girando" aria-hidden="true" />
+          {/* O herói lê o pergaminho enquanto a análise não chega. */}
+          {heroi
+            ? <span className="pensando-heroi"><Personagem id={heroi.id} base="pergaminho" tamanho={72} /></span>
+            : <span className="girando" aria-hidden="true" />}
           <span>
             {procurando
               ? 'A resposta não chegou inteira. Procurando na planilha…'
