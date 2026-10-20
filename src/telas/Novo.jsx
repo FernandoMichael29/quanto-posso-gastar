@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Hud from '../componentes/Hud.jsx';
 import { CustoDeMana } from '../componentes/Mana.jsx';
 import { manaDe } from '../lib/mana.js';
@@ -32,12 +32,20 @@ function ontemISO() {
   return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`;
 }
 
-const vazio = (tipo, conta) => ({
-  tipo, valor: 0, descricao: '', categoria: '', data: hojeISO(), conta: conta || '', pessoa: '', fonte: ''
+const vazio = (tipo, conta, pessoa) => ({
+  tipo, valor: 0, descricao: '', categoria: '', data: hojeISO(), conta: conta || '', pessoa: pessoa || '', fonte: ''
 });
 
-export default function Novo({ cadastros, resumo, ouro, mana, aoMudarFila }) {
-  const [l, setL] = useState(() => vazio('despesa', lembrar(CHAVE_CONTA)));
+export default function Novo({ cadastros, resumo, ouro, mana, aoMudarFila, pessoaPadrao = '' }) {
+  // "De quem" já vem com quem está jogando neste celular (o personagem).
+  const [l, setL] = useState(() => vazio('despesa', lembrar(CHAVE_CONTA), pessoaPadrao));
+  const padraoAntes = useRef(pessoaPadrao);
+  useEffect(() => {
+    // Os cadastros chegaram (ou o personagem mudou): troca só se você não mexeu.
+    const antes = padraoAntes.current;
+    padraoAntes.current = pessoaPadrao;
+    setL((x) => (x.pessoa === '' || x.pessoa === antes ? { ...x, pessoa: pessoaPadrao } : x));
+  }, [pessoaPadrao]);
   // O que as palavras-chave sugerem para a descrição — e se você já tocou num
   // item, caso em que a sugestão para de mexer na sua escolha.
   const [sugerida, setSugerida] = useState('');
@@ -164,7 +172,7 @@ export default function Novo({ cadastros, resumo, ouro, mana, aoMudarFila }) {
     setEfeito({ id: uuid, tipo: l.tipo, valor: comParcelas ? cadaParcela : total });
 
     // Recomeça limpo, mas mantém o que costuma se repetir de um para o outro.
-    setL(vazio(l.tipo, l.conta));
+    setL(vazio(l.tipo, l.conta, pessoaPadrao));
     setNaMao(false);
     setOutroDia(false);
     setParcelado(false);

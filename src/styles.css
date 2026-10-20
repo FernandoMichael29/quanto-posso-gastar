@@ -2145,3 +2145,63 @@ select.chip { max-width: 100%; }
 .pct input::placeholder { color: var(--muted); opacity: .75; }
 .pct span { color: var(--muted); font-size: 14px; }
 .destaque-ajuda { color: var(--ink); }
+
+/* =========================================================================
+   Personagens e "Quem está jogando?" — tela de jogo, sempre escura
+   ========================================================================= */
+.personagem {
+  display: inline-block; flex: none;
+  background-repeat: no-repeat; image-rendering: pixelated;
+}
+.tela-escolha { min-height: 100vh; min-height: 100dvh; max-width: none;
+  background: radial-gradient(ellipse at 50% 0%, #23264a 0%, #0e0f1a 70%); color: #e8ebf5; }
+.tela-escolha .conteudo { width: 100%; max-width: 560px; margin: 0 auto; }
+.escolha { display: grid; gap: 18px; align-content: start; padding-top: 12px; }
+.escolha .voltar { color: #b4b9cc; justify-self: start; }
+.escolha-topo { display: grid; gap: 6px; text-align: center; }
+.escolha-topo h1 { margin: 6px 0 0; font-size: 26px; letter-spacing: .06em; color: #f6c63c; text-shadow: 2px 2px 0 #5a2a12; }
+.escolha-topo p { margin: 0; color: #b4b9cc; font-size: 13.5px; }
+.selo-ok {
+  justify-self: center; padding: 2px 8px; font-size: 12px; letter-spacing: .1em;
+  color: #8af08a; border: 2px solid #2e7a3a; background: #0c2418;
+}
+.escolha .cartas { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+.escolha .carta {
+  --cor: #f6c63c;
+  position: relative; display: grid; justify-items: center; gap: 4px;
+  padding: 14px 8px; margin: 3px; border: 0; color: inherit; background: #141626;
+  box-shadow: 0 -3px 0 0 #3a3e50, 0 3px 0 0 #3a3e50, -3px 0 0 0 #3a3e50, 3px 0 0 0 #3a3e50;
+  transition: box-shadow var(--rapido) var(--curva), transform var(--rapido) var(--curva);
+}
+.escolha .carta.on {
+  box-shadow: 0 -3px 0 0 var(--cor), 0 3px 0 0 var(--cor), -3px 0 0 0 var(--cor), 3px 0 0 0 var(--cor),
+    0 0 28px color-mix(in srgb, var(--cor) 30%, transparent);
+}
+.escolha .carta:active { transform: translateY(1px); }
+.selo-p { position: absolute; top: -11px; padding: 1px 6px; font-size: 11px; color: #141626; background: var(--cor); }
+.escolha .carta:not(.on) .selo-p { background: #3a3e50; color: #b4b9cc; }
+.palco {
+  position: relative; width: 100%; height: 168px; display: grid; place-items: end center; overflow: hidden;
+  background: linear-gradient(#1b1e36 0 70%, #2a2414 70%);
+}
+.palco::after {
+  content: ''; position: absolute; bottom: 12px; left: 50%; width: 64px; height: 8px; margin-left: -32px;
+  background: rgba(0, 0, 0, .45); border-radius: 50%;
+}
+.palco .personagem { position: relative; z-index: 1; margin-bottom: -2px; }
+.carta:not(.on) .palco .personagem { filter: saturate(.55) brightness(.8); }
+.carta .classe { margin-top: 6px; font-size: 12px; letter-spacing: .12em; color: #9aa0b8; }
+.carta .nome { font-size: 20px; color: #fff; }
+.carta .atrib { display: grid; gap: 3px; width: 100%; padding: 6px 4px 0; font-size: 11.5px; color: #b4b9cc; }
+.carta .atrib > span { display: flex; justify-content: space-between; gap: 6px; }
+.carta .atrib b { font-weight: 400; letter-spacing: .08em; color: var(--cor); white-space: nowrap; }
+.carta:not(.on) .atrib b { color: #9aa0b8; }
+.escolha .btn-px { margin-top: 6px; }
+.escolha-nota { margin: 0; text-align: center; color: #9aa0b8; font-size: 12.5px; }
+.escolha-nota strong { color: #e8ebf5; font-weight: 600; }
+
+/* Ajustes: quem joga neste celular */
+.cartao.quem-joga { display: flex; flex-direction: row; align-items: center; gap: 12px; }
+.quem-joga .slot { width: 64px; height: 64px; display: grid; place-items: center; overflow: hidden; }
+.quem-joga .texto { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.quem-joga .texto span { font-size: 12.5px; color: var(--muted); }

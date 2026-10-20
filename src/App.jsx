@@ -18,6 +18,9 @@ import { calcularMana } from './lib/mana.js';
 import { totalNosBaus } from './lib/baus.js';
 import Baus from './telas/Baus.jsx';
 import { SpriteBau } from './componentes/Item.jsx';
+import EscolherPersonagem from './telas/EscolherPersonagem.jsx';
+import Personagem from './componentes/Personagem.jsx';
+import { personagemSalvo, pessoaDoPersonagem, salvarPersonagem } from './lib/personagem.js';
 
 const CACHE = 'qpg.cadastros';
 // O painel do mês fica guardado para o ouro de hoje aparecer na hora em que o
@@ -62,6 +65,9 @@ export default function App() {
   const [painel, setPainel] = useState(painelSalvo);
   const [online, setOnline] = useState(navigator.onLine);
   const [versaoScript, setVersaoScript] = useState(null);
+  // Quem joga neste celular. Sem escolha, a primeira tela depois de conectar é "Quem está jogando?".
+  const [personagem, setPersonagem] = useState(personagemSalvo);
+  const [trocandoHeroi, setTrocandoHeroi] = useState(false);
 
   const recarregarFila = useCallback(async () => setFila(await listar()), []);
 
@@ -191,6 +197,23 @@ export default function App() {
     );
   }
 
+  if (!personagem || trocandoHeroi) {
+    return (
+      <div className="app tela-escolha">
+        <main className="conteudo">
+          <EscolherPersonagem
+            atual={personagem}
+            pessoas={cadastros.pessoas}
+            aoVoltar={personagem ? () => setTrocandoHeroi(false) : undefined}
+            aoEscolher={(p) => { salvarPersonagem(p.id); setPersonagem(p); setTrocandoHeroi(false); }}
+          />
+        </main>
+      </div>
+    );
+  }
+
+  const pessoaPadrao = pessoaDoPersonagem(personagem, cadastros.pessoas);
+
   return (
     <div className="app">
       <header className="topo">
@@ -235,7 +258,7 @@ export default function App() {
         {/* A chave por aba faz o conteúdo entrar de novo a cada troca: é o
             fade que separa uma tela da outra em vez do corte seco. */}
         <div className="vista" key={aba}>
-        {aba === 'novo' && <Novo cadastros={cadastros} resumo={resumo} ouro={ouro} mana={mana} aoMudarFila={tudo} />}
+        {aba === 'novo' && <Novo cadastros={cadastros} resumo={resumo} ouro={ouro} mana={mana} aoMudarFila={tudo} pessoaPadrao={pessoaPadrao} />}
         {aba === 'mes' && <Mes cadastros={cadastros} aoMudarDados={tudo} />}
         {aba === 'perguntar' && <Perguntar aoVerHistorico={() => setAba('historico')} />}
         {aba === 'historico' && <Historico />}
@@ -252,6 +275,16 @@ export default function App() {
         )}
         {aba === 'ajustes' && (
           <>
+            <p className="secao-titulo">Quem joga neste celular</p>
+            <div className="cartao quem-joga">
+              <span className="slot"><Personagem id={personagem.id} tamanho={64} /></span>
+              <span className="texto">
+                <strong>{personagem.nome} · {personagem.classe}</strong>
+                <span>Os lançamentos daqui saem como {pessoaPadrao}.</span>
+              </span>
+              <button type="button" className="btn discreto pequeno" onClick={() => setTrocandoHeroi(true)}>Trocar</button>
+            </div>
+            <hr className="divisor" />
             <p className="secao-titulo">Contas fixas e rendas mensais</p>
             <Mensais cadastros={cadastros} mes={resumo?.mes} aoMudar={tudo} />
             <hr className="divisor" />
