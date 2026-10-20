@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import RelatorioAventura from '../../componentes/RelatorioAventura.jsx';
+import RelatorioAno from '../../componentes/RelatorioAno.jsx';
 import { personagemSalvo } from '../../lib/personagem.js';
 import { mesDeHoje } from '../../lib/datas.js';
 import Barras from '../../componentes/Barras.jsx';
@@ -22,6 +23,7 @@ const CORTES = [
 /** Quanto sobra, e a prova: a conta montada, o gráfico e para onde foi. */
 export default function AbaResumo({ painel, aoMudar }) {
   const [relatorio, setRelatorio] = useState(false);
+  const [relatorioAno, setRelatorioAno] = useState(false);
   const [corte, setCorte] = useState('categoria');
 
   const aberto = mesAberto(painel);
@@ -116,6 +118,10 @@ export default function AbaResumo({ painel, aoMudar }) {
         </button>
       )}
       {relatorio && <RelatorioAventura mes={painel.mes} heroi={personagemSalvo()} aoFechar={() => setRelatorio(false)} />}
+      <button type="button" className="btn-px claro ver-relatorio" onClick={() => setRelatorioAno(true)}>
+        RELATÓRIO DE {String(painel.mes || mesDeHoje()).slice(0, 4)}
+      </button>
+      {relatorioAno && <RelatorioAno ano={String(painel.mes || mesDeHoje()).slice(0, 4)} heroi={personagemSalvo()} manual aoFechar={() => setRelatorioAno(false)} />}
 
       <GraficoEvolucao evolucao={painel.evolucao} mesAtual={painel.mes} />
 

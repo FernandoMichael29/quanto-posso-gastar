@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import Personagem, { Rosto } from './Personagem.jsx';
 import { Medalha } from './Missao.jsx';
+import { Fogo } from './Fogueira.jsx';
 import { api } from '../lib/api.js';
 import { formatarBRL } from '../lib/parser.js';
 import { mesPorExtenso, somarMes } from '../lib/datas.js';
@@ -46,7 +47,7 @@ export default function RelatorioAventura({ mes, heroi, aoFechar }) {
               <Personagem key={p.id} id={p.id} tamanho={96} base={base} anim={dados.noAzul ? 'vitoria' : undefined}
                 className={i === 0 ? 'primeiro' : ''} />
             ))}
-            <span className="fogueira" />
+            <span className="fogo-acampamento"><Fogo arte="pequena" tamanho={56} /></span>
           </div>
 
           <p className="relatorio-frase">

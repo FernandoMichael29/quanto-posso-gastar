@@ -1,6 +1,6 @@
 // Teste do relatório da aventura. Rode com:  node testes/relatorio.test.mjs
 import assert from 'node:assert';
-import { deveMostrarRelatorio, mesAnterior, relatorioDoMes } from '../src/lib/relatorio.js';
+import { anoAnterior, deveMostrarRelatorio, deveMostrarRelatorioAno, fraseDoAno, mesAnterior, relatorioDoMes } from '../src/lib/relatorio.js';
 
 assert.strictEqual(mesAnterior('2026-11-02'), '2026-10');
 assert.strictEqual(mesAnterior('2027-01-01'), '2026-12', 'virada do ano');
@@ -8,6 +8,16 @@ assert.strictEqual(deveMostrarRelatorio('2026-11-02', ''), true, 'começo do mê
 assert.strictEqual(deveMostrarRelatorio('2026-11-02', '2026-10'), false, 'já viu o de outubro');
 assert.strictEqual(deveMostrarRelatorio('2026-11-08', ''), false, 'passou da primeira semana');
 assert.strictEqual(deveMostrarRelatorio('2026-11-07', '2026-09'), true, 'o visto é do mês retrasado');
+
+// relatório do ano
+assert.strictEqual(anoAnterior('2027-01-03'), '2026');
+assert.strictEqual(deveMostrarRelatorioAno('2027-01-03', ''), true);
+assert.strictEqual(deveMostrarRelatorioAno('2027-01-03', '2026'), false, 'já viu');
+assert.strictEqual(deveMostrarRelatorioAno('2027-01-08', ''), false, 'passou da semana');
+assert.strictEqual(deveMostrarRelatorioAno('2026-11-02', ''), false, 'só em janeiro');
+assert.strictEqual(fraseDoAno({ meses_com_movimento: 4, no_azul: 3 }), 'fechou 3 de 4 meses no azul');
+assert.strictEqual(fraseDoAno({ meses_com_movimento: 4, no_azul: 4 }), 'fechou todos os 4 meses no azul');
+assert.strictEqual(fraseDoAno({ meses_com_movimento: 0 }), '');
 
 const painel = {
   receitas: 6800, despesas: 5400, previsao: { sobra: 1400 }, guardado_mes: 900,

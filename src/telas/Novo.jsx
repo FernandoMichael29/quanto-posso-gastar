@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Hud from '../componentes/Hud.jsx';
+import TiraFogueira from '../componentes/Fogueira.jsx';
 import { CustoDeMana } from '../componentes/Mana.jsx';
 import { manaDe } from '../lib/mana.js';
 import Item, { Sprite } from '../componentes/Item.jsx';
@@ -51,7 +52,7 @@ const vazio = (tipo, conta, pessoa) => ({
   tipo, valor: 0, descricao: '', categoria: '', data: hojeISO(), conta: conta || '', pessoa: pessoa || '', fonte: ''
 });
 
-export default function Novo({ cadastros, resumo, ouro, mana, aoMudarFila, pessoaPadrao = '', heroi, fila }) {
+export default function Novo({ cadastros, resumo, ouro, mana, aoMudarFila, pessoaPadrao = '', heroi, fila, fogueira, aoMudarFogueira }) {
   // "De quem" já vem com quem está jogando neste celular (o personagem).
   const [l, setL] = useState(() => vazio('despesa', lembrar(CHAVE_CONTA), pessoaPadrao));
   const padraoAntes = useRef(pessoaPadrao);
@@ -239,6 +240,7 @@ export default function Novo({ cadastros, resumo, ouro, mana, aoMudarFila, pesso
   return (
     <>
       <Hud dados={ouro} efeito={efeito} heroi={heroi} hoje={hojeISO()} ultimoLancamento={ultimoLancamento(resumo, fila)} />
+      <TiraFogueira servidor={fogueira} fila={fila} hoje={hojeISO()} pessoa={pessoaPadrao} heroi={heroi} aoAtualizar={aoMudarFogueira} />
 
       {recado && (
         <div className={`aviso ${recado.tom} ${recado.desfazer ? 'com-acao' : ''}`} role="status">

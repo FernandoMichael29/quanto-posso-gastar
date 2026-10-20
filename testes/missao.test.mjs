@@ -1,6 +1,6 @@
 // Teste da missão do mês e das conquistas. Rode com:  node testes/missao.test.mjs
 import assert from 'node:assert';
-import { calcularMissao, conquistasMerecidas, mesesFechados, metaDoMes, nivel, seguidos } from '../src/lib/missao.js';
+import { calcularMissao, conquistasMerecidas, mesesFechados, todasNoPrazo, metaDoMes, nivel, seguidos } from '../src/lib/missao.js';
 import { calcularOuro } from '../src/lib/ouro.js';
 
 const agora = new Date(2026, 9, 19, 12);   // 19/10/2026
@@ -80,5 +80,31 @@ const o = calcularOuro({ mes: '2026-10', receitas: 6800, previsao: { sobra: 2800
 assert.strictEqual(o.reserva, 1500);
 assert.strictEqual(o.livre, 1300, '2800 − 1500 da missão');
 assert.strictEqual(o.ouro, 100, '1300 ÷ 13 dias');
+
+// conquistas novas (2.15.0): o que vem da planilha e o que se vê no painel
+{
+  const base = { mes: '2026-10', metas: [], evolucao: [], fixas: [] };
+  const tem = (p, id) => conquistasMerecidas({ ...base, ...p }, [], { agora }).has(id);
+  assert.ok(tem({ marcos: { bau_cheio: true } }, 'bau_cheio'));
+  assert.ok(!tem({ marcos: { bau_cheio: false } }, 'bau_cheio'));
+  assert.ok(tem({ marcos: { rendeu_total: 100 } }, 'juros_a_favor'));
+  assert.ok(!tem({ marcos: { rendeu_total: 99.99 } }, 'juros_a_favor'));
+  assert.ok(tem({ fogueira: { recorde: 7 } }, 'fogo_aceso') && !tem({ fogueira: { recorde: 7 } }, 'chama_eterna'));
+  assert.ok(tem({ fogueira: { recorde: 31 } }, 'chama_eterna'));
+  assert.ok(conquistasMerecidas(base, [], { agora, fogueira: 8 }).has('fogo_aceso'), 'a fogueira da fila também vale');
+  assert.ok(tem({ guardado_por_pessoa: { Fernando: 100, Mayara: 50 } }, 'dupla_dinamica'));
+  assert.ok(!tem({ guardado_por_pessoa: { Fernando: 100, '': 50 } }, 'dupla_dinamica'), 'sem dono não é dupla');
+  assert.ok(!tem({ guardado_por_pessoa: { Fernando: 100, Mayara: -20 } }, 'dupla_dinamica'), 'quem resgatou não guardou');
+  const noPrazo = [
+    { nome: 'Aluguel', dia: 5, lancado: true, data_lancado: '2026-10-05' },
+    { nome: 'Internet', dia: 10, lancado: true, data_lancado: '2026-10-02' },
+    { nome: 'Doação', dia: 0, lancado: true, data_lancado: '2026-10-28' },
+    { nome: 'Salário', tipo: 'receita', dia: 5, lancado: false }
+  ];
+  assert.ok(todasNoPrazo(noPrazo) && tem({ fixas: noPrazo }, 'cacador_pontual'));
+  assert.ok(!todasNoPrazo([...noPrazo, { nome: 'Luz', dia: 15, lancado: true, data_lancado: '2026-10-16' }]), 'um dia atrasado');
+  assert.ok(!todasNoPrazo([...noPrazo, { nome: 'Luz', dia: 15, lancado: false }]), 'falta pagar');
+  assert.ok(!todasNoPrazo([]), 'sem fixa não vale');
+}
 
 console.log('missão e conquistas: ok');

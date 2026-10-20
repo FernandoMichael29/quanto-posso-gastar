@@ -25,7 +25,8 @@ import Personagem from './componentes/Personagem.jsx';
 import { atualizarLiberados, personagemSalvo, pessoaDoPersonagem, salvarPersonagem } from './lib/personagem.js';
 import { Armario, EquipamentoNovo } from './componentes/Equipamentos.jsx';
 import RelatorioAventura from './componentes/RelatorioAventura.jsx';
-import { deveMostrarRelatorio, marcarRelatorioVisto, mesAnterior, relatorioVisto } from './lib/relatorio.js';
+import { anoAnterior, deveMostrarRelatorio, deveMostrarRelatorioAno, marcarRelatorioAnoVisto, marcarRelatorioVisto, mesAnterior, relatorioAnoVisto, relatorioVisto } from './lib/relatorio.js';
+import RelatorioAno from './componentes/RelatorioAno.jsx';
 import { hojeISO } from './lib/datas.js';
 
 const CACHE = 'qpg.cadastros';
@@ -84,6 +85,8 @@ export default function App() {
   // Conquista que liberou equipamento: o herói aparece vestido, comemorando.
   const [equipNovo, setEquipNovo] = useState(null);
   const [relatorio, setRelatorio] = useState(() => (deveMostrarRelatorio(hojeISO(), relatorioVisto()) ? mesAnterior(hojeISO()) : null));
+  // Em janeiro, o relatório do ano vem antes do de dezembro.
+  const [relatorioAno, setRelatorioAno] = useState(() => (deveMostrarRelatorioAno(hojeISO(), relatorioAnoVisto()) ? anoAnterior(hojeISO()) : null));
 
   const recarregarFila = useCallback(async () => setFila(await listar()), []);
 
@@ -174,6 +177,8 @@ export default function App() {
 
   const esperando = fila.filter((i) => i.estado !== ESTADO.SINCRONIZADO).length;
   const ouro = useMemo(() => calcularOuro(painel.painel, fila, { desde: painel.em }), [painel, fila]);
+  // "Hoje não gastei nada" devolve a fogueira nova: troca só ela no painel guardado.
+  const mudarFogueira = useCallback((f) => setPainel((p) => (p.painel ? { ...p, painel: { ...p.painel, fogueira: f } } : p)), []);
   // Na tela Novo só vale a mana do mês que está correndo (o cache pode ser do mês passado).
   const mana = useMemo(
     () => calcularMana(painel.painel?.mes === mesDeHoje() ? painel.painel : null, fila, { desde: painel.em }),
@@ -281,7 +286,8 @@ export default function App() {
         {/* A chave por aba faz o conteúdo entrar de novo a cada troca: é o
             fade que separa uma tela da outra em vez do corte seco. */}
         <div className="vista" key={aba}>
-        {aba === 'novo' && <Novo cadastros={cadastros} resumo={resumo} ouro={ouro} mana={mana} aoMudarFila={tudo} pessoaPadrao={pessoaPadrao} heroi={personagem} fila={fila} />}
+        {aba === 'novo' && <Novo cadastros={cadastros} resumo={resumo} ouro={ouro} mana={mana} aoMudarFila={tudo} pessoaPadrao={pessoaPadrao} heroi={personagem} fila={fila}
+          fogueira={painel.painel?.fogueira} aoMudarFogueira={mudarFogueira} />}
         {aba === 'mes' && <Mes cadastros={cadastros} aoMudarDados={tudo} />}
         {aba === 'perguntar' && <Perguntar aoVerHistorico={() => setAba('historico')} heroi={personagem} />}
         {aba === 'historico' && <Historico />}
@@ -329,11 +335,16 @@ export default function App() {
         </div>
       </main>
 
-      {equipNovo && !relatorio && (
+      {equipNovo && !relatorio && !relatorioAno && (
         <EquipamentoNovo heroi={personagem} visual={equipNovo} aoFechar={() => setEquipNovo(null)} />
       )}
 
-      {relatorio && online && (
+      {relatorioAno && online && (
+        <RelatorioAno ano={relatorioAno} heroi={personagem}
+          aoFechar={(visto) => { if (visto) marcarRelatorioAnoVisto(relatorioAno); setRelatorioAno(null); }} />
+      )}
+
+      {relatorio && !relatorioAno && online && (
         <RelatorioAventura mes={relatorio} heroi={personagem}
           aoFechar={(visto) => { if (visto) marcarRelatorioVisto(relatorio); setRelatorio(null); }} />
       )}

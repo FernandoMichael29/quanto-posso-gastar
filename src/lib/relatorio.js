@@ -23,6 +23,35 @@ export function deveMostrarRelatorio(hoje, visto) {
   return Number(hoje.slice(8, 10)) <= DIAS_PARA_MOSTRAR && visto !== mesAnterior(hoje);
 }
 
+// --- O relatório do ano: na primeira semana de janeiro, o ano que passou ------
+const CHAVE_ANO = 'qpg.relatorio.ano.visto';
+
+/** "2027-01-03" → "2026" */
+export function anoAnterior(hoje) {
+  return String(Number(hoje.slice(0, 4)) - 1);
+}
+
+/** Nos 7 primeiros dias de janeiro, se este celular ainda não viu o do ano passado. */
+export function deveMostrarRelatorioAno(hoje, visto) {
+  return hoje.slice(5, 7) === '01' && Number(hoje.slice(8, 10)) <= DIAS_PARA_MOSTRAR && visto !== anoAnterior(hoje);
+}
+
+export function relatorioAnoVisto() {
+  try { return localStorage.getItem(CHAVE_ANO) || ''; } catch { return ''; }
+}
+export function marcarRelatorioAnoVisto(ano) {
+  try { localStorage.setItem(CHAVE_ANO, ano); } catch { /* aparece de novo, sem dano */ }
+}
+
+/** O nome do mês que mais sobrou/menos sobrou já vem da planilha; aqui só a frase da capa. */
+export function fraseDoAno(r) {
+  if (!r || !r.meses_com_movimento) return '';
+  const azul = r.no_azul === r.meses_com_movimento
+    ? `fechou todos os ${r.meses_com_movimento} meses no azul`
+    : `fechou ${r.no_azul} de ${r.meses_com_movimento} meses no azul`;
+  return azul;
+}
+
 export function relatorioVisto() {
   try { return localStorage.getItem(CHAVE) || ''; } catch { return ''; }
 }

@@ -29,8 +29,21 @@ export const CONQUISTAS = [
   { id: 'no_azul', nome: 'No azul', como: 'Feche um mês com dinheiro sobrando.' },
   { id: 'trinca', nome: 'Trinca', como: 'Feche três meses seguidos no azul.' },
   { id: 'formiguinha', nome: 'Formiguinha', como: 'Cumpra a missão de guardar num mês fechado.' },
-  { id: 'guardiao', nome: 'Guardião do cofre', como: 'Cumpra a missão de guardar três meses seguidos.' }
+  { id: 'guardiao', nome: 'Guardião do cofre', como: 'Cumpra a missão de guardar três meses seguidos.' },
+  { id: 'bau_cheio', nome: 'Baú cheio', como: 'Encha a meta de um baú.' },
+  { id: 'fogo_aceso', nome: 'Fogo aceso', como: 'Mantenha a fogueira da casa acesa 7 dias seguidos.' },
+  { id: 'chama_eterna', nome: 'Chama eterna', como: 'Mantenha a fogueira da casa acesa 30 dias seguidos.' },
+  { id: 'dupla_dinamica', nome: 'Dupla dinâmica', como: 'Os dois guardam dinheiro num baú no mesmo mês.' },
+  { id: 'juros_a_favor', nome: 'Juros a favor', como: 'Baús e contas rendem R$ 100, somando tudo.' },
+  { id: 'cacador_pontual', nome: 'Caçador pontual', como: 'Pague todas as contas fixas do mês até o dia do vencimento.' }
 ];
+
+/** As contas fixas do mês, todas pagas até o dia de vencer (fixa sem dia não atrapalha). */
+export function todasNoPrazo(fixas) {
+  const lista = (fixas || []).filter((f) => f.tipo !== 'receita');
+  return lista.length > 0 && lista.every((f) => f.lancado && (!(Number(f.dia) > 0) ||
+    (/^\d{4}-\d{2}-\d{2}/.test(f.data_lancado || '') && Number(f.data_lancado.slice(8, 10)) <= Number(f.dia))));
+}
 
 /** Meses fechados da evolução, com a meta que valia em cada um. */
 export function mesesFechados(painel, mesHoje) {
@@ -135,6 +148,16 @@ export function conquistasMerecidas(painel, fila = [], opcoes = {}) {
   if (seguidos(fechados, (m) => m.azul) >= 3) ganhas.add('trinca');
   if (fechados.some((m) => m.cumprida)) ganhas.add('formiguinha');
   if (seguidos(fechados, (m) => m.cumprida) >= 3) ganhas.add('guardiao');
+
+  // As que dependem do que só a planilha sabe (baús, fogueira, rendimento).
+  if (painel.marcos?.bau_cheio) ganhas.add('bau_cheio');
+  if ((Number(painel.marcos?.rendeu_total) || 0) >= 100) ganhas.add('juros_a_favor');
+  const recorde = Math.max(Number(painel.fogueira?.recorde) || 0, Number(opcoes.fogueira) || 0);
+  if (recorde >= 7) ganhas.add('fogo_aceso');
+  if (recorde >= 30) ganhas.add('chama_eterna');
+  const guardaram = Object.entries(painel.guardado_por_pessoa || {}).filter(([quem, v]) => quem && Number(v) > 0);
+  if (guardaram.length >= 2) ganhas.add('dupla_dinamica');
+  if (todasNoPrazo(painel.fixas)) ganhas.add('cacador_pontual');
 
   return ganhas;
 }

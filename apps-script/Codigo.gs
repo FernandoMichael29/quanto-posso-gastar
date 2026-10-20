@@ -31,7 +31,7 @@
 
 // Suba junto com VERSAO_APP em src/lib/versao.js — o app compara as duas e
 // avisa na tela quando só uma das metades foi publicada.
-var VERSAO = '2.14.0';
+var VERSAO = '2.15.0';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -399,6 +399,8 @@ function doPost(e) {
       case 'baus':        return json_(baus_());
       case 'contas_saldo':  return json_(contasSaldo_());
       case 'acertar_conta': return json_(acertarConta_(pedido));
+      case 'nao_gastei':    return json_(naoGastei_(pedido));
+      case 'relatorio_ano': return json_(relatorioAno_(pedido));
       case 'salvar_bau':  return json_(salvarBau_(pedido));
       case 'excluir_bau': return json_(excluirBau_(pedido));
       default:            return json_({ ok: false, erro: 'acao_desconhecida' });
@@ -2076,6 +2078,12 @@ function painel_(pedido) {
     somar_(porPessoa, r[col.pessoa] || 'Sem dono', valor);
   });
 
+  // Os baús uma vez só: o total (com rendimento) e os marcos das conquistas.
+  var infoBaus = null;
+  if (SpreadsheetApp.getActiveSpreadsheet().getSheetByName('baus')) {
+    try { infoBaus = baus_(linhas); } catch (e) { infoBaus = null; }   // rendimento nunca derruba o painel
+  }
+
   var faturas = faturasDoMes_(mes, contas, linhas, col);
   var emFormacao = faturasEmFormacao_(mes, contas, linhas, col);
   // "Em aberto" é o que você pode pagar hoje: fatura fechada e não paga.
@@ -2235,7 +2243,10 @@ function painel_(pedido) {
       return o;
     }, {}),
     // com o que os baús renderam até hoje (só calcula se algum rende)
-    baus_total: arred_(totalDosBaus_(saldoBaus, linhas)),
+    baus_total: arred_(algumBauRende_() && infoBaus ? infoBaus.total : saldoBaus),
+    // a fogueira da casa e o que as conquistas novas precisam saber
+    fogueira: fogueira_(linhas, col),
+    marcos: marcosDasConquistas_(infoBaus, linhas, col),
     gasto_livre_hoje: arred_(gastoLivreHoje),
     orcamentos: orcamentos,
     // a missão do mês (com vigência) e as conquistas já ganhas
@@ -2253,7 +2264,8 @@ function painel_(pedido) {
 
 var CONQUISTAS_VALIDAS = [
   'primeira_missao', 'fase_limpa', 'bolso_trancado', 'mana_intacta',
-  'no_azul', 'trinca', 'formiguinha', 'guardiao'
+  'no_azul', 'trinca', 'formiguinha', 'guardiao',
+  'bau_cheio', 'fogo_aceso', 'chama_eterna', 'dupla_dinamica', 'juros_a_favor', 'cacador_pontual'
 ];
 
 function lerJsonProp_(chave, padrao) {
@@ -2865,7 +2877,8 @@ function cruzarCompromissos_(compromissos, lancamentos, agendados) {
         nome: l.nome || l.descricao,
         descricao: chaveNome_(l.descricao),
         categoria: chaveNome_(l.categoria),
-        valor: l.valor
+        valor: l.valor,
+        data: l.data || ''
       };
     });
   };
@@ -2901,6 +2914,8 @@ function cruzarCompromissos_(compromissos, lancamentos, agendados) {
       // o uuid fecha o ciclo: tocar num item já lançado abre o lançamento dele
       uuid_lancamento: feito ? feito.uuid : '',
       valor_lancado: feito ? arred_(feito.valor) : null,
+      // o dia em que foi pago (o Caçador pontual compara com o vencimento)
+      data_lancado: feito ? feito.data : '',
       // e num item agendado, confirma aquele lançamento em vez de criar outro
       uuid_agendado: marcado ? marcado.uuid : '',
       valor_agendado: marcado ? arred_(marcado.valor) : null,
@@ -2979,7 +2994,8 @@ function lancamentosDoMesCru_(mes, col, aba, n, tipo, status) {
       nome: String(r[col.descricao] || ''),
       descricao: String(r[col.descricao] || '') + ' ' + String(r[col.texto_falado] || ''),
       categoria: String(r[col.categoria] || ''),
-      valor: Number(r[col.valor]) || 0
+      valor: Number(r[col.valor]) || 0,
+      data: normalizarData_(r[col.data])
     });
   });
   return saida;
@@ -4851,4 +4867,257 @@ function contasResumo_() {
                rende_por_mes_liquido: c.rende_por_mes };
     });
   } catch (e) { return []; }
+}
+
+// ---------------------------------------------------------------------------
+// Fogueira da casa, marcos das conquistas e relatório do ano
+// ---------------------------------------------------------------------------
+//
+// A fogueira é a sequência de dias em que ALGUÉM da casa cuidou das finanças:
+// lançou alguma coisa naquele dia, lançou depois um gasto daquele dia (até 2
+// dias de atraso — o celular sem internet, o extrato importado), ou tocou em
+// "hoje não gastei nada". O fogo de hoje só apaga à meia-noite: enquanto o dia
+// não acaba, a sequência conta até ontem.
+
+var ORIGENS_AUTOMATICAS = [ORIGEM_RENDE_CONTA];   // o que o script lança sozinho não acende fogo
+var DIAS_DE_ATRASO_FOGO = 2;
+var MAX_DIAS_NAO_GASTEI = 400;
+
+/** { 'aaaa-mm-dd': ['Fernando', …] } — os dias marcados como "não gastei nada". */
+function lerNaoGastei_() {
+  var m = lerJsonProp_('NAO_GASTEI', {});
+  return m && typeof m === 'object' && !Array.isArray(m) ? m : {};
+}
+
+/** Os dias com a fogueira acesa e quem acendeu: { dia: [pessoas] }. */
+function diasAcesos_(linhas, col) {
+  var acesos = {};
+  var hoje = hojeISO_();
+  var marcar = function (dia, pessoa) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dia) || dia > hoje) return;
+    if (!acesos[dia]) acesos[dia] = [];
+    var p = String(pessoa || '').trim();
+    if (p && acesos[dia].indexOf(p) < 0) acesos[dia].push(p);
+  };
+  (linhas || []).forEach(function (r) {
+    if (r[col.status] === STATUS.EXCLUIDO) return;
+    if (ORIGENS_AUTOMATICAS.indexOf(String(r[col.origem] || '')) >= 0) return;
+    var reg = r[col.hora_registro] ? normalizarData_(r[col.hora_registro]) : '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(reg)) return;
+    marcar(reg, r[col.pessoa]);
+    var data = normalizarData_(r[col.data]);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(data) && data < reg && diasEntre_(data, reg) <= DIAS_DE_ATRASO_FOGO) marcar(data, r[col.pessoa]);
+  });
+  var ng = lerNaoGastei_();
+  Object.keys(ng).forEach(function (d) {
+    var quem = Array.isArray(ng[d]) ? ng[d] : [];
+    if (!quem.length) marcar(d, '');
+    quem.forEach(function (p) { marcar(d, p); });
+  });
+  return acesos;
+}
+
+/** A maior sequência (e onde terminou) entre os dias acesos, opcionalmente só dentro de [de, ate]. */
+function maiorSequencia_(acesos, de, ate) {
+  var melhor = 0, fim = '', atual = 0, anterior = '';
+  Object.keys(acesos).sort().forEach(function (d) {
+    if ((de && d < de) || (ate && d > ate)) return;
+    atual = anterior && diasEntre_(anterior, d) === 1 ? atual + 1 : 1;
+    anterior = d;
+    if (atual > melhor) { melhor = atual; fim = d; }
+  });
+  return { dias: melhor, fim: fim };
+}
+
+/** Como está a fogueira hoje: sequência, recorde e os últimos 70 dias para o calendário. */
+function fogueira_(linhas, col) {
+  var hoje = hojeISO_();
+  var acesos = diasAcesos_(linhas, col);
+  var acesoHoje = !!acesos[hoje];
+  var n = 0;
+  var d = acesoHoje ? hoje : diaISOMais_(hoje, -1);
+  while (acesos[d]) { n++; d = diaISOMais_(d, -1); }
+  var rec = maiorSequencia_(acesos);
+  var desde = diaISOMais_(hoje, -70);
+  return {
+    hoje: hoje,
+    dias: n,
+    aceso_hoje: acesoHoje,
+    quem_hoje: acesos[hoje] || [],
+    recorde: Math.max(rec.dias, n),
+    recorde_fim: rec.fim,
+    acesos: Object.keys(acesos).filter(function (x) { return x >= desde; }).sort(),
+    nao_gastei: Object.keys(lerNaoGastei_()).filter(function (x) { return x >= desde; }).sort()
+  };
+}
+
+/** "Hoje não gastei nada": mantém o fogo aceso sem precisar inventar lançamento. */
+function naoGastei_(pedido) {
+  var hoje = hojeISO_();
+  var pessoa = String(pedido.pessoa || '').trim().slice(0, 40);
+  var trava = LockService.getScriptLock();
+  trava.waitLock(15000);
+  try {
+    var ng = lerNaoGastei_();
+    var quem = Array.isArray(ng[hoje]) ? ng[hoje] : [];
+    if (pessoa && quem.indexOf(pessoa) < 0) quem.push(pessoa);
+    ng[hoje] = quem;
+    var dias = Object.keys(ng).sort();
+    while (dias.length > MAX_DIAS_NAO_GASTEI) delete ng[dias.shift()];
+    PROP.setProperty('NAO_GASTEI', JSON.stringify(ng));
+  } finally {
+    trava.releaseLock();
+  }
+  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('lancamentos');
+  var n = aba.getLastRow() - 1;
+  var linhas = n > 0 ? aba.getRange(2, 1, n, ABAS.lancamentos.length).getValues() : [];
+  return { ok: true, fogueira: fogueira_(linhas, indiceColunas_()) };
+}
+
+/**
+ * Fatos que só a planilha sabe e que as conquistas novas usam: algum baú já
+ * encheu a meta, e quanto o dinheiro já rendeu (baús + contas).
+ */
+function marcosDasConquistas_(infoBaus, linhas, col) {
+  var bauCheio = false, rendeuBaus = 0, rendeuContas = 0;
+  ((infoBaus && infoBaus.baus) || []).forEach(function (b) {
+    if (!b.sem_cadastro && b.meta > 0 && b.saldo >= b.meta) bauCheio = true;
+    if (b.rende && b.rende.rendeu_total > 0) rendeuBaus += b.rende.rendeu_total;
+  });
+  (linhas || []).forEach(function (r) {
+    if (r[col.status] !== STATUS.OK || r[col.tipo] !== TIPO.RECEITA) return;
+    if (String(r[col.origem] || '') === ORIGEM_RENDE_CONTA) rendeuContas += Number(r[col.valor]) || 0;
+  });
+  return { bau_cheio: bauCheio, rendeu_total: arred_(rendeuBaus + rendeuContas) };
+}
+
+/**
+ * O relatório do ano: o ano inteiro em números, para os slides de janeiro.
+ * Mês futuro não entra (parcela de dezembro em março não é o ano que passou).
+ */
+function relatorioAno_(pedido) {
+  var hoje = hojeISO_();
+  var ano = /^\d{4}$/.test(String(pedido.ano || '')) ? String(pedido.ano) : hoje.slice(0, 4);
+  if (ano > hoje.slice(0, 4)) return { ok: false, erro: 'ano_futuro' };
+  var mesHoje = hoje.slice(0, 7);
+
+  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('lancamentos');
+  var n = aba.getLastRow() - 1;
+  var col = indiceColunas_();
+  var linhas = n > 0 ? aba.getRange(2, 1, n, ABAS.lancamentos.length).getValues() : [];
+
+  var meses = [];
+  var porMes = {};
+  for (var m = 1; m <= 12; m++) {
+    var k = ano + '-' + (m < 10 ? '0' + m : m);
+    porMes[k] = { mes: k, receitas: 0, despesas: 0, guardado: 0, lancamentos: 0, futuro: k > mesHoje, despesasDoMes: [] };
+    meses.push(porMes[k]);
+  }
+  var porCategoria = {}, guardadoPorPessoa = {};
+  var rendeuContas = 0, acertosBaus = 0;
+
+  linhas.forEach(function (r) {
+    if (r[col.status] !== STATUS.OK) return;
+    var data = normalizarData_(r[col.data]);
+    var pm = porMes[data.slice(0, 7)];
+    if (!pm || pm.futuro) return;
+    var tipo = r[col.tipo];
+    var valor = Number(r[col.valor]) || 0;
+    if (ehBau_(tipo)) {
+      if (tipo === TIPO.RENDIMENTO) { acertosBaus += valor; return; }
+      var s = sinalBau_(tipo) * valor;
+      pm.guardado += s;
+      somar_(guardadoPorPessoa, String(r[col.pessoa] || '').trim(), s);
+      return;
+    }
+    if (tipo === TIPO.FATURA) return;    // as compras da fatura já contaram
+    pm.lancamentos++;
+    if (tipo === TIPO.RECEITA) {
+      pm.receitas += valor;
+      if (String(r[col.origem] || '') === ORIGEM_RENDE_CONTA) rendeuContas += valor;
+      return;
+    }
+    pm.despesas += valor;
+    somar_(porCategoria, r[col.categoria] || 'Outros', valor);
+    pm.despesasDoMes.push({
+      uuid: r[col.uuid], nome: String(r[col.descricao] || ''),
+      descricao: String(r[col.descricao] || '') + ' ' + String(r[col.texto_falado] || ''),
+      categoria: String(r[col.categoria] || ''), valor: valor
+    });
+  });
+
+  // Chefes: as contas fixas de cada mês que foram lançadas (o mesmo cruzamento da tela Mês).
+  var regras = lerRecorrentes_();
+  var chefes = { derrotados: 0, total: 0 };
+  meses.forEach(function (pm) {
+    if (pm.futuro) return;
+    var fixas = cruzarCompromissos_(
+      compromissosDoMes_(regras, pm.mes).filter(function (c) { return c.tipo !== TIPO.RECEITA; }),
+      pm.despesasDoMes);
+    chefes.total += fixas.length;
+    chefes.derrotados += fixas.filter(function (f) { return f.lancado; }).length;
+  });
+
+  // O que os baús renderam no ano (o cálculo dia a dia, mês a mês) + os acertos com o banco.
+  var rendeuBaus = acertosBaus;
+  if (SpreadsheetApp.getActiveSpreadsheet().getSheetByName('baus')) {
+    try {
+      baus_(linhas).baus.forEach(function (b) {
+        var pmr = (b.rende && b.rende.por_mes_rendimento) || {};
+        Object.keys(pmr).forEach(function (k) { if (k.slice(0, 4) === ano && k <= mesHoje) rendeuBaus += pmr[k]; });
+      });
+    } catch (e) { /* sem rendimento: o relatório sai sem essa linha */ }
+  }
+
+  var acesos = diasAcesos_(linhas, col);
+  var fogo = maiorSequencia_(acesos, ano + '-01-01', ano + '-12-31');
+  var diasAcesos = Object.keys(acesos).filter(function (d) { return d.slice(0, 4) === ano; }).length;
+
+  var saida = meses.map(function (pm) {
+    return {
+      mes: pm.mes, futuro: pm.futuro,
+      receitas: arred_(pm.receitas), despesas: arred_(pm.despesas),
+      sobra: arred_(pm.receitas - pm.despesas), guardado: arred_(pm.guardado),
+      teve: pm.lancamentos > 0
+    };
+  });
+  var comMovimento = saida.filter(function (x) { return x.teve; });
+  var melhor = null, pior = null;
+  comMovimento.forEach(function (x) {
+    if (!melhor || x.sobra > melhor.sobra) melhor = x;
+    if (!pior || x.sobra < pior.sobra) pior = x;
+  });
+  var somaDe = function (campo) { return arred_(saida.reduce(function (a, x) { return a + x[campo]; }, 0)); };
+  var categorias = emLista_(porCategoria).slice(0, 6);
+  var conquistas = lerConquistas_();
+
+  return {
+    ok: true,
+    ano: ano,
+    ate_agora: ano === hoje.slice(0, 4),
+    meses: saida,
+    entrou: somaDe('receitas'),
+    saiu: somaDe('despesas'),
+    sobrou: somaDe('sobra'),
+    guardado: somaDe('guardado'),
+    guardado_por_pessoa: Object.keys(guardadoPorPessoa).reduce(function (o, k) {
+      var v = arred_(guardadoPorPessoa[k]);
+      if (Math.abs(v) >= 0.01) o[k] = v;
+      return o;
+    }, {}),
+    rendeu: arred_(rendeuBaus + rendeuContas),
+    rendeu_baus: arred_(rendeuBaus),
+    rendeu_contas: arred_(rendeuContas),
+    meses_com_movimento: comMovimento.length,
+    no_azul: comMovimento.filter(function (x) { return x.sobra > 0; }).length,
+    melhor_mes: melhor ? { mes: melhor.mes, sobra: melhor.sobra } : null,
+    pior_mes: pior ? { mes: pior.mes, sobra: pior.sobra } : null,
+    categorias: categorias,
+    chefes: chefes,
+    fogueira: { maior: fogo.dias, fim: fogo.fim, dias_acesos: diasAcesos },
+    conquistas: Object.keys(conquistas)
+      .filter(function (id) { return String(conquistas[id]).slice(0, 4) === ano; })
+      .map(function (id) { return { id: id, dia: conquistas[id] }; })
+      .sort(function (a, b) { return a.dia < b.dia ? -1 : 1; })
+  };
 }

@@ -809,3 +809,84 @@ console.log('\navisos no celular: ok');
   assert.strictEqual(contasSaldo_().contas.find((c) => c.nome === 'Conta Teste').rende.tipo, '');
 }
 console.log('\ndinheiro nas contas: ok');
+
+// 35. fogueira da casa, marcos das conquistas novas e relatório do ano
+{
+  let k = 0;
+  const L = (data, reg, pessoa = 'Fernando', extra = {}) => {
+    const r = new Array(ABAS.lancamentos.length).fill('');
+    r[col.uuid] = 'fg' + (++k); r[col.data] = data; r[col.hora_registro] = new Date(reg + 'T10:00:00');
+    r[col.tipo] = extra.tipo || 'despesa'; r[col.valor] = extra.valor || 10; r[col.pessoa] = pessoa;
+    r[col.status] = extra.status || 'ok'; r[col.origem] = extra.origem || 'voz';
+    return r;
+  };
+  const dia = (d) => '2026-09-' + String(d).padStart(2, '0');
+  const base = [];
+  for (let d = 10; d <= 15; d++) base.push(L(dia(d), dia(d), d % 2 ? 'Mayara' : 'Fernando'));
+  base.push(L(dia(9), dia(11)));                               // lançado 2 dias depois: acende o dia 9
+  base.push(L(dia(8), dia(11)));                               // 3 dias depois: não acende o dia 8
+  base.push(L(dia(8), dia(8), 'Fernando', { status: 'excluido' }));   // apagado não conta
+  base.push(L(dia(8), dia(8), 'Fernando', { tipo: 'receita', origem: 'rendimento_conta' }));   // automático não conta
+  base.push(L('2026-12-01', dia(8)));                          // parcela futura lançada no dia 8: acende o 8? sim, pelo registro
+  for (let d = 1; d <= 20; d++) base.push(L('2026-08-' + String(d).padStart(2, '0'), '2026-08-' + String(d).padStart(2, '0')));
+  const comHoje = base.concat([L(dia(16), dia(16), 'Mayara')]);
+
+  let f = fogueira_(comHoje, col);
+  assert.strictEqual(f.hoje, '2026-09-16');
+  assert.strictEqual(f.aceso_hoje, true);
+  assert.deepStrictEqual(f.quem_hoje, ['Mayara']);
+  assert.strictEqual(f.dias, 9, 'do dia 8 (registro) ao 16: ' + f.dias);
+  assert.strictEqual(f.recorde, 20); assert.strictEqual(f.recorde_fim, '2026-08-20');
+  assert.ok(f.acesos.includes('2026-09-09') && f.acesos.includes('2026-09-08'));
+
+  // sem a parcela registrada no dia 8, o dia 8 fica apagado
+  const semOito = base.filter((r) => !(r[col.data] === '2026-12-01')).concat([L(dia(16), dia(16), 'Mayara')]);
+  f = fogueira_(semOito, col);
+  assert.strictEqual(f.dias, 8, 'do 9 ao 16');
+  assert.ok(!f.acesos.includes('2026-09-08'), 'excluído, automático e atraso de 3 dias não acendem');
+
+  // hoje sem nada: a sequência conta até ontem e o fogo de hoje ainda não apagou
+  f = fogueira_(semOito.slice(0, -1), col);
+  assert.strictEqual(f.aceso_hoje, false); assert.strictEqual(f.dias, 7);
+
+  // "hoje não gastei nada" acende o dia
+  delete props.NAO_GASTEI;
+  const r1 = naoGastei_({ pessoa: 'Fernando' });
+  assert.ok(r1.ok && r1.fogueira.aceso_hoje);
+  naoGastei_({ pessoa: 'Fernando' }); naoGastei_({ pessoa: 'Mayara' });
+  assert.deepStrictEqual(JSON.parse(props.NAO_GASTEI), { '2026-09-16': ['Fernando', 'Mayara'] }, 'sem repetir');
+  f = fogueira_(semOito.slice(0, -1), col);
+  assert.strictEqual(f.aceso_hoje, true); assert.strictEqual(f.dias, 8); assert.deepStrictEqual(f.nao_gastei, ['2026-09-16']);
+  delete props.NAO_GASTEI;
+
+  // marcos: baú cheio (só com cadastro) e o que rendeu (baús + contas)
+  const m = marcosDasConquistas_({ baus: [{ nome: 'A', meta: 100, saldo: 120, rende: { rendeu_total: 30.5 } }, { nome: 'B', sem_cadastro: true, meta: 0, saldo: 5, rende: {} }] },
+    [L(dia(5), dia(5), 'Fernando', { tipo: 'receita', origem: 'rendimento_conta', valor: 80 })], col);
+  assert.deepStrictEqual(m, { bau_cheio: true, rendeu_total: 110.5 });
+  assert.strictEqual(marcosDasConquistas_({ baus: [{ meta: 100, saldo: 99.99, rende: {} }] }, [], col).bau_cheio, false);
+  const p = painel_({ mes: '2026-09' });
+  assert.ok(p.fogueira && typeof p.fogueira.dias === 'number' && p.marcos && 'bau_cheio' in p.marcos, 'o painel traz fogueira e marcos');
+  assert.ok(p.fixas.every((x) => 'data_lancado' in x), 'as fixas dizem quando foram pagas');
+
+  // conquistas novas são aceitas
+  const c = conquistar_({ ids: ['fogo_aceso', 'cacador_pontual', 'inventada'] });
+  assert.deepStrictEqual(c.novas, ['fogo_aceso', 'cacador_pontual']);
+
+  // relatório do ano: só até o mês de hoje, sem fatura, com baús e rendimento
+  const ra = relatorioAno_({ ano: '2026' });
+  assert.ok(ra.ok); assert.strictEqual(ra.meses.length, 12); assert.strictEqual(ra.ate_agora, true);
+  assert.ok(ra.meses.filter((x) => x.futuro).every((x) => x.receitas === 0 && x.despesas === 0), 'mês futuro fica de fora');
+  const somar = (cond) => Math.round(linhas().filter((r) => r[col.status] === 'ok' && String(r[col.data]).slice(0, 4) === '2026' && String(r[col.data]).slice(0, 7) <= '2026-09' && cond(r))
+    .reduce((t, r) => t + Number(r[col.valor]), 0) * 100) / 100;
+  assert.ok(Math.abs(ra.entrou - somar((r) => r[col.tipo] === 'receita')) < 0.011, 'entrou ' + ra.entrou);
+  assert.ok(Math.abs(ra.saiu - somar((r) => r[col.tipo] === 'despesa')) < 0.011, 'saiu ' + ra.saiu);
+  assert.ok(Math.abs(ra.sobrou - (ra.entrou - ra.saiu)) < 0.011);
+  assert.ok(ra.categorias.length > 0 && ra.categorias[0].total >= ra.categorias[ra.categorias.length - 1].total);
+  assert.ok(ra.no_azul <= ra.meses_com_movimento);
+  assert.ok(ra.chefes.derrotados <= ra.chefes.total);
+  assert.ok(ra.conquistas.some((x) => x.id === 'fogo_aceso'), 'conquistas ganhas no ano');
+  assert.ok(ra.rendeu >= ra.rendeu_contas);
+  assert.strictEqual(relatorioAno_({ ano: '2027' }).erro, 'ano_futuro');
+  assert.strictEqual(relatorioAno_({ ano: '2025' }).entrou, 0);
+}
+console.log('\nfogueira, marcos e relatório do ano: ok');

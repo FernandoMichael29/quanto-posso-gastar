@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "teste": "node testes/parser.test.mjs && node testes/ouro.test.mjs && node testes/mana.test.mjs && node testes/missao.test.mjs && node testes/baus.test.mjs && node testes/personagem.test.mjs && node testes/relatorio.test.mjs && node testes/importar.test.mjs",
+    "teste": "node testes/parser.test.mjs && node testes/ouro.test.mjs && node testes/mana.test.mjs && node testes/missao.test.mjs && node testes/fogueira.test.mjs && node testes/baus.test.mjs && node testes/personagem.test.mjs && node testes/relatorio.test.mjs && node testes/importar.test.mjs",
     "teste:script": "node apps-script/testes/lancar.test.cjs"
   },
   "dependencies": {

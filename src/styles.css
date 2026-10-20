@@ -1849,7 +1849,7 @@ select.chip { max-width: 100%; }
 
 /* A vitrine de medalhas: bloqueada é só a silhueta. */
 .conquistas { display: grid; gap: 8px; }
-.vitrine { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 5px; }
+.vitrine { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
 .vitrine .slot .sprite { flex: none; }
 .vitrine .slot {
   width: 100%;
@@ -2384,3 +2384,80 @@ select.chip { max-width: 100%; }
 .conta-aberta .sub b { color: #8af08a; }
 .folha-bau .dif { padding: 10px 12px; border-radius: var(--raio-p); background: var(--accent-soft); font-size: 13px; line-height: 1.45; }
 
+
+/* --- Fogueira da casa (tela Novo) e relatório do ano ----------------------- */
+.fogo { display: inline-block; background-repeat: no-repeat; image-rendering: pixelated; flex: none; }
+.fogo.apagada { filter: grayscale(1) brightness(.55); opacity: .7; }
+.fogo-nivel { display: inline-grid; place-items: end center; flex: none; position: relative; }
+.fogo-nivel.brilha::before {
+  content: ''; position: absolute; inset: -20%; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 170, 60, .45), transparent 65%); animation: brilho-fogo 1.6s ease-in-out infinite;
+}
+@keyframes brilho-fogo { 50% { opacity: .55; transform: scale(.94); } }
+@media (prefers-reduced-motion: reduce) { .fogo-nivel.brilha::before { animation: none; } }
+.tira-fogo {
+  display: grid; gap: 10px; padding: 12px 14px; color: #e8ebf5; background: #141626;
+  box-shadow: 0 -3px 0 0 #2a2e45, 0 3px 0 0 #2a2e45, -3px 0 0 0 #2a2e45, 3px 0 0 0 #2a2e45;
+  margin: 3px;
+}
+.tira-fogo.risco { box-shadow: 0 -3px 0 0 #b8632a, 0 3px 0 0 #b8632a, -3px 0 0 0 #b8632a, 3px 0 0 0 #b8632a; }
+.tira-fogo-abrir {
+  display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: center; padding: 0;
+  border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.tira-fogo-abrir:focus-visible { outline: 2px solid #ffb347; outline-offset: 3px; }
+.tira-fogo .t { display: grid; gap: 3px; min-width: 0; }
+.tira-fogo .rot { font-size: 12px; letter-spacing: .14em; color: #ffb347; }
+.tira-fogo .n { font-size: 22px; color: #ffd65c; text-shadow: 2px 2px 0 #7a2e10; }
+.tira-fogo .s { font-size: 12.5px; line-height: 1.4; color: #b4b9cc; }
+.semana-fogo { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.semana-fogo span {
+  display: grid; justify-items: center; gap: 1px; padding: 3px 0 4px; border: 1.5px solid #2a2e45;
+  font-family: var(--fonte-pixel); font-size: 10px; color: #9aa0b8;
+}
+.semana-fogo span.aceso { color: #ffd65c; }
+.semana-fogo span.hoje { border-style: dashed; border-color: #ffb347; }
+.fogo-acampamento { position: relative; z-index: 1; order: 0; display: inline-grid; place-items: end center; margin: 0 -6px 2px; }
+.niveis-fogo { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
+.niveis-fogo div {
+  display: grid; justify-items: center; gap: 2px; padding: 6px 2px; border: 1.5px solid #2a2e45;
+  font-size: 10.5px; line-height: 1.2; color: #9aa0b8; text-align: center;
+}
+.niveis-fogo div.on { border-color: #ffb347; color: #e8ebf5; }
+.niveis-fogo b { font-size: 13px; color: #ffd65c; font-weight: 400; }
+.cal-fogo { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+.cal-fogo span {
+  position: relative; display: grid; justify-items: center; align-content: start; height: 36px; padding-top: 2px;
+  border: 1px solid #2a2e45; font-size: 11px; color: #9aa0b8;
+}
+.cal-fogo span .fogo { position: absolute; bottom: 1px; }
+.cal-fogo span.letra, .cal-fogo span.vazia { border: 0; height: auto; font-family: var(--fonte-pixel); font-size: 10px; }
+.cal-fogo span.hoje { border-color: #ffb347; color: #ffd65c; }
+.cal-fogo span.futuro { opacity: .45; }
+.cal-fogo span.sem-gasto::after { content: '✓'; position: absolute; top: 1px; right: 3px; font-size: 9px; color: #8af08a; }
+.relatorio-ano .pontos-slide { display: flex; justify-content: center; gap: 6px; }
+.relatorio-ano .pontos-slide i { width: 8px; height: 8px; background: #3a3f5c; }
+.relatorio-ano .pontos-slide i.on { background: #f6c63c; }
+.relatorio-ano .botoes-slide { display: flex; gap: 8px; }
+.relatorio-ano .botoes-slide .btn-px { flex: 1; }
+.relatorio-ano .botoes-slide .btn { color: #c9cedd; }
+.relatorio-ano .ouro-txt { color: #f6c63c; }
+.ano-barras { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 3px; height: 120px; }
+.ano-barras span { display: grid; grid-template-rows: 3fr 1fr auto; justify-items: stretch; }
+.ano-barras i { display: block; align-self: end; background: #2f8a44; min-height: 0; }
+.ano-barras i.baixo { align-self: start; background: #b8432f; }
+.ano-barras span.sem i { background: #2a2e45; }
+.ano-barras span .cima { border-bottom: 1px solid #3a3f5c; }
+.ano-barras b { margin-top: 3px; text-align: center; font-size: 10px; font-weight: 400; color: #9aa0b8; }
+.dragao-ano { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: center; }
+.dragao-ano > span:last-child { display: grid; gap: 3px; font-size: 13px; color: #c9cedd; }
+.dragao-ano b { font-size: 20px; font-weight: 400; color: #ff8a7a; text-shadow: 2px 2px 0 #4a1010; }
+.lista-dragoes { display: grid; gap: 6px; }
+.lista-dragoes div { display: grid; grid-template-columns: 34px minmax(0, 7fr) minmax(0, 6fr) auto; gap: 8px; align-items: center; font-size: 12.5px; color: #c9cedd; }
+.lista-dragoes .slot { width: 34px; height: 34px; }
+.lista-dragoes .nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lista-dragoes .barra-dragao { display: block; height: 8px; background: #22263a; }
+.lista-dragoes .barra-dragao i { display: block; height: 100%; background: #b8432f; }
+.lista-dragoes b { font-size: 12px; font-weight: 400; color: #fff; }
+.relatorio-medalhas.ano { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.relatorio-medalhas.ano small { color: #9aa0b8; }

@@ -53,6 +53,12 @@ export const MEDALHA = {
   trinca: 5,
   formiguinha: 6,
   guardiao: 7,
+  bau_cheio: 8,
+  fogo_aceso: 9,
+  chama_eterna: 10,
+  dupla_dinamica: 11,
+  juros_a_favor: 12,
+  cacador_pontual: 13,
 };
 
 // Estado do baú (vazio → cheio) → coluna na folha de baús (32 px).
