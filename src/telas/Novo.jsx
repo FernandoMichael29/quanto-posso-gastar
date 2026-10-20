@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+import Hud from '../componentes/Hud.jsx';
+import { CustoDeMana } from '../componentes/Mana.jsx';
+import { manaDe } from '../lib/mana.js';
 import Item, { Sprite } from '../componentes/Item.jsx';
 import { chaveAprendivel, formatarBRL, soNumero, sugerirCategoria } from '../lib/parser.js';
 import { diaOuHoje, hojeISO } from '../lib/datas.js';
@@ -33,7 +36,7 @@ const vazio = (tipo, conta) => ({
   tipo, valor: 0, descricao: '', categoria: '', data: hojeISO(), conta: conta || '', pessoa: '', fonte: ''
 });
 
-export default function Novo({ cadastros, resumo, aoMudarFila }) {
+export default function Novo({ cadastros, resumo, ouro, mana, aoMudarFila }) {
   const [l, setL] = useState(() => vazio('despesa', lembrar(CHAVE_CONTA)));
   // O que as palavras-chave sugerem para a descrição — e se você já tocou num
   // item, caso em que a sugestão para de mexer na sua escolha.
@@ -48,6 +51,8 @@ export default function Novo({ cadastros, resumo, aoMudarFila }) {
   const [repete, setRepete] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [recado, setRecado] = useState(null);
+  // O último registro, para o HUD mostrar o "−R$ 42" subindo.
+  const [efeito, setEfeito] = useState(null);
 
   const receita = l.tipo === 'receita';
   const todas = cadastros.categorias?.length ? cadastros.categorias : CATEGORIAS_PADRAO;
@@ -103,15 +108,23 @@ export default function Novo({ cadastros, resumo, aoMudarFila }) {
   // Marcar "parcelado" e deixar 1 vez gravaria uma compra à vista sem você notar.
   const parcelamentoIncompleto = !receita && parcelado && n < 2;
   const pronto = l.valor > 0 && !salvando && !parcelamentoIncompleto;
+  // A mana da categoria escolhida, e quanto deste gasto cai neste mês (parcelado:
+  // só a primeira). Gasto com data em outro mês não mexe na mana deste.
+  const manaEscolhida = !receita && l.data.slice(0, 7) === hojeISO().slice(0, 7) ? manaDe(mana, l.categoria) : null;
+  const custo = comParcelas ? cadaParcela : total;
 
   async function registrar() {
     if (!pronto) return;
     setSalvando(true);
+    // Primeiro sobe até o HUD, depois registra: senão o ouro cai e o "−R$"
+    // sobe enquanto a página ainda está rolando, e você só vê o fim da conta.
+    await subirAteOHud();
     // Toda escolha diferente do que as palavras-chave disseram vira palavra-chave
     // nova — inclusive quando elas não disseram nada.
     const palavra = chaveAprendivel(l.descricao);
     const aprender = Boolean(l.categoria && l.categoria !== sugerida && palavra);
     const uuid = novoId();
+    const manaDepois = manaEscolhida && manaEscolhida.mana - custo;
     await enfileirar({
       uuid,
       estado: ESTADO.PENDENTE,
@@ -139,9 +152,17 @@ export default function Novo({ cadastros, resumo, aoMudarFila }) {
       titulo: comParcelas
         ? `Guardado: ${n}× de ${formatarBRL(cadaParcela)}`
         : `Guardado: ${receita ? '+' : '−'}${formatarBRL(total)}`,
-      detalhe: aprender ? `Aprendi: “${palavra}” agora é ${l.categoria}.` : undefined,
+      detalhe: [
+        manaEscolhida && (manaDepois < 0
+          ? `A mana de ${manaEscolhida.categoria} acabou: passou ${formatarBRL(-manaDepois)} do teto.`
+          : `Mana de ${manaEscolhida.categoria}: ${formatarBRL(manaDepois)} de ${formatarBRL(manaEscolhida.teto)}.`),
+        aprender && `Aprendi: “${palavra}” agora é ${l.categoria}.`
+      ].filter(Boolean).join(' ') || undefined,
       desfazer: [uuid]
     });
+    // O que pesa neste mês é o que o HUD mostra caindo (parcelado: a primeira).
+    setEfeito({ id: uuid, tipo: l.tipo, valor: comParcelas ? cadaParcela : total });
+
     // Recomeça limpo, mas mantém o que costuma se repetir de um para o outro.
     setL(vazio(l.tipo, l.conta));
     setNaMao(false);
@@ -194,6 +215,8 @@ export default function Novo({ cadastros, resumo, aoMudarFila }) {
 
   return (
     <>
+      <Hud dados={ouro} efeito={efeito} />
+
       {recado && (
         <div className={`aviso ${recado.tom} ${recado.desfazer ? 'com-acao' : ''}`} role="status">
           <div className="aviso-texto">
@@ -267,6 +290,7 @@ export default function Novo({ cadastros, resumo, aoMudarFila }) {
           {!naMao && sugerida && l.categoria === sugerida && (
             <p className="ajuda" style={{ margin: 0 }}>Escolhido pela descrição — toque em outro item se não for.</p>
           )}
+          <CustoDeMana m={manaEscolhida} custo={custo} />
         </div>
 
         <div className="chips">
@@ -369,17 +393,6 @@ export default function Novo({ cadastros, resumo, aoMudarFila }) {
         </button>
       </div>
 
-      {resumo && (
-        <>
-          <p className="secao-titulo">Este mês</p>
-          <div className="resumo">
-            <div><span className="r">Recebi</span><span className="v pos">{soNumero(resumo.receitas)}</span></div>
-            <div><span className="r">Gastei</span><span className="v">{soNumero(resumo.despesas)}</span></div>
-            <div><span className="r">Sobrou</span><span className={`v ${resumo.saldo >= 0 ? 'pos' : 'neg'}`}>{soNumero(resumo.saldo)}</span></div>
-          </div>
-        </>
-      )}
-
       {resumo?.ultimos?.length > 0 && (
         <>
           <p className="secao-titulo">Últimos itens</p>
@@ -401,6 +414,20 @@ export default function Novo({ cadastros, resumo, aoMudarFila }) {
       )}
     </>
   );
+}
+
+/**
+ * Rola até o topo e só resolve quando chegou (ou em 0,9 s, o que vier antes).
+ * Um tempo fixo não serve: a rolagem suave demora conforme a distância.
+ */
+function subirAteOHud() {
+  return new Promise((ok) => {
+    if (window.scrollY <= 40) { ok(); return; }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const inicio = performance.now();
+    const olhar = () => (window.scrollY <= 2 || performance.now() - inicio > 900 ? ok() : requestAnimationFrame(olhar));
+    requestAnimationFrame(olhar);
+  });
 }
 
 function arredondar(v) {

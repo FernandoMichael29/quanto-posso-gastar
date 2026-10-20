@@ -1508,3 +1508,402 @@ select.chip { max-width: 100%; }
 .btn-px:active:not(:disabled) { transform: translateY(3px); }
 .btn-px:disabled { filter: grayscale(1) brightness(.7); cursor: default; }
 
+/* =========================================================================
+   HUD — o ouro de hoje e a vida do mês
+   É uma janela de jogo: escura e com moldura clara nos dois temas, como os
+   quadradinhos de inventário. Tudo anda em degraus (steps), nunca deslizando:
+   é isso que dá a cara de jogo.
+   ========================================================================= */
+
+.hud {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  margin: 3px;
+  padding: 14px 16px 16px;
+  color: #e8ebf5;
+  background: #141626;
+  box-shadow: 0 -3px 0 0 #c9cedd, 0 3px 0 0 #c9cedd, -3px 0 0 0 #c9cedd, 3px 0 0 0 #c9cedd;
+}
+.hud-topo { display: flex; align-items: center; justify-content: space-between; gap: var(--e3); }
+.hud-rotulo { font-family: var(--fonte-pixel); font-size: 12px; letter-spacing: .14em; color: #9aa0b8; }
+.hud .ouro {
+  font-family: var(--fonte-pixel);
+  font-size: 36px;
+  line-height: 1.05;
+  color: #f6c63c;
+  text-shadow: 2px 2px 0 #5a2a12;
+  font-variant-numeric: tabular-nums;
+}
+.hud .ouro.zerado { color: #9aa0b8; text-shadow: none; }
+.hud .sub { margin: 0; font-size: 13px; line-height: 1.4; color: #b4b9cc; }
+.hud .sub strong { color: #ff8a7a; font-weight: 600; }
+.hud .slot { width: 52px; height: 52px; }
+
+.hud-vida { display: grid; gap: 4px; }
+.hud-vida .legenda {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--e2);
+  font-family: var(--fonte-pixel);
+  font-size: 12px;
+  letter-spacing: .06em;
+  color: #c9cedd;
+}
+
+/* Barra de vida: moldura de 2px sem canto, segmentos de 9px, três faixas de
+   luz no preenchimento. Anda em 8 degraus. */
+.hp {
+  --p: 50%;
+  position: relative;
+  height: 18px;
+  margin: 2px;
+  background: #0c0e17;
+  box-shadow: 0 -2px 0 0 #c9cedd, 0 2px 0 0 #c9cedd, -2px 0 0 0 #c9cedd, 2px 0 0 0 #c9cedd;
+}
+.hp > i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--p);
+  background: linear-gradient(var(--c1) 0 28%, var(--c2) 28% 72%, var(--c3) 72%);
+  transition: width .6s steps(8, end);
+}
+.hp::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(90deg, transparent 0 9px, #0c0e17 9px 11px);
+}
+.hp.vida   { --c1: #b6f5a0; --c2: #4cc65a; --c3: #237a3a; }
+.hp.alerta { --c1: #ffe9a0; --c2: #f2b83a; --c3: #a3621a; }
+.hp.perigo { --c1: #ffb0a0; --c2: #e84a4a; --c3: #8a1c2a; }
+
+/* O número que sobe: dano em vermelho, cura em verde. */
+.hud .dano {
+  position: absolute;
+  top: 44px;
+  right: 76px;
+  font-family: var(--fonte-pixel);
+  font-size: 22px;
+  font-weight: 700;
+  color: #ff6a5a;
+  text-shadow: 2px 2px 0 #3a0c14;
+  pointer-events: none;
+  opacity: 0;
+  animation: dano 1.15s steps(12, end) forwards;
+}
+.hud .dano.ganho { color: #8af08a; text-shadow: 2px 2px 0 #0c3a1a; }
+
+@keyframes dano {
+  0%   { opacity: 0; transform: translateY(6px); }
+  12%  { opacity: 1; transform: none; }
+  70%  { opacity: 1; transform: translateY(-20px); }
+  100% { opacity: 0; transform: translateY(-26px); }
+}
+
+.hud.treme { animation: treme .36s steps(6, end); }
+@keyframes treme {
+  0%, 100% { transform: none; }
+  20% { transform: translateX(-3px); }
+  40% { transform: translateX(3px); }
+  60% { transform: translateX(-2px); }
+  80% { transform: translateX(2px); }
+}
+
+/* =========================================================================
+   Chefes do mês — as contas fixas
+   O placar é uma janela de jogo como o HUD; as linhas continuam linhas de
+   lista (pixel é acento): só o quadradinho, a barra e o carimbo são de jogo.
+   ========================================================================= */
+
+.placar-chefes {
+  display: grid;
+  gap: 6px;
+  margin: 3px;
+  padding: 12px 14px 13px;
+  color: #e8ebf5;
+  background: #141626;
+  box-shadow: 0 -3px 0 0 #c9cedd, 0 3px 0 0 #c9cedd, -3px 0 0 0 #c9cedd, 3px 0 0 0 #c9cedd;
+}
+.placar-chefes .legenda {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--e2);
+  font-family: var(--fonte-pixel);
+  font-size: 12px;
+  letter-spacing: .08em;
+  color: #c9cedd;
+  font-variant-numeric: tabular-nums;
+}
+.placar-chefes .legenda span:last-child { font-size: 15px; color: #f0b0ff; letter-spacing: 0; }
+.placar-chefes.limpo .legenda span { color: #f6c63c; }
+.placar-chefes .sub { margin: 0; font-size: 12.5px; line-height: 1.4; color: #b4b9cc; }
+.placar-chefes .sub strong { color: #ff8a7a; font-weight: 600; }
+
+/* Vida de chefe é roxa; vermelha só quando ele está atacando (venceu). */
+.hp.chefe { --c1: #f3c4ff; --c2: #b453e0; --c3: #5e1f86; }
+
+/* A barra dentro da linha: fina, mesma moldura, segmentos menores. */
+.hp.fina { display: block; height: 6px; margin: 5px 2px 2px; max-width: 168px; }
+.hp.fina::after { background: repeating-linear-gradient(90deg, transparent 0 6px, #0c0e17 6px 8px); }
+
+.item.chefe { position: relative; align-items: center; }
+.item.chefe .num { color: var(--ink-2); }
+
+.tag-px {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 4px;
+  font-family: var(--fonte-pixel);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  color: #fff;
+  background: #c8323c;
+  animation: piscar 1s steps(2, jump-none) infinite;
+}
+@keyframes piscar { 50% { opacity: .35; } }
+
+/* Derrotado: apagado embaixo do carimbo — o carimbo não apaga junto. */
+.item.chefe.derrotado .slot,
+.item.chefe.derrotado .corpo { opacity: .5; }
+.item.chefe.derrotado .num { opacity: .7; text-decoration: line-through; }
+.item.chefe.derrotado .slot { filter: grayscale(1); }
+
+.carimbo {
+  /* Em cima da barra zerada, não do valor: o quanto foi pago continua legível. */
+  position: absolute;
+  left: 92px;
+  bottom: 7px;
+  padding: 1px 5px 0;
+  font-family: var(--fonte-pixel);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  color: var(--accent);
+  border: 2px solid currentColor;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  transform: rotate(-5deg);
+  pointer-events: none;
+}
+
+/* O golpe final, só no chefe que caiu agora: a barra esvazia (os .6 s em
+   degraus do .hp), a linha treme, e o carimbo bate em cima. */
+.item.chefe.abatido { animation: treme .36s steps(6, end) .55s; }
+.item.chefe.abatido .slot,
+.item.chefe.abatido .corpo,
+.item.chefe.abatido .num { transition: filter 0s .6s, opacity 0s .6s; }
+.item.chefe.abatido .carimbo { animation: carimbar .32s steps(4, end) .62s both; }
+@keyframes carimbar {
+  0%   { opacity: 0; transform: rotate(-5deg) scale(2.4); }
+  60%  { opacity: 1; transform: rotate(-5deg) scale(.92); }
+  100% { opacity: 1; transform: rotate(-5deg) scale(1); }
+}
+
+/* =========================================================================
+   Mana por categoria — o teto do mês que ainda não foi gasto
+   Azul com folga, vermelha perto de acabar (25%), vazia quando estourou.
+   ========================================================================= */
+
+.hp.mana { --c1: #b8ecff; --c2: #3d97ef; --c3: #1b3f96; }
+
+/* O tracinho do ritmo: onde a barra deveria estar hoje. */
+.hp .ritmo {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  margin-left: -1px;
+  background: #f6c63c;
+  box-shadow: 0 0 0 1px #0c0e17;
+  z-index: 1;
+}
+
+/* O pedaço que o gasto que você está digitando vai consumir. */
+.hp .custo {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: #f4f7ff;
+  animation: piscar .8s steps(2, jump-none) infinite;
+}
+
+.item.mana-linha { align-items: center; }
+.mana-topo { display: flex; align-items: baseline; justify-content: space-between; gap: var(--e2); }
+.mana-valor { font-size: 15px; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--ink); }
+.mana-valor small { font-size: 11px; color: var(--muted); }
+.item.mana-linha .hp.fina { max-width: none; margin: 6px 2px 4px; height: 8px; }
+.item.mana-linha .meta .ruim { color: var(--crit); }
+.item.mana-linha.vazia .mana-valor { color: var(--crit); }
+
+.mana-vazia {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 2px dashed var(--line);
+  border-radius: var(--raio);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.mana-vazia p { margin: 0; }
+.mana-vazia .px { font-size: 12px; letter-spacing: .1em; color: var(--ink-2); }
+
+/* Na tela Novo: a janela de jogo com a mana da categoria escolhida. */
+.custo-mana {
+  display: grid;
+  gap: 6px;
+  margin: 3px;
+  padding: 10px 12px 11px;
+  color: #e8ebf5;
+  background: #141626;
+  box-shadow: 0 -3px 0 0 #c9cedd, 0 3px 0 0 #c9cedd, -3px 0 0 0 #c9cedd, 3px 0 0 0 #c9cedd;
+}
+.custo-mana .legenda {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--e2);
+  font-family: var(--fonte-pixel);
+  font-size: 12px;
+  letter-spacing: .06em;
+  color: #c9cedd;
+  font-variant-numeric: tabular-nums;
+}
+.custo-mana .legenda span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.custo-mana .legenda span:last-child { white-space: nowrap; color: #8fd2ff; letter-spacing: 0; }
+.custo-mana .legenda strong { color: #f4f7ff; font-weight: 700; }
+.custo-mana.estoura .legenda strong { color: #ff8a7a; }
+.custo-mana .hp { height: 14px; }
+.custo-mana .sub { margin: 0; font-size: 12.5px; line-height: 1.4; color: #b4b9cc; }
+.custo-mana.estoura .sub { color: #ff8a7a; }
+
+.legenda-ritmo { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 12px; }
+.legenda-ritmo .tracinho { flex: none; width: 2px; height: 14px; background: #f6c63c; box-shadow: 0 0 0 1px #0c0e17; }
+
+/* =========================================================================
+   Missão do mês e conquistas
+   A missão é uma janela de jogo como o HUD; a barra de XP é dourada.
+   ========================================================================= */
+
+.nivel.px {
+  padding: 2px 7px 1px;
+  font-size: 14px;
+  letter-spacing: .08em;
+  color: #2a1606;
+  background: linear-gradient(#fff4a8 0 25%, #f6c63c 25% 75%, #d8901e 75%);
+  box-shadow: 0 -2px 0 0 #5a2a12, 0 2px 0 0 #5a2a12, -2px 0 0 0 #5a2a12, 2px 0 0 0 #5a2a12;
+}
+
+.missao {
+  display: grid;
+  gap: 10px;
+  margin: 3px;
+  padding: 12px 14px 13px;
+  color: #e8ebf5;
+  background: #141626;
+  box-shadow: 0 -3px 0 0 #c9cedd, 0 3px 0 0 #c9cedd, -3px 0 0 0 #c9cedd, 3px 0 0 0 #c9cedd;
+}
+.missao.cumprida { box-shadow: 0 -3px 0 0 #f6c63c, 0 3px 0 0 #f6c63c, -3px 0 0 0 #f6c63c, 3px 0 0 0 #f6c63c; }
+.missao .sub { margin: 0; font-size: 12.5px; line-height: 1.45; color: #b4b9cc; }
+.missao .sub strong { color: #f4f7ff; font-weight: 600; }
+.missao .sub.ruim { color: #ff8a7a; }
+
+.missao-topo { display: flex; align-items: center; gap: var(--e3); }
+.missao-topo .corpo { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.missao-topo strong { font-size: 15px; font-weight: 600; color: #f4f7ff; }
+.missao-topo .mudar {
+  flex: none;
+  align-self: flex-start;
+  padding: 2px 4px;
+  border: 0;
+  background: none;
+  font-size: 12.5px;
+  color: #8fd2ff;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.missao-xp { display: grid; gap: 4px; }
+.missao-xp .legenda {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--e2);
+  font-family: var(--fonte-pixel);
+  font-size: 12px;
+  letter-spacing: .06em;
+  color: #c9cedd;
+  font-variant-numeric: tabular-nums;
+}
+.missao-xp .legenda span:last-child { color: #f6c63c; letter-spacing: 0; font-size: 14px; }
+.hp.xp { --c1: #fff4a8; --c2: #f6c63c; --c3: #9a4e14; }
+
+/* Editar a meta, dentro da janela escura. */
+.meta-edita { display: grid; gap: 10px; }
+.meta-edita .valor-px .moeda { color: #9aa0b8; font-size: 16px; }
+.meta-edita .valor-px input { font-size: 32px; color: #f6c63c; }
+.meta-botoes { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px; }
+.meta-botoes .btn.discreto { color: #b4b9cc; }
+.meta-botoes .btn.discreto:hover { background: rgba(255, 255, 255, .06); }
+.btn-px.pequeno { font-size: 14px; padding: 9px 14px; margin: 4px 4px 8px; }
+
+/* A vitrine de medalhas: bloqueada é só a silhueta. */
+.conquistas { display: grid; gap: 8px; }
+.vitrine { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 5px; }
+.vitrine .slot .sprite { flex: none; }
+.vitrine .slot {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  padding: 0;
+  border-color: color-mix(in srgb, #c9cedd 30%, #141626);
+}
+.vitrine .slot.ganha { border-color: #f6c63c; }
+.vitrine .slot.escolhido { box-shadow: 0 0 0 2px color-mix(in srgb, #8fd2ff 60%, transparent); }
+.sprite.medalha.bloqueada { filter: brightness(0) invert(.28); opacity: .7; }
+.conquista-detalhe { margin: 0; font-size: 13px; line-height: 1.45; color: var(--muted); min-height: 2.9em; }
+.conquista-detalhe strong { color: var(--ink); font-weight: 600; }
+
+/* Conquista nova: cai de cima, em degraus. */
+.conquista-nova {
+  /* Fixo no topo da tela: aparece onde você estiver olhando, como em jogo. */
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 72px);
+  left: 15px;
+  right: 15px;
+  max-width: 520px;
+  margin: 0 auto;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: var(--e3);
+  padding: 12px 40px 12px 12px;
+  color: #e8ebf5;
+  background: #141626;
+  box-shadow: 0 -3px 0 0 #f6c63c, 0 3px 0 0 #f6c63c, -3px 0 0 0 #f6c63c, 3px 0 0 0 #f6c63c, 0 0 0 7px color-mix(in srgb, #f6c63c 22%, transparent);
+  animation: cair-conquista .5s steps(5, end) both;
+}
+.conquista-nova .slot { width: 52px; height: 52px; border-color: #f6c63c; }
+.conquista-nova .slot .sprite { transform: scale(1.25); animation: brilhar-medalha 1.2s steps(2, jump-none) 3 .5s; }
+.conquista-nova .corpo { display: grid; gap: 2px; min-width: 0; }
+.conquista-nova .rotulo { font-size: 11.5px; letter-spacing: .12em; color: #f6c63c; }
+.conquista-nova strong { font-size: 16px; color: #fff; }
+.conquista-nova .como { font-size: 12.5px; line-height: 1.4; color: #b4b9cc; }
+.conquista-nova .fechar {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  background: none;
+  color: #9aa0b8;
+  font-size: 22px;
+  line-height: 1;
+}
+@keyframes cair-conquista {
+  0%   { opacity: 0; transform: translateY(-18px); }
+  60%  { opacity: 1; transform: translateY(3px); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes brilhar-medalha { 50% { filter: brightness(1.6); } }

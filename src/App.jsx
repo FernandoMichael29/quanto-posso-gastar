@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Novo from './telas/Novo.jsx';
 import Mes from './telas/mes/Mes.jsx';
 import Perguntar from './telas/Perguntar.jsx';
@@ -11,13 +11,30 @@ import { ESTADO, listar } from './lib/db.js';
 import { acessoValidado, api, configurado, marcarAcessoValido } from './lib/api.js';
 import { aoMudar, ligarSincronizacaoAutomatica } from './lib/sync.js';
 import { VERSAO_APP, menorQue } from './lib/versao.js';
-import { mesPorExtenso } from './lib/datas.js';
+import { mesDeHoje, mesPorExtenso } from './lib/datas.js';
 import { ABA, FOLHA_ABAS } from './lib/icones.js';
+import { calcularOuro } from './lib/ouro.js';
+import { calcularMana } from './lib/mana.js';
 
 const CACHE = 'qpg.cadastros';
+// O painel do mês fica guardado para o ouro de hoje aparecer na hora em que o
+// app abre, antes da planilha responder. `.em` é quando ele foi pedido.
+const CACHE_PAINEL = 'qpg.painel';
 const VAZIO = { categorias: [], contas: [], fontes: [], pessoas: [] };
 
 /** O cache só é seu depois que o app falou com a sua planilha neste aparelho. */
+function painelSalvo() {
+  if (!acessoValidado()) return { painel: null, em: 0 };
+  try {
+    return {
+      painel: JSON.parse(localStorage.getItem(CACHE_PAINEL) || 'null'),
+      em: Number(localStorage.getItem(`${CACHE_PAINEL}.em`)) || 0
+    };
+  } catch {
+    return { painel: null, em: 0 };
+  }
+}
+
 function cadastrosSalvos() {
   if (!acessoValidado()) return VAZIO;
   try {
@@ -36,6 +53,7 @@ export default function App() {
   const [fila, setFila] = useState([]);
   const [cadastros, setCadastros] = useState(cadastrosSalvos);
   const [resumo, setResumo] = useState(null);
+  const [painel, setPainel] = useState(painelSalvo);
   const [online, setOnline] = useState(navigator.onLine);
   const [versaoScript, setVersaoScript] = useState(null);
 
@@ -64,6 +82,19 @@ export default function App() {
 
     const r = await api.resumo();
     if (r.ok) setResumo(r);
+
+    // O ouro de hoje precisa da previsão do mês (contas fixas e rendas que
+    // ainda vêm). Anota quando pediu: o que subir depois disso ainda não está
+    // nele, e lib/ouro.js soma por conta própria.
+    const pedidoEm = Date.now();
+    const pn = await api.painel();
+    if (pn.ok) {
+      setPainel({ painel: pn, em: pedidoEm });
+      try {
+        localStorage.setItem(CACHE_PAINEL, JSON.stringify(pn));
+        localStorage.setItem(`${CACHE_PAINEL}.em`, String(pedidoEm));
+      } catch { /* sem espaço: só não abre na hora da próxima vez */ }
+    }
   }, []);
 
   // A porta de entrada: sem um "alô" da planilha, o app não mostra nada.
@@ -80,6 +111,7 @@ export default function App() {
     setAcesso('bloqueado');
     setCadastros(VAZIO);
     setResumo(null);
+    setPainel({ painel: null, em: 0 });
     return false;
   }, []);
 
@@ -111,6 +143,12 @@ export default function App() {
   }, [acesso, recarregarFila]);
 
   const esperando = fila.filter((i) => i.estado !== ESTADO.SINCRONIZADO).length;
+  const ouro = useMemo(() => calcularOuro(painel.painel, fila, { desde: painel.em }), [painel, fila]);
+  // Na tela Novo só vale a mana do mês que está correndo (o cache pode ser do mês passado).
+  const mana = useMemo(
+    () => calcularMana(painel.painel?.mes === mesDeHoje() ? painel.painel : null, fila, { desde: painel.em }),
+    [painel, fila]
+  );
   const tudo = () => { recarregarFila(); recarregarDados(); };
 
   if (acesso === 'verificando') {
@@ -181,7 +219,7 @@ export default function App() {
         {/* A chave por aba faz o conteúdo entrar de novo a cada troca: é o
             fade que separa uma tela da outra em vez do corte seco. */}
         <div className="vista" key={aba}>
-        {aba === 'novo' && <Novo cadastros={cadastros} resumo={resumo} aoMudarFila={tudo} />}
+        {aba === 'novo' && <Novo cadastros={cadastros} resumo={resumo} ouro={ouro} mana={mana} aoMudarFila={tudo} />}
         {aba === 'mes' && <Mes cadastros={cadastros} aoMudarDados={tudo} />}
         {aba === 'perguntar' && <Perguntar aoVerHistorico={() => setAba('historico')} />}
         {aba === 'historico' && <Historico />}

@@ -1,4 +1,5 @@
 import Compromissos from '../../componentes/Compromissos.jsx';
+import Chefes from '../../componentes/Chefes.jsx';
 import Capa from '../../componentes/Capa.jsx';
 import Sanfona from '../../componentes/Sanfona.jsx';
 import { formatarBRL } from '../../lib/parser.js';
@@ -33,14 +34,8 @@ export default function AbaContas({ painel, ocupado, aoAbrirCompromisso, aoAbrir
 
       {fixas.length > 0 && (
         <>
-          <Compromissos
-            titulo="Contas fixas do mês"
-            resumo={`${formatarBRL(painel.fixas_total)} no total`}
-            itens={fixas}
-            ocupado={ocupado}
-            aoAbrir={aoAbrirCompromisso}
-            rotuloFeitos={{ um: 'já lançada', varios: 'já lançadas' }}
-          />
+          {/* Contas fixas são os chefes do mês: lançar é derrotar. */}
+          <Chefes itens={fixas} ocupado={ocupado} aoAbrir={aoAbrirCompromisso} />
 
           {atrasadas.total > 0 && (
             <div className="aviso ruim">

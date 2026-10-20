@@ -31,7 +31,7 @@
 
 // Suba junto com VERSAO_APP em src/lib/versao.js — o app compara as duas e
 // avisa na tela quando só uma das metades foi publicada.
-var VERSAO = '2.7.0';
+var VERSAO = '2.8.0';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -372,6 +372,8 @@ function doPost(e) {
       case 'pagar_fixa':         return json_(pagarFixa_(pedido));
       case 'pagar_fatura':       return json_(pagarFatura_(pedido));
       case 'painel':      return json_(painel_(pedido));
+      case 'salvar_meta': return json_(salvarMeta_(pedido));
+      case 'conquistar':  return json_(conquistar_(pedido));
       default:            return json_({ ok: false, erro: 'acao_desconhecida' });
     }
   } catch (err) {
@@ -1874,6 +1876,11 @@ function painel_(pedido) {
   var totais = { receitas: 0, despesas: 0, lancamentos: 0, credito: 0, caixa: 0 };
   var porCategoria = {}, porConta = {}, porPessoa = {}, porFonte = {}, porGrupo = {};
   var porDia = {};
+  // Gasto livre de hoje: o que saiu hoje e NÃO estava previsto. Conta fixa paga
+  // e parcela de compra antiga já estavam reservadas na previsão — pagar o
+  // aluguel hoje não pode zerar o "ouro de hoje".
+  var hoje = hojeISO_();
+  var gastoLivreHoje = 0;
 
   var grupoDe = {};
   // Inclui as desativadas: lançamento antigo continua no grupo em que nasceu.
@@ -1940,6 +1947,9 @@ function painel_(pedido) {
     somar_(porGrupo, grupoDe[chaveNome_(cat)] || 'Outros', valor);
     somar_(porConta, r[col.conta] || 'Sem conta', valor);
     somar_(porDia, data, valor);
+    if (data === hoje && r[col.origem] !== 'conta fixa' && !(Number(r[col.parcela_atual]) > 1)) {
+      gastoLivreHoje += valor;
+    }
     somar_(porPessoa, r[col.pessoa] || 'Sem dono', valor);
   });
 
@@ -2092,8 +2102,89 @@ function painel_(pedido) {
       ainda_sai: previstoTotal,
       sobra: arred_(totais.receitas - totais.despesas + aReceberTotal - previstoTotal)
     },
-    orcamentos: orcamentos
+    gasto_livre_hoje: arred_(gastoLivreHoje),
+    orcamentos: orcamentos,
+    // a missão do mês (com vigência) e as conquistas já ganhas
+    metas: lerMetas_(),
+    conquistas: lerConquistas_()
   };
+}
+
+// --- Missão do mês e conquistas ----------------------------------------------
+// Moram nas propriedades do script, não numa aba: são poucos dados, e assim o
+// celular e o computador veem a mesma missão e as mesmas conquistas.
+//
+// A meta de guardar tem vigência, como as contas fixas: mudar a meta em
+// novembro não reescreve se outubro foi cumprido.
+
+var CONQUISTAS_VALIDAS = [
+  'primeira_missao', 'fase_limpa', 'bolso_trancado', 'mana_intacta',
+  'no_azul', 'trinca', 'formiguinha', 'guardiao'
+];
+
+function lerJsonProp_(chave, padrao) {
+  try {
+    var texto = PROP.getProperty(chave);
+    return texto ? JSON.parse(texto) : padrao;
+  } catch (e) {
+    return padrao;
+  }
+}
+
+/** [{ desde: 'aaaa-mm', valor }], do mais antigo para o mais novo. */
+function lerMetas_() {
+  var metas = lerJsonProp_('METAS_GUARDAR', []);
+  return Array.isArray(metas) ? metas : [];
+}
+
+/** Valor 0 desliga a missão a partir do mês informado (ou do atual). */
+function salvarMeta_(pedido) {
+  var valor = Math.round(Math.max(0, Number(pedido.valor) || 0) * 100) / 100;
+  if (valor > 10000000) return { ok: false, erro: 'valor_invalido' };
+  var desde = /^\d{4}-\d{2}$/.test(String(pedido.desde || '')) ? String(pedido.desde) : mesAtual_();
+
+  var trava = LockService.getScriptLock();
+  trava.waitLock(15000);
+  try {
+    var metas = lerMetas_().filter(function (m) { return m.desde !== desde; });
+    metas.push({ desde: desde, valor: valor });
+    metas.sort(function (a, b) { return a.desde < b.desde ? -1 : a.desde > b.desde ? 1 : 0; });
+    PROP.setProperty('METAS_GUARDAR', JSON.stringify(metas));
+    return { ok: true, metas: metas };
+  } finally {
+    trava.releaseLock();
+  }
+}
+
+/** { id: 'aaaa-mm-dd' } — o dia em que cada conquista foi ganha. */
+function lerConquistas_() {
+  var ganhas = lerJsonProp_('CONQUISTAS', {});
+  return ganhas && typeof ganhas === 'object' && !Array.isArray(ganhas) ? ganhas : {};
+}
+
+/**
+ * O app calcula quais conquistas você já merece e manda os ids; aqui elas
+ * ficam guardadas para sempre (uma conquista do mês não some quando o mês
+ * vira). Id desconhecido é ignorado.
+ */
+function conquistar_(pedido) {
+  var ids = Array.isArray(pedido.ids) ? pedido.ids : [];
+  var trava = LockService.getScriptLock();
+  trava.waitLock(15000);
+  try {
+    var ganhas = lerConquistas_();
+    var hoje = hojeISO_();
+    var novas = [];
+    ids.forEach(function (id) {
+      if (CONQUISTAS_VALIDAS.indexOf(id) < 0 || ganhas[id]) return;
+      ganhas[id] = hoje;
+      novas.push(id);
+    });
+    if (novas.length) PROP.setProperty('CONQUISTAS', JSON.stringify(ganhas));
+    return { ok: true, conquistas: ganhas, novas: novas };
+  } finally {
+    trava.releaseLock();
+  }
 }
 
 /**

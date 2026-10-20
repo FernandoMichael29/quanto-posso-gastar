@@ -139,6 +139,9 @@ export const api = {
   pagarFixa: (nome, mes, opcoes = {}) => chamar('pagar_fixa', { nome, mes, ...opcoes }),
   pagarFatura: (cartao, mes, opcoes = {}) => chamar('pagar_fatura', { cartao, mes, ...opcoes }),
   painel: (mes) => chamar('painel', { mes }, { prazo: 40000 }),
+  // Missão do mês (0 desliga) e conquistas ganhas: guardadas no script.
+  salvarMeta: (valor) => chamar('salvar_meta', { valor }),
+  conquistar: (ids) => chamar('conquistar', { ids }),
   // A análise lê vários meses e chama o modelo grande: precisa de mais fôlego.
   // `anterior` é a análise que está na tela: leva o contexto para a IA não
   // recalcular tudo quando você faz uma pergunta de continuação.

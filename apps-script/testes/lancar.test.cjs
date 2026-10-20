@@ -53,7 +53,9 @@ global.Utilities = {
     return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate());
   }
 };
-global.PropertiesService = { getScriptProperties: () => ({ getProperty: () => null, setProperty: () => {}, deleteProperty: () => {} }) };
+// Propriedades de verdade (em memória): a missão e as conquistas moram nelas.
+const props = {};
+global.PropertiesService = { getScriptProperties: () => ({ getProperty: (k) => (k in props ? props[k] : null), setProperty: (k, v) => { props[k] = String(v); }, deleteProperty: (k) => { delete props[k]; } }) };
 global.CacheService = { getScriptCache: () => ({ get: () => null, put: () => {} }) };
 global.Session = { getEffectiveUser: () => ({ getEmail: () => 'x@y.z' }) };
 global.MailApp = { sendEmail: () => {} };
@@ -330,3 +332,31 @@ assert.strictEqual(extrato_({ busca: 'nao existe isso aqui' }).total, 0, 'busca 
 excluirLancamento_({ uuid: 'ex1' });
 assert.ok(!uuids(extrato_({ busca: 'tenis ipiranga' })).includes('ex1'), 'o que foi excluído some do extrato');
 console.log('\nextrato: ok');
+
+// 26. gasto livre de hoje: só o que não estava previsto conta contra o "ouro de hoje"
+const livreAntes = painel_({ mes: '2026-09' }).gasto_livre_hoje || 0;
+lancar_({ lancamentos: [
+  { uuid: 'ouro1', data: '2026-09-16', valor: 50, categoria: 'Compras', descricao: 'tenis', origem: 'manual' },
+  { uuid: 'ouro2', data: '2026-09-16', valor: 900, categoria: 'Moradia', descricao: 'aluguel', origem: 'conta fixa' },
+  { uuid: 'ouro3', data: '2026-09-15', valor: 30, categoria: 'Compras', descricao: 'ontem', origem: 'manual' }
+] });
+const pv26 = painel_({ mes: '2026-09' });
+assert.strictEqual(arred_(pv26.gasto_livre_hoje - livreAntes), 50, 'só o gasto manual de hoje conta (sem conta fixa, sem ontem)');
+assert.ok(typeof pv26.previsao.sobra === 'number', 'a previsão continua vindo junto');
+console.log('\ngasto livre de hoje: ok');
+
+// 27. missão do mês e conquistas: guardadas nas propriedades do script
+assert.deepStrictEqual(painel_({ mes: '2026-09' }).metas, [], 'sem missão, lista vazia');
+assert.deepStrictEqual(painel_({ mes: '2026-09' }).conquistas, {}, 'sem conquistas ainda');
+salvarMeta_({ valor: 1500 });
+salvarMeta_({ valor: 1000, desde: '2026-07' });
+salvarMeta_({ valor: 1800 });                                   // mesmo mês: troca, não duplica
+assert.deepStrictEqual(painel_({ mes: '2026-09' }).metas, [{ desde: '2026-07', valor: 1000 }, { desde: '2026-09', valor: 1800 }], 'metas por vigência, em ordem');
+assert.strictEqual(salvarMeta_({ valor: 1e9 }).ok, false, 'valor absurdo é recusado');
+const c1 = conquistar_({ ids: ['fase_limpa', 'nao_existe', 'primeira_missao'] });
+assert.deepStrictEqual(c1.novas, ['fase_limpa', 'primeira_missao'], 'id desconhecido é ignorado');
+assert.strictEqual(c1.conquistas.fase_limpa, '2026-09-16', 'guarda o dia em que ganhou');
+assert.deepStrictEqual(conquistar_({ ids: ['fase_limpa'] }).novas, [], 'a mesma conquista não é ganha duas vezes');
+assert.deepStrictEqual(Object.keys(painel_({ mes: '2026-09' }).conquistas).sort(), ['fase_limpa', 'primeira_missao'], 'o painel traz as conquistas');
+assert.strictEqual(conquistar_({ ids: 'fase_limpa' }).ok, true, 'ids que não são lista não quebram');
+console.log('\nmissão e conquistas: ok');

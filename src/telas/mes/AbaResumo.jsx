@@ -2,6 +2,9 @@ import { useState } from 'react';
 import Barras from '../../componentes/Barras.jsx';
 import GraficoEvolucao from '../../componentes/GraficoEvolucao.jsx';
 import Sanfona from '../../componentes/Sanfona.jsx';
+import Mana from '../../componentes/Mana.jsx';
+import Missao from '../../componentes/Missao.jsx';
+import { calcularMana } from '../../lib/mana.js';
 import { formatarBRL, soNumero } from '../../lib/parser.js';
 import { comSinal, lider, mesAberto, notaDaResposta } from './util.js';
 
@@ -13,7 +16,7 @@ const CORTES = [
 ];
 
 /** Quanto sobra, e a prova: a conta montada, o gráfico e para onde foi. */
-export default function AbaResumo({ painel }) {
+export default function AbaResumo({ painel, aoMudar }) {
   const [corte, setCorte] = useState('categoria');
 
   const aberto = mesAberto(painel);
@@ -83,6 +86,12 @@ export default function AbaResumo({ painel }) {
           )}
         </div>
       )}
+
+      {/* Teto de cada categoria como mana: o que ainda dá para gastar nela. */}
+      <Mana lista={calcularMana(painel)} aberto={aberto} />
+
+      {/* Guardar como missão (XP) e as medalhas: o lado de jogo do mês. */}
+      <Missao painel={painel} aoMudar={aoMudar} />
 
       <GraficoEvolucao evolucao={painel.evolucao} mesAtual={painel.mes} />
 

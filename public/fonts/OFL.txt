@@ -1,4 +1,6 @@
 Pixelify Sans — subset "latin" baixado do Google Fonts (pixelify-sans.woff2).
+Modificado neste projeto: o glifo do "5" foi redesenhado para não ser lido como "S"
+(ferramentas/fonte/cinco.py). A licença permite: a fonte não tem Reserved Font Name.
 
 Copyright 2021 The Pixelify Sans Project Authors (https://github.com/eifetx/Pixelify-Sans)
 

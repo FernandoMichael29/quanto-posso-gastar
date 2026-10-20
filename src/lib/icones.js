@@ -1,9 +1,11 @@
 // Gerado por ferramentas/icones/gerar.py — não edite à mão.
 import folha from '../assets/icones.png';
 import folhaAbas from '../assets/abas.png';
+import folhaConquistas from '../assets/conquistas.png';
 
 export const FOLHA = folha;
 export const FOLHA_ABAS = folhaAbas;
+export const FOLHA_CONQUISTAS = folhaConquistas;
 
 // Categoria (minúscula, sem acento) → coluna na folha de 32 px.
 export const COLUNA = {
@@ -37,4 +39,16 @@ export const ABA = {
   perguntar: 2,
   historico: 3,
   ajustes: 4,
+};
+
+// Conquista → coluna na folha de medalhas (32 px).
+export const MEDALHA = {
+  primeira_missao: 0,
+  fase_limpa: 1,
+  bolso_trancado: 2,
+  mana_intacta: 3,
+  no_azul: 4,
+  trinca: 5,
+  formiguinha: 6,
+  guardiao: 7,
 };

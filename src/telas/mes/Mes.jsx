@@ -162,7 +162,9 @@ export default function Mes({ cadastros, aoMudarDados }) {
       {/* Uma chave por aba e por mês: o conteúdo entra de novo a cada troca,
           e a direção conta se você foi para frente ou para trás no tempo. */}
       <div className={`vista ${direcao || ''}`} key={`${vista}:${mes}`}>
-      {painel && vista === 'resumo' && <AbaResumo painel={painel} />}
+      {painel && vista === 'resumo' && (
+        <AbaResumo painel={painel} aoMudar={() => { carregar(mes); aoMudarDados?.(); }} />
+      )}
 
       {painel && vista === 'contas' && (
         <AbaContas

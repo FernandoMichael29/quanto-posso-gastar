@@ -52,7 +52,7 @@ export default function Compromissos({
  * vale, senão editar o lançamento mudava a janela e a linha ficava no valor
  * antigo.
  */
-function valorQueVale(i) {
+export function valorQueVale(i) {
   if (i.lancado && i.valor_lancado != null) return i.valor_lancado;
   if (i.valor_agendado != null) return i.valor_agendado;
   return i.valor;
