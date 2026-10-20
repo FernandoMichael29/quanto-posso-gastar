@@ -418,3 +418,145 @@ assert.strictEqual(JSON.stringify(abas.categorias.dados), antesPal, 'nada aprend
 if (!abas.memoria) abas.memoria = new Aba(['fato', 'origem', 'data', 'ativo']);
 assert.ok(panorama_({}).baus.some((b) => b.nome === 'Chile 2027' && b.saldo === 450), 'a análise sabe dos baús');
 console.log('\nbaús: ok');
+
+// 29. extrato por mês: só o mês pedido, e a lista dos meses que têm lançamento
+const ago = extrato_({ mes: '2026-08', limite: 100 });
+assert.ok(ago.lancamentos.length > 0 && ago.lancamentos.every((l) => l.data.slice(0, 7) === '2026-08'), 'só agosto');
+assert.strictEqual(ago.mes, '2026-08');
+assert.ok(ago.meses.includes('2026-08') && ago.meses.includes('2026-09'), 'meses com lançamento, para marcar no seletor');
+assert.deepStrictEqual([...ago.meses].sort(), ago.meses, 'em ordem');
+assert.strictEqual(extrato_({ mes: '1999-01' }).total, 0, 'mês vazio');
+assert.ok(extrato_({ mes: 'lixo' }).total > ago.total, 'mês inválido é ignorado (tudo)');
+const busca29 = extrato_({ mes: '2026-09', busca: 'ipiranga' });
+assert.ok(busca29.lancamentos.every((l) => l.data.slice(0, 7) === '2026-09'), 'busca dentro do mês');
+console.log('\nextrato por mês: ok');
+
+// 30. rendimento dos baús: CDI do Banco Central, dia útil a dia útil, com IR e IOF
+{
+  // aba velha (sem as colunas de rendimento) ganha as colunas e não perde nada
+  const velha = new Aba(['nome', 'meta', 'objetivo', 'prazo', 'criado_em', 'ativo']);
+  abas.baus.dados.slice(1).forEach((l) => velha.dados.push(l.slice(0, 6)));
+  const antes = velha.dados.length;
+  abas.baus = velha;
+  assert.ok(baus_().baus.some((b) => b.nome === 'Chile 2027' && b.saldo === 450), 'baú antigo continua lá');
+  assert.deepStrictEqual(abas.baus.dados[0], ABAS.baus, 'cabeçalho novo');
+  assert.strictEqual(abas.baus.dados.length, antes, 'nenhuma linha perdida');
+  assert.strictEqual(baus_().baus.find((b) => b.nome === 'Chile 2027').rende.tipo, '', 'baú antigo não rende');
+
+  // Banco Central de mentira: 0,050788% ao dia em todo dia útil de agosto e
+  // setembro, menos o feriado de 7 de setembro. Conta quantas vezes foi chamado.
+  const TAXA = 0.050788;
+  let chamadas = 0, foraDoAr = false;
+  const br = (iso) => iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4);
+  const uteis = [];
+  for (let d = new DataReal(Date.UTC(2026, 7, 1, 12)); d < new DataReal(Date.UTC(2026, 8, 16, 12)); d = new DataReal(d.getTime() + 86400000)) {
+    const iso = d.toISOString().slice(0, 10);
+    if (d.getUTCDay() === 0 || d.getUTCDay() === 6 || iso === '2026-09-07') continue;
+    uteis.push(iso);
+  }
+  UrlFetchApp = { fetch: (url) => {
+    chamadas++;
+    if (foraDoAr) throw new Error('fora do ar');
+    assert.ok(/bcdata\.sgs\.12\/dados\?formato=json&dataInicial=\d\d\/\d\d\/\d{4}&dataFinal=16\/09\/2026/.test(url), 'pede a série 12 até hoje: ' + url);
+    return { getResponseCode: () => 200, getContentText: () => JSON.stringify(uteis.map((d) => ({ data: br(d), valor: String(TAXA) }))) };
+  } };
+  const memCache = {};
+  CacheService = { getScriptCache: () => ({ get: (k) => (k in memCache ? memCache[k] : null), put: (k, v) => { memCache[k] = v; } }) };
+
+  // um baú que não rende não chama o Banco Central
+  baus_();
+  assert.strictEqual(chamadas, 0, 'sem baú rendendo, nada de internet');
+
+  // 1.000 guardados em 17/08 rendendo 115% do CDI
+  assert.strictEqual(salvarBau_({ nome: 'Turbo', meta: 5000, rende_tipo: 'cdi', rende_pct: 115 }).ok, true);
+  capturar_({ uuid: 'r1', lancamento: { tipo: 'guardar', valor: 1000, categoria: 'Turbo', data: '2026-08-17', conta: 'Nubank Fernando', origem: 'bau' } });
+  let turbo = baus_().baus.find((b) => b.nome === 'Turbo');
+  const dias = uteis.filter((d) => d >= '2026-08-17' && d < '2026-09-16').length;
+  const esperado = 1000 * Math.pow(1 + TAXA / 100 * 1.15, dias);
+  assert.strictEqual(turbo.saldo, arred_(esperado), 'juros sobre juros nos dias úteis (' + dias + ' dias)');
+  assert.strictEqual(turbo.rende.principal, 1000);
+  assert.strictEqual(turbo.rende.rendimento, arred_(esperado - 1000));
+  assert.strictEqual(turbo.rende.iof, 0, '30 dias: sem IOF');
+  assert.strictEqual(turbo.rende.ir, arred_((esperado - 1000) * 0.225), 'IR de 22,5% até 180 dias');
+  assert.strictEqual(turbo.rende.liquido, arred_(esperado - (esperado - 1000) * 0.225));
+  assert.strictEqual(turbo.rende.cdi_data, '2026-09-15');
+  assert.strictEqual(turbo.rende.estimado, false);
+  assert.ok(Math.abs(turbo.rende.cdi_anual - 13.65) < 0.1, 'CDI anual por volta de 13,65%: ' + turbo.rende.cdi_anual);
+  assert.ok(turbo.rende.rende_por_mes > 11 && turbo.rende.rende_por_mes < 14, 'uns R$ 12 por mês a cada mil: ' + turbo.rende.rende_por_mes);
+  assert.ok(Math.abs(turbo.rende.por_mes_rendimento['2026-08'] + turbo.rende.por_mes_rendimento['2026-09'] - turbo.rende.rendimento) <= 0.011, 'o rendimento mês a mês fecha com o total (até o centavo)');
+  assert.strictEqual(turbo.guardado_mes, 0, 'rendimento não é dinheiro guardado no mês');
+  assert.strictEqual(chamadas, 1);
+  baus_(); painel_({ mes: '2026-09' });
+  assert.strictEqual(chamadas, 1, 'o CDI do dia fica no cache: uma ida por dia');
+
+  // o feriado não rende
+  const comFeriado = uteis.filter((d) => d >= '2026-08-17' && d < '2026-09-16').includes('2026-09-07');
+  assert.strictEqual(comFeriado, false);
+
+  // o painel conta o rendimento no total dos baús, mas não no mês
+  const p30 = painel_({ mes: '2026-09' });
+  assert.strictEqual(p30.baus_total, arred_(450 + turbo.saldo), 'total dos baús com rendimento');
+  assert.strictEqual(p30.guardado_mes, 250, 'guardado do mês não muda com rendimento');
+
+  // acerto com o banco: o banco diz 1.013,00 → entra a diferença, que também rende dali para frente
+  const diferenca = arred_(1013 - turbo.saldo);
+  capturar_({ uuid: 'r2', lancamento: { tipo: 'rendimento', valor: diferenca, categoria: 'Turbo', data: '2026-09-16', origem: 'acerto' } });
+  turbo = baus_().baus.find((b) => b.nome === 'Turbo');
+  assert.strictEqual(turbo.saldo, 1013, 'depois do acerto, o saldo é o do banco');
+  assert.strictEqual(turbo.guardado_mes, 0, 'acerto não é guardar');
+  assert.strictEqual(painel_({ mes: '2026-09' }).guardado_mes, 250, 'nem no painel');
+  assert.strictEqual(painel_({ mes: '2026-09' }).baus_total, 450 + 1013);
+  const pan = panorama_({}).baus.find((b) => b.nome === 'Turbo');
+  assert.strictEqual(pan.rende, '115% do CDI', 'a análise sabe quanto rende');
+
+  // acerto para baixo também vale
+  capturar_({ uuid: 'r3', lancamento: { tipo: 'rendimento', valor: -3, categoria: 'Turbo', data: '2026-09-16', origem: 'acerto' } });
+  assert.strictEqual(baus_().baus.find((b) => b.nome === 'Turbo').saldo, 1010);
+  excluirLancamento_({ uuid: 'r3' });
+
+  // depósito novo paga IOF; resgate sai do mais antigo primeiro
+  capturar_({ uuid: 'r4', lancamento: { tipo: 'guardar', valor: 500, categoria: 'Turbo', data: '2026-09-10', origem: 'bau' } });
+  turbo = baus_().baus.find((b) => b.nome === 'Turbo');
+  assert.ok(turbo.rende.iof > 0, 'depósito de 6 dias tem IOF: ' + turbo.rende.iof);
+  capturar_({ uuid: 'r5', lancamento: { tipo: 'resgatar', valor: 1013, categoria: 'Turbo', data: '2026-09-16', origem: 'bau' } });
+  turbo = baus_().baus.find((b) => b.nome === 'Turbo');
+  assert.ok(turbo.rende.iof > 0, 'sobrou o depósito novo, que ainda paga IOF');
+  assert.ok(turbo.rende.principal > 499 && turbo.rende.principal <= 500, 'o que sobrou é o depósito de 10/09: ' + turbo.rende.principal);
+
+  // limite: até 500 rende 115%, acima rende 100%
+  salvarBau_({ nome: 'Limite', rende_tipo: 'cdi', rende_pct: 115, rende_limite: 500, rende_acima: 100 });
+  capturar_({ uuid: 'r6', lancamento: { tipo: 'guardar', valor: 2000, categoria: 'Limite', data: '2026-09-14', origem: 'bau' } });
+  const lim = baus_().baus.find((b) => b.nome === 'Limite');
+  const d1 = 500 * TAXA / 100 * 1.15 + 1500 * TAXA / 100;
+  const s1 = 2000 + d1;
+  const ate2 = 500, d2 = ate2 * TAXA / 100 * 1.15 + (s1 - ate2) * TAXA / 100;
+  assert.strictEqual(lim.saldo, arred_(s1 + d2), 'o que passa do limite rende menos');
+  assert.strictEqual(lim.rende.limite, 500);
+  assert.strictEqual(lim.rende.acima, 100);
+
+  // taxa fixa ao ano, sem Banco Central
+  salvarBau_({ nome: 'Fixo', rende_tipo: 'fixo', rende_pct: 12 });
+  capturar_({ uuid: 'r7', lancamento: { tipo: 'guardar', valor: 1000, categoria: 'Fixo', data: '2026-09-14', origem: 'bau' } });
+  const fixo = baus_().baus.find((b) => b.nome === 'Fixo');
+  assert.strictEqual(fixo.saldo, arred_(1000 * Math.pow(Math.pow(1.12, 1 / 252), 2)), '12% ao ano em 2 dias úteis');
+  assert.ok(Math.abs(fixo.rende.taxa_mes_ate - (Math.pow(1.12, 1 / 12) - 1)) < 1e-6);
+
+  // valores tortos são consertados
+  assert.strictEqual(salvarBau_({ nome: 'Torto', rende_tipo: 'poupanca', rende_pct: 115 }).bau.rende.tipo, '', 'tipo desconhecido vira não rende');
+  assert.strictEqual(salvarBau_({ nome: 'Torto', nome_antigo: 'Torto', rende_tipo: 'cdi', rende_pct: 9999 }).bau.rende.pct, 300, 'teto de 300% do CDI');
+  assert.strictEqual(salvarBau_({ nome: 'Torto', nome_antigo: 'Torto', rende_tipo: 'cdi', rende_pct: 0 }).bau.rende.tipo, '', '0% é não rende');
+
+  // Banco Central fora do ar e sem cache: usa a última taxa conhecida e avisa
+  Object.keys(memCache).forEach((k) => delete memCache[k]);
+  foraDoAr = true;
+  const semRede = baus_().baus.find((b) => b.nome === 'Limite');
+  assert.strictEqual(semRede.rende.estimado, true, 'avisa que é estimativa');
+  assert.strictEqual(semRede.saldo, lim.saldo, 'com a mesma taxa, dá o mesmo número');
+  const antesDeFalhar = chamadas;
+  baus_();
+  assert.strictEqual(chamadas, antesDeFalhar, 'depois de falhar, espera um pouco antes de tentar de novo');
+
+  UrlFetchApp = { fetch: () => { throw new Error('sem rede no teste'); } };
+  CacheService = { getScriptCache: () => ({ get: () => null, put: () => {} }) };
+}
+console.log('\nrendimento dos baús: ok');

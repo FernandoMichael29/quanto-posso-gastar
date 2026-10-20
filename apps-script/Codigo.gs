@@ -31,7 +31,7 @@
 
 // Suba junto com VERSAO_APP em src/lib/versao.js — o app compara as duas e
 // avisa na tela quando só uma das metades foi publicada.
-var VERSAO = '2.9.0';
+var VERSAO = '2.10.0';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -79,7 +79,10 @@ var ABAS = {
   conversas: ['data', 'pergunta', 'resposta', 'modelo', 'custo_estimado', 'analise_json'],
   // Caixinhas para guardar dinheiro. O que entra e sai de cada uma mora em
   // `lancamentos` (tipo guardar/resgatar, nome do baú na categoria).
-  baus: ['nome', 'meta', 'objetivo', 'prazo', 'criado_em', 'ativo']
+  // rende_*: quanto o baú rende. tipo '' (não rende), 'cdi' (pct = % do CDI)
+  // ou 'fixo' (pct = % ao ano). Com limite, o que passa dele rende `acima`.
+  baus: ['nome', 'meta', 'objetivo', 'prazo', 'criado_em', 'ativo',
+         'rende_tipo', 'rende_pct', 'rende_limite', 'rende_acima']
 };
 
 // Status possíveis de um lançamento na planilha.
@@ -91,7 +94,8 @@ var TIPO = {
   RECEITA: 'receita',
   FATURA: 'fatura',  // pagamento de fatura de cartão: sai do caixa, não é gasto novo
   GUARDAR: 'guardar',   // dinheiro que vai para um baú: sai do mês, mas não é gasto
-  RESGATAR: 'resgatar'  // dinheiro que volta de um baú para o mês
+  RESGATAR: 'resgatar',  // dinheiro que volta de um baú para o mês
+  RENDIMENTO: 'rendimento'  // acerto com o banco: corrige o saldo do baú (+ ou −); não sai nem entra no mês
 };
 
 var STATUS = {
@@ -1922,6 +1926,8 @@ function painel_(pedido) {
     // volta) do mês e é contado à parte: total dos baús e guardado do mês.
     if (ehBau_(tipo)) {
       if (r[col.status] !== STATUS.OK) return;
+      // Acerto com o banco: muda o saldo do baú, não o dinheiro do mês.
+      if (tipo === TIPO.RENDIMENTO) { saldoBaus += valor; return; }
       var s = sinalBau_(tipo) * valor;
       saldoBaus += s;
       if (serie[mesLinha]) serie[mesLinha].guardado += s;
@@ -2138,7 +2144,8 @@ function painel_(pedido) {
       guardado: arred_(totais.guardado)
     },
     guardado_mes: arred_(totais.guardado),
-    baus_total: arred_(saldoBaus),
+    // com o que os baús renderam até hoje (só calcula se algum rende)
+    baus_total: arred_(totalDosBaus_(saldoBaus, linhas)),
     gasto_livre_hoje: arred_(gastoLivreHoje),
     orcamentos: orcamentos,
     // a missão do mês (com vigência) e as conquistas já ganhas
@@ -2237,27 +2244,59 @@ var MAX_NOME_BAU = 40;
 var MAX_OBJETIVO_BAU = 300;
 
 function ehBau_(tipo) {
-  return tipo === TIPO.GUARDAR || tipo === TIPO.RESGATAR;
+  return tipo === TIPO.GUARDAR || tipo === TIPO.RESGATAR || tipo === TIPO.RENDIMENTO;
 }
 
-/** Guardar soma no baú, resgatar tira. */
+/**
+ * Guardar soma no baú, resgatar tira. O acerto com o banco (rendimento) não
+ * é dinheiro saindo nem voltando para o mês: o sinal dele aqui é zero, e
+ * quem quer o saldo soma o valor do acerto à parte.
+ */
 function sinalBau_(tipo) {
   if (tipo === TIPO.GUARDAR) return 1;
   if (tipo === TIPO.RESGATAR) return -1;
   return 0;
 }
 
-/** A aba nasce na primeira vez que alguém mexe em baú — sem rodar configurar() de novo. */
+/**
+ * A aba nasce na primeira vez que alguém mexe em baú — sem rodar configurar()
+ * de novo. Quando ganha colunas novas (o rendimento entrou depois), o
+ * cabeçalho é refeito por nome e o que já estava lá vai junto.
+ */
 function abaBaus_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  if (!ss.getSheetByName('baus')) prepararAba_(ss, 'baus');
+  var aba = ss.getSheetByName('baus');
+  if (!aba) { prepararAba_(ss, 'baus'); return ss.getSheetByName('baus'); }
+  var largura = Math.max(aba.getLastColumn(), 1);
+  var cab = aba.getRange(1, 1, 1, largura).getValues()[0]
+    .map(function (c) { return String(c || '').trim(); });
+  var igual = cab.length >= ABAS.baus.length &&
+    ABAS.baus.every(function (c, i) { return cab[i] === c; });
+  if (!igual) prepararAba_(ss, 'baus');
   return ss.getSheetByName('baus');
+}
+
+var TIPOS_RENDE = ['', 'cdi', 'fixo'];
+
+/** O jeito que o baú rende, já conferido: o que vier torto vira "não rende". */
+function rendeDe_(tipo, pct, limite, acima) {
+  tipo = String(tipo || '').trim().toLowerCase();
+  if (TIPOS_RENDE.indexOf(tipo) < 0) tipo = '';
+  var teto = tipo === 'fixo' ? 100 : 300;
+  var p = Math.min(teto, Math.max(0, Number(pct) || 0));
+  if (!tipo || p <= 0) return { tipo: '', pct: 0, limite: 0, acima: 0 };
+  var lim = Math.min(100000000, Math.max(0, Math.round((Number(limite) || 0) * 100) / 100));
+  var ac = (acima === '' || acima === null || acima === undefined || isNaN(Number(acima)))
+    ? (tipo === 'cdi' ? 100 : p)
+    : Math.min(teto, Math.max(0, Number(acima)));
+  return { tipo: tipo, pct: p, limite: lim, acima: lim > 0 ? ac : 0 };
 }
 
 function lerBaus_() {
   var aba = abaBaus_();
   var n = aba.getLastRow() - 1;
   if (n <= 0) return [];
+  var c = function (nome) { return ABAS.baus.indexOf(nome); };
   return aba.getRange(2, 1, n, ABAS.baus.length).getValues()
     .map(function (r, i) {
       return {
@@ -2267,7 +2306,8 @@ function lerBaus_() {
         objetivo: String(r[2] || ''),
         prazo: normalizarMes_(r[3]),
         criado_em: normalizarData_(r[4]),
-        ativo: r[5] !== 'não' && r[5] !== false
+        ativo: r[5] !== 'não' && r[5] !== false,
+        rende: rendeDe_(r[c('rende_tipo')], r[c('rende_pct')], r[c('rende_limite')], r[c('rende_acima')])
       };
     })
     .filter(function (b) { return b.nome; });
@@ -2278,10 +2318,15 @@ function lerBaus_() {
  * calcular o ritmo) e o histórico de cada um, do mais novo para o mais antigo.
  * Baú que tem dinheiro mas sumiu da aba (apagado à mão) aparece mesmo assim:
  * dinheiro guardado não pode desaparecer da tela.
+ *
+ * Baú que rende: o saldo é o BRUTO de hoje (guardado + o que rendeu), e
+ * `rende` traz o resto — líquido se resgatar hoje, quanto rende por mês, o
+ * rendimento de cada mês. `linhasProntas` é para o painel, que já leu tudo.
  */
-function baus_() {
+function baus_(linhasProntas) {
   var cadastro = lerBaus_();
   var mesHoje = mesAtual_();
+  var hoje = hojeISO_();
   var porChave = {};
   var arquivados = {};
   var lista = [];
@@ -2291,43 +2336,65 @@ function baus_() {
     if (!b.ativo) { arquivados[k] = true; return; }
     var item = {
       nome: b.nome, meta: b.meta, objetivo: b.objetivo, prazo: b.prazo, criado_em: b.criado_em,
-      saldo: 0, guardado_mes: 0, por_mes: {}, movimentos: []
+      rende: b.rende,
+      saldo: 0, guardado_mes: 0, por_mes: {}, movimentos: [], _eventos: []
     };
     porChave[k] = item;
     lista.push(item);
   });
 
-  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('lancamentos');
-  var n = aba.getLastRow() - 1;
   var col = indiceColunas_();
-  if (n > 0) {
-    aba.getRange(2, 1, n, ABAS.lancamentos.length).getValues().forEach(function (r, i) {
-      if (!ehBau_(r[col.tipo]) || r[col.status] !== STATUS.OK) return;
-      var nome = String(r[col.categoria] || 'Baú');
-      var k = chaveNome_(nome);
-      if (arquivados[k] && !porChave[k]) return;
-      var b = porChave[k];
-      if (!b) {
-        b = porChave[k] = {
-          nome: nome, meta: 0, objetivo: '', prazo: '', criado_em: '', sem_cadastro: true,
-          saldo: 0, guardado_mes: 0, por_mes: {}, movimentos: []
-        };
-        lista.push(b);
-      }
-      var data = normalizarData_(r[col.data]);
-      var valor = Number(r[col.valor]) || 0;
-      var s = sinalBau_(r[col.tipo]) * valor;
-      b.saldo += s;
-      somar_(b.por_mes, data.slice(0, 7), s);
-      if (data.slice(0, 7) === mesHoje) b.guardado_mes += s;
-      var item = lancamentoDe_(r, col, data);
-      item._ordem = ordemDe_(data, r[col.hora_registro], i);
-      b.movimentos.push(item);
-    });
+  var linhas = linhasProntas;
+  if (!linhas) {
+    var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('lancamentos');
+    var n = aba.getLastRow() - 1;
+    linhas = n > 0 ? aba.getRange(2, 1, n, ABAS.lancamentos.length).getValues() : [];
   }
+  linhas.forEach(function (r, i) {
+    var tipo = r[col.tipo];
+    if (!ehBau_(tipo) || r[col.status] !== STATUS.OK) return;
+    var nome = String(r[col.categoria] || 'Baú');
+    var k = chaveNome_(nome);
+    if (arquivados[k] && !porChave[k]) return;
+    var b = porChave[k];
+    if (!b) {
+      b = porChave[k] = {
+        nome: nome, meta: 0, objetivo: '', prazo: '', criado_em: '', sem_cadastro: true,
+        rende: rendeDe_(''),
+        saldo: 0, guardado_mes: 0, por_mes: {}, movimentos: [], _eventos: []
+      };
+      lista.push(b);
+    }
+    var data = normalizarData_(r[col.data]);
+    var valor = Number(r[col.valor]) || 0;
+    var s = sinalBau_(tipo) * valor;
+    // O acerto com o banco muda o saldo, mas não é dinheiro que saiu do mês.
+    b.saldo += tipo === TIPO.RENDIMENTO ? valor : s;
+    if (s) somar_(b.por_mes, data.slice(0, 7), s);
+    if (data.slice(0, 7) === mesHoje) b.guardado_mes += s;
+    b._eventos.push({ data: data, tipo: tipo, valor: valor, ordem: i });
+    var item = lancamentoDe_(r, col, data);
+    item._ordem = ordemDe_(data, r[col.hora_registro], i);
+    b.movimentos.push(item);
+  });
+
+  // O CDI só é buscado se algum baú rende pelo CDI e tem dinheiro.
+  var serie = null;
+  var desde = '';
+  lista.forEach(function (b) {
+    if (b.rende.tipo !== 'cdi' || !b._eventos.length) return;
+    b._eventos.forEach(function (e) { if (e.data && (!desde || e.data < desde)) desde = e.data; });
+  });
+  if (desde) serie = serieCdi_(desde);
 
   var total = 0, doMes = 0;
   lista.forEach(function (b) {
+    if (b.rende.tipo || b._eventos.some(function (e) { return e.tipo === TIPO.RENDIMENTO; })) {
+      var calc = rendimentoDoBau_(b.rende, b._eventos, serie, hoje);
+      b.saldo = calc.bruto;
+      b.rende = calc.rende;
+    }
+    delete b._eventos;
     b.saldo = arred_(b.saldo);
     b.guardado_mes = arred_(b.guardado_mes);
     Object.keys(b.por_mes).forEach(function (m) { b.por_mes[m] = arred_(b.por_mes[m]); });
@@ -2337,6 +2404,262 @@ function baus_() {
   });
 
   return { ok: true, mes: mesHoje, total: arred_(total), guardado_mes: arred_(doMes), baus: lista };
+}
+
+/** Algum baú ativo rende? Sem a aba, não — e o painel não cria aba nenhuma. */
+function algumBauRende_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss.getSheetByName('baus')) return false;
+  return lerBaus_().some(function (b) { return b.ativo && b.rende.tipo; });
+}
+
+/** O total dos baús para o painel: o mesmo número da tela dos baús. */
+function totalDosBaus_(semRendimento, linhas) {
+  try {
+    return algumBauRende_() ? baus_(linhas).total : semRendimento;
+  } catch (e) {
+    return semRendimento;   // rendimento nunca derruba o painel
+  }
+}
+
+// --- Rendimento -------------------------------------------------------------
+// O Banco Central publica o CDI de cada dia útil (série 12, em % ao dia).
+// O baú rende todo dia útil sobre o saldo do fim do dia, juros sobre juros,
+// como a caixinha do banco. O dia de hoje ainda não rendeu.
+//
+// Imposto: o IR é regressivo pelo tempo de cada depósito (22,5% até 180 dias,
+// 20% até 360, 17,5% até 720, 15% depois) e o IOF come parte do rendimento
+// nos primeiros 30 dias. Resgate tira dos depósitos mais antigos primeiro.
+
+var CDI_PADRAO_ANUAL = 0.1365;   // só se o Banco Central nunca respondeu
+var IOF_REGRESSIVO = [96, 93, 90, 86, 83, 80, 76, 73, 70, 66, 63, 60, 56, 53, 50,
+                      46, 43, 40, 36, 33, 30, 26, 23, 20, 16, 13, 10, 6, 3, 0];
+var DIAS_UTEIS_MES = 21;
+
+function diaISOMais_(iso, n) {
+  var d = new Date(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10) + n, 12));
+  return d.getUTCFullYear() + '-' + ('0' + (d.getUTCMonth() + 1)).slice(-2) + '-' + ('0' + d.getUTCDate()).slice(-2);
+}
+
+function diasEntre_(de, ate) {
+  var a = Date.UTC(+de.slice(0, 4), +de.slice(5, 7) - 1, +de.slice(8, 10));
+  var b = Date.UTC(+ate.slice(0, 4), +ate.slice(5, 7) - 1, +ate.slice(8, 10));
+  return Math.round((b - a) / 86400000);
+}
+
+function diaDeSemana_(iso) {
+  var d = new Date(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10), 12)).getUTCDay();
+  return d >= 1 && d <= 5;
+}
+
+/**
+ * A série do CDI desde `desde`, de um jeito que nunca derruba a tela: busca no
+ * Banco Central uma vez por dia (fica no cache), e se ele não responder usa o
+ * que já tinha — ou a última taxa conhecida — e avisa com `estimado`.
+ */
+function serieCdi_(desde) {
+  var hoje = hojeISO_();
+  var cache = null, guardada = null;
+  try {
+    cache = CacheService.getScriptCache();
+    guardada = JSON.parse(cache.get('CDI_SERIE') || 'null');
+  } catch (e) { guardada = null; }
+  if (guardada && guardada.desde <= desde && guardada.buscado_em === hoje) return guardada;
+
+  var falhouAgora = false;
+  try { falhouAgora = !!(cache && cache.get('CDI_FALHA')); } catch (e) {}
+  if (!falhouAgora) {
+    // Pede sempre um pouco antes (o Banco Central responde erro para período sem dia útil).
+    var inicio = desde < diaISOMais_(hoje, -10) ? desde : diaISOMais_(hoje, -10);
+    var dezAnos = diaISOMais_(hoje, -3650);
+    if (inicio < dezAnos) inicio = dezAnos;   // limite da API para série diária
+    var nova = buscarCdi_(inicio, hoje);
+    if (nova) {
+      try { cache.put('CDI_SERIE', JSON.stringify(nova), 21600); } catch (e) {}
+      try { PROP.setProperty('CDI_ULTIMA', JSON.stringify({ data: nova.ultima_data, taxa: nova.ultima })); } catch (e) {}
+      return nova;
+    }
+    try { cache.put('CDI_FALHA', '1', 1800); } catch (e) {}
+  }
+
+  if (guardada) { guardada.estimado = true; return guardada; }
+  var ult = null;
+  try { ult = JSON.parse(PROP.getProperty('CDI_ULTIMA') || 'null'); } catch (e) {}
+  return {
+    desde: hoje, ate: '', buscado_em: '', taxas: {},
+    ultima: ult ? Number(ult.taxa) : Math.pow(1 + CDI_PADRAO_ANUAL, 1 / 252) - 1,
+    ultima_data: ult ? String(ult.data || '') : '',
+    estimado: true
+  };
+}
+
+/** Uma ida ao Banco Central. Devolve null se não deu (sem rede, fora do ar, formato estranho). */
+function buscarCdi_(inicio, fim) {
+  var br = function (iso) { return iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4); };
+  try {
+    var url = 'https://api.bcb.gov.br/dados/serie/bcdata.sgs.12/dados?formato=json' +
+      '&dataInicial=' + br(inicio) + '&dataFinal=' + br(fim);
+    var resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true, headers: { Accept: 'application/json' } });
+    if (resp.getResponseCode() !== 200) return null;
+    var lista = JSON.parse(resp.getContentText());
+    if (!Array.isArray(lista) || !lista.length) return null;
+    var taxas = {}, ultimaData = '';
+    lista.forEach(function (x) {
+      var m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(x.data || ''));
+      var v = Number(String(x.valor || '').replace(',', '.'));
+      if (!m || !(v >= 0) || v > 1) return;   // % ao dia; acima de 1% é lixo
+      var iso = m[3] + '-' + m[2] + '-' + m[1];
+      taxas[iso] = v / 100;
+      if (iso > ultimaData) ultimaData = iso;
+    });
+    if (!ultimaData) return null;
+    return {
+      desde: inicio, ate: ultimaData, buscado_em: hojeISO_(), taxas: taxas,
+      ultima: taxas[ultimaData], ultima_data: ultimaData, estimado: false
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+/** A taxa do dia `d` para o baú (fração, não %), ou 0 se o dia não rende. */
+function taxaDoDia_(cfg, serie, d, aviso) {
+  var util;
+  var cdi = 0;
+  if (serie && serie.taxas[d] !== undefined) {
+    util = true; cdi = serie.taxas[d];
+  } else if (serie && d >= serie.desde && d <= serie.ate) {
+    util = false;                                 // feriado ou fim de semana dentro da série
+  } else {
+    // Fora da série: dia de semana, com a última taxa. O Banco Central publica
+    // o CDI de ontem só hoje — os poucos dias depois do último publicado são
+    // normais; antes da série, ou com a série velha, é estimativa.
+    util = diaDeSemana_(d);
+    if (util && cfg.tipo === 'cdi') {
+      cdi = serie ? serie.ultima : Math.pow(1 + CDI_PADRAO_ANUAL, 1 / 252) - 1;
+      if (!serie || !serie.ate || d < serie.desde || diasEntre_(serie.ate, d) > 4) aviso.estimado = true;
+    }
+  }
+  if (!util) return null;
+  if (cfg.tipo === 'cdi') return { ate: cdi * cfg.pct / 100, acima: cdi * cfg.acima / 100 };
+  return {
+    ate: Math.pow(1 + cfg.pct / 100, 1 / 252) - 1,
+    acima: Math.pow(1 + cfg.acima / 100, 1 / 252) - 1
+  };
+}
+
+function aliquotaIR_(dias) {
+  if (dias <= 180) return 0.225;
+  if (dias <= 360) return 0.20;
+  if (dias <= 720) return 0.175;
+  return 0.15;
+}
+
+/**
+ * Refaz a vida do baú dia a dia. Cada depósito é um "lote" (para saber a
+ * idade do dinheiro no IR); o rendimento de cada dia vai para os lotes na
+ * proporção do tamanho; resgate sai dos mais antigos; acerto com o banco
+ * entra (ou sai) como rendimento.
+ */
+function rendimentoDoBau_(cfg, eventos, serie, hoje) {
+  var ev = eventos.slice().sort(function (a, b) {
+    return a.data < b.data ? -1 : a.data > b.data ? 1 : a.ordem - b.ordem;
+  });
+  var lotes = [];
+  var porMes = {};
+  var aviso = { estimado: !!(serie && serie.estimado) };
+  var rendeuTotal = 0;   // tudo o que já rendeu (calculado + acertos), mesmo o que já foi resgatado
+
+  var valorDe = function (l) { return l.p + l.r; };
+  var somaLotes = function () { return lotes.reduce(function (t, l) { return t + valorDe(l); }, 0); };
+  var espalhar = function (y, data) {
+    var base = lotes.filter(function (l) { return valorDe(l) > 0; });
+    var tot = base.reduce(function (t, l) { return t + valorDe(l); }, 0);
+    if (tot <= 0) { lotes.push({ data: data, p: 0, r: y }); return; }
+    base.forEach(function (l) { l.r += y * valorDe(l) / tot; });
+  };
+  var aplicar = function (e) {
+    var v = Number(e.valor) || 0;
+    if (e.tipo === TIPO.GUARDAR) { lotes.push({ data: e.data, p: v, r: 0 }); return; }
+    if (e.tipo === TIPO.RENDIMENTO) { espalhar(v, e.data); rendeuTotal += v; return; }
+    // resgatar: dos mais antigos primeiro
+    var falta = v;
+    for (var i = 0; i < lotes.length && falta > 1e-9; i++) {
+      var l = lotes[i], val = valorDe(l);
+      if (val <= 0) continue;
+      var tira = Math.min(val, falta), f = tira / val;
+      l.p -= l.p * f; l.r -= l.r * f; falta -= tira;
+    }
+    if (falta > 1e-9) lotes.push({ data: e.data, p: -falta, r: 0 });
+    lotes = lotes.filter(function (l) { return Math.abs(valorDe(l)) > 1e-9; });
+  };
+
+  var i = 0;
+  if (cfg.tipo && ev.length) {
+    var d = ev[0].data;
+    while (d && d < hoje) {
+      while (i < ev.length && ev[i].data <= d) aplicar(ev[i++]);
+      var saldo = somaLotes();
+      if (saldo > 0) {
+        var tx = taxaDoDia_(cfg, serie, d, aviso);
+        if (tx) {
+          var ate = cfg.limite > 0 ? Math.min(saldo, cfg.limite) : saldo;
+          var y = ate * tx.ate + (saldo - ate) * tx.acima;
+          if (y > 0) { espalhar(y, d); somar_(porMes, d.slice(0, 7), y); rendeuTotal += y; }
+        }
+      }
+      d = diaISOMais_(d, 1);
+    }
+  }
+  while (i < ev.length) aplicar(ev[i++]);
+
+  var bruto = somaLotes();
+  var principal = 0, rendimento = 0, iof = 0, ir = 0;
+  lotes.forEach(function (l) {
+    principal += l.p;
+    rendimento += l.r;
+    if (l.r <= 0) return;
+    var dias = Math.max(0, diasEntre_(l.data, hoje));
+    var oIof = dias < 30 ? l.r * IOF_REGRESSIVO[Math.max(dias, 1) - 1] / 100 : 0;
+    iof += oIof;
+    ir += (l.r - oIof) * aliquotaIR_(dias);
+  });
+
+  // Quanto rende por mês daqui para frente, com a taxa de hoje.
+  var mensal = function (pctOuAno) {
+    if (cfg.tipo === 'cdi') {
+      var cdiDia = serie ? serie.ultima : Math.pow(1 + CDI_PADRAO_ANUAL, 1 / 252) - 1;
+      return Math.pow(1 + cdiDia * pctOuAno / 100, DIAS_UTEIS_MES) - 1;
+    }
+    if (cfg.tipo === 'fixo') return Math.pow(1 + pctOuAno / 100, 1 / 12) - 1;
+    return 0;
+  };
+  var m1 = mensal(cfg.pct), m2 = cfg.limite > 0 ? mensal(cfg.acima) : m1;
+  var base = Math.max(0, bruto);
+  var ateLim = cfg.limite > 0 ? Math.min(base, cfg.limite) : base;
+  var porMesFuturo = ateLim * m1 + (base - ateLim) * m2;
+
+  Object.keys(porMes).forEach(function (m) { porMes[m] = arred_(porMes[m]); });
+  var cdiDia = serie ? serie.ultima : null;
+  return {
+    bruto: arred_(bruto),
+    rende: {
+      tipo: cfg.tipo, pct: cfg.pct, limite: cfg.limite, acima: cfg.acima,
+      principal: arred_(principal),
+      rendimento: arred_(rendimento),
+      rendeu_total: arred_(rendeuTotal),
+      iof: arred_(iof),
+      ir: arred_(ir),
+      liquido: arred_(bruto - iof - ir),
+      por_mes_rendimento: porMes,
+      rende_por_mes: arred_(porMesFuturo),
+      taxa_mes_ate: Math.round(m1 * 1e6) / 1e6,
+      taxa_mes_acima: Math.round(m2 * 1e6) / 1e6,
+      cdi_data: cfg.tipo === 'cdi' && serie ? serie.ultima_data : '',
+      cdi_anual: cfg.tipo === 'cdi' && cdiDia !== null ? Math.round((Math.pow(1 + cdiDia, 252) - 1) * 10000) / 100 : null,
+      estimado: cfg.tipo === 'cdi' ? !!aviso.estimado : false
+    }
+  };
 }
 
 /**
@@ -2352,6 +2675,7 @@ function salvarBau_(pedido) {
   var prazo = /^\d{4}-\d{2}$/.test(String(pedido.prazo || '')) ? String(pedido.prazo) : '';
   var objetivo = String(pedido.objetivo || '').trim().slice(0, MAX_OBJETIVO_BAU);
   var antigo = String(pedido.nome_antigo || '').trim();
+  var rende = rendeDe_(pedido.rende_tipo, pedido.rende_pct, pedido.rende_limite, pedido.rende_acima);
 
   var trava = LockService.getScriptLock();
   trava.waitLock(15000);
@@ -2369,7 +2693,8 @@ function salvarBau_(pedido) {
     // arquivado, é trazer ele de volta.
     if (!antigo && existente && existente.ativo) return { ok: false, erro: 'nome_repetido' };
 
-    var linha = [nome, meta, objetivo, prazo, existente ? existente.criado_em : hojeISO_(), 'sim'];
+    var linha = [nome, meta, objetivo, prazo, existente ? existente.criado_em : hojeISO_(), 'sim',
+                 rende.tipo, rende.tipo ? rende.pct : '', rende.limite || '', rende.limite ? rende.acima : ''];
     if (existente) {
       aba.getRange(existente.linha, 1, 1, ABAS.baus.length).setValues([linha]);
     } else {
@@ -2377,7 +2702,7 @@ function salvarBau_(pedido) {
     }
     if (antigo && antigo !== nome) renomearBau_(antigo, nome);
 
-    return { ok: true, bau: { nome: nome, meta: meta, objetivo: objetivo, prazo: prazo, criado_em: linha[4] } };
+    return { ok: true, bau: { nome: nome, meta: meta, objetivo: objetivo, prazo: prazo, criado_em: linha[4], rende: rende } };
   } finally {
     trava.releaseLock();
   }
@@ -2424,7 +2749,13 @@ function renomearBau_(de, para) {
 function bausResumo_() {
   try {
     return baus_().baus.map(function (b) {
-      return { nome: b.nome, saldo: b.saldo, meta: b.meta, objetivo: b.objetivo, prazo: b.prazo };
+      var x = { nome: b.nome, saldo: b.saldo, meta: b.meta, objetivo: b.objetivo, prazo: b.prazo };
+      if (b.rende && b.rende.tipo) {
+        x.rende = b.rende.tipo === 'cdi' ? b.rende.pct + '% do CDI' : b.rende.pct + '% ao ano';
+        x.liquido_se_resgatar_hoje = b.rende.liquido;
+        x.rende_por_mes = b.rende.rende_por_mes;
+      }
+      return x;
     });
   } catch (e) {
     return [];
@@ -2631,17 +2962,22 @@ function extrato_(pedido) {
   var limite = Math.min(Math.max(Number(pedido && pedido.limite) || 30, 1), 100);
   var inicio = Math.max(Number(pedido && pedido.inicio) || 0, 0);
   var busca = semAcentoGS_(String((pedido && pedido.busca) || '')).trim();
+  // Um mês só ("aaaa-mm"), escolhido no seletor de ano → mês. Vazio = tudo.
+  var mesFiltro = /^\d{4}-\d{2}$/.test(String((pedido && pedido.mes) || '')) ? String(pedido.mes) : '';
 
   var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('lancamentos');
   var n = aba.getLastRow() - 1;
-  if (n <= 0) return { ok: true, lancamentos: [], total: 0, tem_mais: false };
+  if (n <= 0) return { ok: true, lancamentos: [], total: 0, tem_mais: false, mes: mesFiltro, meses: [] };
 
   var col = indiceColunas_();
   var lista = [];
+  var comDados = {};   // meses que têm algum lançamento: o seletor marca com um ponto
 
   aba.getRange(2, 1, n, ABAS.lancamentos.length).getValues().forEach(function (r, i) {
     if (r[col.status] === STATUS.EXCLUIDO) return;
     var data = normalizarData_(r[col.data]);
+    if (data) comDados[data.slice(0, 7)] = true;
+    if (mesFiltro && data.slice(0, 7) !== mesFiltro) return;
     var item = lancamentoDe_(r, col, data);
     if (busca && !combinaComBusca_(item, busca)) return;
     item._ordem = ordemDe_(data, r[col.hora_registro], i);
@@ -2654,7 +2990,9 @@ function extrato_(pedido) {
     ok: true,
     total: lista.length,
     tem_mais: inicio + limite < lista.length,
-    lancamentos: lista.slice(inicio, inicio + limite)
+    lancamentos: lista.slice(inicio, inicio + limite),
+    mes: mesFiltro,
+    meses: Object.keys(comDados).sort()
   };
 }
 

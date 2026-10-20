@@ -35,4 +35,8 @@ Aba.prototype.getRange = function (l, c, nl, nc) {
   };
 };
 Aba.prototype.setFrozenRows = function () {};
+Aba.prototype.getLastColumn = function () {
+  return this.dados.reduce(function (m, l) { return Math.max(m, l.length); }, 0);
+};
+Aba.prototype.clear = function () { this.dados = []; return this; };
 module.exports = { Aba: Aba };

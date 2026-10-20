@@ -6,16 +6,25 @@ import Item from './Item.jsx';
 import { EditarLancamento } from '../telas/mes/Modais.jsx';
 import { api } from '../lib/api.js';
 import { formatarBRL } from '../lib/parser.js';
+import SeletorMesAno, { rotuloMes } from './SeletorMesAno.jsx';
 
 // Tudo o que você já lançou, do mais novo para o mais antigo, agrupado pelo dia
 // da compra. A planilha guarda para sempre; esta tela é a janela para ela.
 // Busca e página vêm do script — o celular só recebe o pedaço que cabe na tela.
 // Tocar numa linha abre o mesmo editor da tela do Mês.
+//
+// O mês: sem `mes`, o extrato escolhe sozinho (começa em "Todos os meses").
+// Com `mes` (a tela Mês), quem manda é ela — trocar no seletor chama aoMudarMes.
 
 const POR_VEZ = 30;
 
-export default function Extrato({ cadastros, aoMudarDados }) {
+export default function Extrato({ cadastros, aoMudarDados, mes, aoMudarMes, aoTornarMensal }) {
   const [busca, setBusca] = useState('');
+  const [mesLocal, setMesLocal] = useState('');
+  const controlado = mes !== undefined;
+  const mesAtivo = controlado ? mes : mesLocal;
+  const mudarMes = (m) => (controlado ? aoMudarMes?.(m) : setMesLocal(m));
+  const [meses, setMeses] = useState([]);
   const [itens, setItens] = useState([]);
   const [total, setTotal] = useState(0);
   const [temMais, setTemMais] = useState(false);
@@ -39,22 +48,23 @@ export default function Extrato({ cadastros, aoMudarDados }) {
       const meu = ++pedido.current;
       setCarregando(true);
       setErro(null);
-      api.extrato(busca, 0, POR_VEZ).then((r) => {
+      api.extrato(busca, 0, POR_VEZ, mesAtivo).then((r) => {
         if (meu !== pedido.current) return;
         setCarregando(false);
         if (!r.ok) { setErro(r.detalhe || 'Não consegui ler a planilha agora.'); return; }
         setItens(r.lancamentos || []);
+        if (r.meses) setMeses(r.meses);
         setTotal(r.total || 0);
         setTemMais(!!r.tem_mais);
       });
     }, busca ? 400 : 0);
     return () => clearTimeout(atraso);
-  }, [busca]);
+  }, [busca, mesAtivo]);
 
   async function carregarMais() {
     const meu = pedido.current;
     setBuscandoMais(true);
-    const r = await api.extrato(busca, itens.length, POR_VEZ);
+    const r = await api.extrato(busca, itens.length, POR_VEZ, mesAtivo);
     setBuscandoMais(false);
     if (meu !== pedido.current || !r.ok) return;
     setItens((atual) => atual.concat(r.lancamentos || []));
@@ -64,7 +74,7 @@ export default function Extrato({ cadastros, aoMudarDados }) {
   /** Relê de uma vez tudo o que já está na tela — sem perder o "carregar mais". */
   async function releitura() {
     const meu = ++pedido.current;
-    const r = await api.extrato(busca, 0, Math.max(itens.length, POR_VEZ));
+    const r = await api.extrato(busca, 0, Math.max(itens.length, POR_VEZ), mesAtivo);
     if (meu !== pedido.current || !r.ok) return;
     setItens(r.lancamentos || []);
     setTotal(r.total || 0);
@@ -86,7 +96,10 @@ export default function Extrato({ cadastros, aoMudarDados }) {
 
   return (
     <>
-      <p className="secao-titulo">Tudo o que você já lançou</p>
+      <div className="extrato-topo">
+        <p className="secao-titulo">{mesAtivo ? 'Lançamentos do mês' : 'Tudo o que você já lançou'}</p>
+        <SeletorMesAno valor={mesAtivo} aoMudar={mudarMes} meses={meses} todos={!controlado} />
+      </div>
 
       <div className="busca">
         <input
@@ -124,7 +137,9 @@ export default function Extrato({ cadastros, aoMudarDados }) {
         <div className="lista">
           <p className="vazio">
             {busca
-              ? `Nada encontrado para "${busca}".`
+              ? `Nada encontrado para "${busca}"${mesAtivo ? ` em ${rotuloMes(mesAtivo).toLowerCase()}` : ''}.`
+              : mesAtivo
+                ? `Nada lançado em ${rotuloMes(mesAtivo).toLowerCase()}.`
               : 'Nenhum lançamento na planilha ainda. Toque na moeda lá embaixo e registre o primeiro.'}
           </p>
         </div>
@@ -156,7 +171,7 @@ export default function Extrato({ cadastros, aoMudarDados }) {
         <p className="ajuda" style={{ textAlign: 'center' }}>
           {temMais
             ? `${itens.length} de ${total} lançamentos`
-            : `${total} ${total === 1 ? 'lançamento' : 'lançamentos'}${busca ? ' encontrados' : ' no total'}.`}
+            : `${total} ${total === 1 ? 'lançamento' : 'lançamentos'}${busca ? ' encontrados' : ''}${mesAtivo ? ` em ${rotuloMes(mesAtivo).toLowerCase()}` : (busca ? '' : ' no total')}.`}
         </p>
       )}
 
@@ -172,6 +187,7 @@ export default function Extrato({ cadastros, aoMudarDados }) {
             salvar(uuid, api.editarLancamento(uuid, campos), (r) => setAprendido(r.aprendido || null));
           }}
           aoExcluir={() => salvar(editando.uuid, api.excluirLancamento(editando.uuid))}
+          aoTornarMensal={aoTornarMensal ? () => { aoTornarMensal(editando); setEditando(null); } : undefined}
         />
       )}
     </>
@@ -180,6 +196,19 @@ export default function Extrato({ cadastros, aoMudarDados }) {
 
 function Linha({ l, ocupado, aoAbrir }) {
   // Movimento de baú se edita dentro do baú; aqui só aparece.
+  if (l.tipo === 'rendimento') {
+    const v = Number(l.valor) || 0;
+    return (
+      <div className="item extrato">
+        <Item tipo={l.tipo} />
+        <span className="corpo">
+          <span className="meta">Baú · {l.categoria}</span>
+          <span className="titulo">Acerto com o banco</span>
+        </span>
+        <span className={`num ${v >= 0 ? 'rendeu' : 'resgatou'}`}>{v >= 0 ? '+' : '−'}{formatarBRL(Math.abs(v))}</span>
+      </div>
+    );
+  }
   if (ehBau(l.tipo)) {
     const guardou = l.tipo === 'guardar';
     return (

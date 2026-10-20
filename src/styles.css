@@ -2040,3 +2040,108 @@ select.chip { max-width: 100%; }
   background: linear-gradient(#fffbe0 0 28%, #ffd84a 28% 72%, #c07a14 72%);
 }
 .conta-livre dd.ouro { color: var(--ouro-texto); }
+
+/* =========================================================================
+   Escolher o mês (ano ‹ › e 12 meses) — extrato e Mês → Lançamentos
+   ========================================================================= */
+.extrato-topo { position: relative; display: flex; align-items: center; justify-content: space-between; gap: var(--e2); flex-wrap: wrap; }
+.extrato-topo .secao-titulo { margin: 0; }
+/* O painel se prende à linha inteira (não ao botão): quando o botão quebra
+   para baixo do título, o painel continua dentro da tela. */
+.seletor-mes-ano { position: static; }
+.sma-botao {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 11px; border-radius: var(--raio-p);
+  background: var(--surface); border: 1px solid var(--line);
+  color: var(--ink); font-size: 13.5px; font-weight: 500; white-space: nowrap;
+}
+.sma-botao.escolhido { border-color: color-mix(in srgb, #f6c63c 55%, var(--line)); }
+.sma-botao:hover { background: var(--hover); }
+.sma-seta { color: var(--muted); font-size: 11px; }
+/* calendário de 12 px desenhado em CSS, com a argola de cima */
+.sma-cal {
+  width: 12px; height: 11px; flex: none;
+  background: linear-gradient(var(--crit) 0 3px, var(--surface-2) 3px);
+  box-shadow: 0 0 0 1.5px var(--muted);
+}
+.sma-painel {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 30;
+  width: min(272px, 100%); padding: 12px;
+  display: grid; gap: 10px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--raio);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .28);
+  animation: entrar-sobe var(--rapido) var(--curva);
+}
+.sma-ano { display: flex; align-items: center; justify-content: space-between; }
+.sma-ano strong { font-size: 18px; color: var(--ink); }
+.sma-ano button {
+  width: 36px; height: 36px; border-radius: var(--raio-p);
+  border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font-size: 18px;
+}
+.sma-meses { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.sma-meses button {
+  position: relative; padding: 11px 0 13px;
+  border: 1px solid var(--line); border-radius: var(--raio-p);
+  background: var(--surface-2); color: var(--muted); font-size: 13px; letter-spacing: .06em;
+}
+.sma-meses button.tem { color: var(--ink); }
+.sma-meses button.tem::after {
+  content: ''; position: absolute; left: 50%; bottom: 4px; width: 4px; height: 4px; margin-left: -2px;
+  background: var(--accent);
+}
+.sma-meses button.hoje { border-color: var(--accent); }
+.sma-meses button.on {
+  color: #2a1606; border-color: #c07a14;
+  background: linear-gradient(#fff4a8 0 25%, #f6c63c 25% 75%, #d8901e 75%);
+}
+.sma-meses button.on::after { background: #5a2a12; }
+.sma-rodape { display: flex; justify-content: space-between; gap: 6px; }
+.sma-rodape .btn { flex: 1; }
+
+/* =========================================================================
+   Rendimento dos baús — verde é dinheiro que o dinheiro fez
+   ========================================================================= */
+:root { --verde-texto: #2f8a44; }
+@media (prefers-color-scheme: dark) { :root:not([data-tema]), :root[data-tema="auto"] { --verde-texto: #8af08a; } }
+:root[data-tema="grafite"], :root[data-tema="oled"] { --verde-texto: #8af08a; }
+
+.selo-rende {
+  display: inline-flex; align-items: center; gap: 6px; width: max-content; max-width: 100%;
+  padding: 2px 7px;
+  font-size: 11.5px; letter-spacing: .06em; color: #8af08a;
+  border: 2px solid #2e7a3a; background: #0c2418;
+}
+.linhas-rende { display: grid; gap: 3px; font-size: 12.5px; color: #b4b9cc; }
+.linhas-rende div { display: flex; justify-content: space-between; gap: 8px; }
+.linhas-rende b { color: #e8ebf5; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.linhas-rende .verde { color: #8af08a; }
+.linhas-rende .cinza { color: #9aa0b8; }
+.acertar {
+  align-self: center; padding: 4px 8px;
+  font-size: 13px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px;
+  background: none; border: 0;
+}
+.acertar:hover { color: var(--ink); }
+.item .num.rendeu { color: var(--verde-texto); }
+.moeda-rende {
+  width: 32px; height: 32px; display: grid; place-items: center;
+  font-family: var(--fonte-pixel); font-size: 18px; color: var(--verde-texto);
+}
+.tag-rende { font-family: var(--fonte-pixel); font-size: 11px; color: var(--verde-texto); }
+.grupo-rende { display: grid; gap: 10px; padding: 12px; border: 1px dashed var(--line); border-radius: var(--raio); }
+.opcoes3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.opcoes3 button {
+  padding: 9px 4px; font-size: 12.5px; text-align: center;
+  border: 2px solid var(--line); border-radius: var(--raio-p);
+  background: none; color: var(--muted);
+}
+.opcoes3 button.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.pct { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pct input {
+  width: 90px; padding: 11px 12px; text-align: right; font-variant-numeric: tabular-nums;
+  background: var(--surface-2); color: var(--ink);
+  border: 1px solid var(--line); border-radius: var(--raio-p);
+}
+.pct input::placeholder { color: var(--muted); opacity: .75; }
+.pct span { color: var(--muted); font-size: 14px; }
+.destaque-ajuda { color: var(--ink); }

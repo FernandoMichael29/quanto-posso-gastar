@@ -401,11 +401,13 @@ export default function Novo({ cadastros, resumo, ouro, mana, aoMudarFila }) {
               <div className="item extrato" key={u.uuid}>
                 <Item categoria={u.categoria} receita={u.tipo === 'receita'} tipo={u.tipo} />
                 <span className="corpo">
-                  <span className="meta">{u.tipo === 'guardar' || u.tipo === 'resgatar' ? `Baú · ${u.categoria}` : (u.categoria || 'Sem categoria')} · {diaOuHoje(u.data)}</span>
+                  <span className="meta">{u.tipo === 'guardar' || u.tipo === 'resgatar' || u.tipo === 'rendimento' ? `Baú · ${u.categoria}` : (u.categoria || 'Sem categoria')} · {diaOuHoje(u.data)}</span>
                   <span className="titulo">{u.descricao || u.categoria}</span>
                 </span>
-                <span className={`num ${u.tipo === 'receita' ? 'receita' : u.tipo === 'guardar' ? 'guardou' : u.tipo === 'resgatar' ? 'resgatou' : ''}`}>
-                  {u.tipo === 'receita' || u.tipo === 'resgatar' ? '+' : '−'}{soNumero(u.valor)}
+                <span className={`num ${u.tipo === 'receita' ? 'receita' : u.tipo === 'guardar' ? 'guardou' : u.tipo === 'resgatar' ? 'resgatou' : u.tipo === 'rendimento' ? 'rendeu' : ''}`}>
+                  {u.tipo === 'rendimento'
+                    ? `${Number(u.valor) < 0 ? '−' : '+'}${soNumero(Math.abs(Number(u.valor) || 0))}`
+                    : <>{u.tipo === 'receita' || u.tipo === 'resgatar' ? '+' : '−'}{soNumero(u.valor)}</>}
                 </span>
               </div>
             ))}

@@ -4,7 +4,7 @@ import { api, configurado } from '../../lib/api.js';
 import { hojeISO, maiuscula, mesDeHoje, mesPorExtenso, somarMes } from '../../lib/datas.js';
 import AbaResumo from './AbaResumo.jsx';
 import AbaContas from './AbaContas.jsx';
-import AbaLancamentos from './AbaLancamentos.jsx';
+import Extrato from '../../componentes/Extrato.jsx';
 import { ConfirmarRenda, EditarLancamento, PagarFatura, PagarFixa, TornarMensal } from './Modais.jsx';
 import { dataDoVencimento, fixasDoPainel, traduzir } from './util.js';
 
@@ -176,14 +176,21 @@ export default function Mes({ cadastros, aoMudarDados }) {
         />
       )}
 
+      {/* O mesmo extrato da tela da fila, preso ao mês desta tela: trocar o mês
+          no seletor dele troca o mês da tela inteira. */}
       {vista === 'lancamentos' && (
-        <AbaLancamentos
-          key={mes}
-          lista={lista}
-          pessoas={pessoas}
-          carregando={carregando && lista.length === 0}
-          ocupado={ocupado}
-          aoAbrir={(l) => setEditando({ ...l })}
+        <Extrato
+          cadastros={cadastros}
+          mes={mes}
+          aoMudarMes={(m) => { if (m) irParaMes(m); }}
+          aoMudarDados={() => { carregar(mes); aoMudarDados?.(); }}
+          aoTornarMensal={(l) => setVirandoMensal({
+            uuid: l.uuid,
+            receita: l.tipo === 'receita',
+            nome: l.descricao || l.categoria || '',
+            dia: Number(String(l.data).slice(8, 10)) || '',
+            mes_fim: ''
+          })}
         />
       )}
       </div>

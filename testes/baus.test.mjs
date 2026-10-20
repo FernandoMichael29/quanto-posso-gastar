@@ -1,9 +1,11 @@
 // Teste dos baús. Rode com:  node testes/baus.test.mjs
 import assert from 'node:assert';
-import { comPendentes, estadoDoBau, mesesAte, previsao, ritmoMensal, totalNosBaus } from '../src/lib/baus.js';
+import { comPendentes, estadoDoBau, historicoComRendimento, mesesAte, previsao, rendeNoMes, rendePorMil, ritmoMensal, totalNosBaus } from '../src/lib/baus.js';
 import { calcularOuro } from '../src/lib/ouro.js';
 import { calcularMissao } from '../src/lib/missao.js';
 import { calcularMana } from '../src/lib/mana.js';
+
+const arred2 = (v) => Math.round(v * 100) / 100;
 
 // o desenho
 assert.strictEqual(estadoDoBau(0, 1000), 'vazio');
@@ -67,5 +69,32 @@ assert.strictEqual(m.garantido, 1000, '400 + 600 já trancados em baú');
 // mana: guardar não gasta mana de categoria nenhuma
 const mana = calcularMana({ mes: '2026-10', orcamentos: { Chile: 500 }, por_categoria: [] }, guardou, { agora });
 assert.strictEqual(mana[0].mana, 500);
+
+// rendimento: a planilha manda as taxas do mês; aqui só se projeta
+const turbo = { ...chile, rende: { tipo: 'cdi', pct: 115, limite: 5000, acima: 100, taxa_mes_ate: 0.0123, taxa_mes_acima: 0.0107,
+  por_mes_rendimento: { '2026-09': 18.4, '2026-10': 16.42, '2026-08': 0 } }, movimentos: [{ uuid: 'm1', tipo: 'guardar', valor: 600, data: '2026-10-05' }, { uuid: 'm0', tipo: 'guardar', valor: 600, data: '2026-09-30' }] };
+assert.strictEqual(arred2(rendeNoMes(1000, turbo.rende)), 12.3);
+assert.strictEqual(arred2(rendeNoMes(6000, turbo.rende)), arred2(5000 * 0.0123 + 1000 * 0.0107), 'acima do limite rende menos');
+assert.strictEqual(rendeNoMes(1000, { tipo: '' }), 0);
+const pr = previsao(turbo, { hoje });
+assert.ok(pr.enche <= '2027-04', 'com rendimento enche no máximo quando enchia sem: ' + pr.enche);
+assert.ok(pr.mesesAntes >= 0);
+assert.ok(pr.porMes < 420 && pr.porMes > 350, 'até o prazo, o rendimento ajuda: ' + pr.porMes);
+const soRendendo = previsao({ ...turbo, por_mes: {}, meta: 1900 }, { hoje });
+assert.ok(soRendendo.enche, 'sem guardar nada, só o rendimento ainda enche');
+const hist = historicoComRendimento(turbo, { hoje });
+assert.deepStrictEqual(hist.map((h) => h.uuid), ['rendeu-2026-10', 'm1', 'rendeu-2026-09', 'm0'], 'uma linha por mês, mês zerado some, no último dia (ou hoje)');
+assert.strictEqual(hist[0].data, hoje);
+assert.strictEqual(hist[0].ate_agora, true);
+assert.strictEqual(hist[2].data, '2026-09-30');
+assert.ok(Math.abs(rendePorMil('cdi', '115', 13.65) - 12.3) < 0.3, 'uns R$ 12 a cada mil');
+assert.ok(Math.abs(rendePorMil('fixo', '12', 0) - 9.49) < 0.01);
+// acerto com o banco: muda o saldo, não o guardado do mês
+const comAcerto = comPendentes(resposta, [{ uuid: 'q1', estado: 'pendente', lancamento: { tipo: 'rendimento', valor: -2.5, categoria: 'Viagem Chile', data: '2026-10-20' } }], { hoje });
+assert.strictEqual(comAcerto.baus[0].saldo, 1797.5);
+assert.strictEqual(comAcerto.baus[0].guardado_mes, 600);
+assert.strictEqual(totalNosBaus({ baus_total: 1800 }, [{ estado: 'pendente', lancamento: { tipo: 'rendimento', valor: 0.7 } }]), 1800.7);
+const acertoNaFila = [{ estado: 'pendente', lancamento: { tipo: 'rendimento', valor: 5, categoria: 'Chile', data: '2026-10-20' } }];
+assert.strictEqual(calcularOuro(painel, acertoNaFila, { agora }).ouro, 200, 'acerto não mexe no ouro de hoje');
 
 console.log('baús: ok');

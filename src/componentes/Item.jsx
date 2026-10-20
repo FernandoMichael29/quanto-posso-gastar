@@ -39,6 +39,12 @@ export function SpriteBau({ estado = 'metade', tamanho = 32 }) {
 
 /** O quadradinho de inventário com o item dentro. Movimento de baú mostra o baú. */
 export default function Item({ categoria, receita, tipo }) {
+  // rendimento (e acerto com o banco): o "%" verde, na fonte de pixel
+  if (tipo === 'rendimento' || tipo === 'rendeu') {
+    return (
+      <span className="slot" aria-hidden="true"><span className="moeda-rende">%</span></span>
+    );
+  }
   if (tipo === 'guardar' || tipo === 'resgatar') {
     return (
       <span className="slot" aria-hidden="true">

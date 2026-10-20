@@ -47,6 +47,8 @@ export function pendentesDoMes(fila, { mes, hoje, desde = 0 }) {
     const valor = (Number(l.valor) || 0) / vezes;
     // Baú: não é gasto nem renda (não entra no livre, no gasto de hoje nem em
     // categoria); vai para o guardado do mês.
+    // Acerto do baú com o banco: rendimento que fica dentro do baú, fora do mês.
+    if (l.tipo === 'rendimento') continue;
     if (l.tipo === 'guardar' || l.tipo === 'resgatar') { soma.guardado += (l.tipo === 'guardar' ? 1 : -1) * valor; continue; }
     if (l.tipo === 'receita') { soma.livre += valor; soma.receitas += valor; continue; }
     if (l.tipo === 'fatura') continue;

@@ -122,8 +122,8 @@ export const api = {
   lancamentos: (mes) => chamar('lancamentos', { mes }),
   // A planilha inteira, do mais novo para o mais antigo. A busca e o corte são
   // feitos no script: só vem para cá a página que cabe na tela.
-  extrato: (busca, inicio = 0, limite = 30) =>
-    chamar('extrato', { busca: busca || '', inicio, limite }, { prazo: 30000 }),
+  extrato: (busca, inicio = 0, limite = 30, mes = '') =>
+    chamar('extrato', { busca: busca || '', inicio, limite, mes: mes || '' }, { prazo: 30000 }),
   editarLancamento: (uuid, campos) => chamar('editar_lancamento', { uuid, campos }),
   excluirLancamento: (uuid) => chamar('excluir_lancamento', { uuid }),
   tornarMensal: (uuid, opcoes = {}) => chamar('tornar_mensal', { uuid, ...opcoes }),
