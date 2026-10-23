@@ -914,6 +914,11 @@ console.log('\nfogueira, marcos e relatório do ano: ok');
   assert.ok(tenis.startsWith('15/09/2026;Gasto;1234,50;Compras;'), tenis);
   assert.ok(tenis.includes('"tênis; ""corrida"""'), tenis);
   assert.ok(ls.some((l) => l.startsWith('LIVRE PARA GASTAR até o fim do mês;')), 'a conta do livre');
+  const datasLanc = corpo.map((l) => { const [d, m, a] = l.split(';')[0].split('/'); return `${a}-${m}-${d}`; });
+  const passado = datasLanc.filter((d) => d <= '2026-09-16'), futuro = datasLanc.filter((d) => d > '2026-09-16');
+  assert.deepStrictEqual(datasLanc, passado.concat(futuro), 'o futuro vai para o fim');
+  assert.deepStrictEqual(passado, [...passado].sort().reverse(), 'passado do mais novo ao mais antigo');
+  assert.deepStrictEqual(futuro, [...futuro].sort(), 'futuro do mais próximo ao mais distante');
   assert.ok(!/NaN|undefined|\[object/.test(e.csv), 'nada quebrado no arquivo');
   assert.ok(e.pergunta.includes('quanto eu posso gastar'));
 }
@@ -930,7 +935,7 @@ console.log('\nexportar CSV: ok');
         setHeading(h) { this.heading = h; return this; },
         appendText(x) { const parte = { x, negrito: false, setBold(b) { this.negrito = b; return this; } }; this.partes.push(parte); return parte; },
         editAsText() { return { setItalic: () => {}, setBold: () => {} }; } }; this.itens.push(p); return p; },
-      appendTable(linhas) { const negrito = []; const t = { tipo: 't', linhas, negrito,
+      appendTable(linhas) { const negrito = []; const t = { tipo: 't', linhas, negrito, editAsText: () => ({ setItalic: (v) => { t.italico = v; } }),
         getRow: (i) => ({ getNumCells: () => linhas[i].length, getCell: (c) => ({ editAsText: () => ({ setBold: (b) => { negrito[c] = b; } }) }) }) };
         assert.ok(linhas.every((l) => l.length === linhas[0].length), 'tabela retangular'); this.itens.push(t); return t; } };
     return (docs[id] = { id, titulo, corpo, getId: () => id, getUrl: () => 'https://docs/' + id, getBody: () => corpo, saveAndClose() {} });
@@ -961,6 +966,7 @@ console.log('\nexportar CSV: ok');
   assert.strictEqual(tabelas.length, titulos.length, 'uma tabela por seção');
   assert.ok(titulos[0].startsWith('1. O MÊS DE HOJE') && titulos.some((t) => t.includes('LANÇAMENTOS DOS ÚLTIMOS 120 DIAS')));
   assert.ok(tabelas.every((t) => t.negrito.length === t.linhas[0].length && t.negrito.every(Boolean)), 'cabeçalho em negrito');
+  assert.ok(tabelas.every((t) => t.italico === false), 'tabela sem itálico');
   const livre = tabelas[0].linhas.find((l) => l[0].startsWith('LIVRE PARA GASTAR'));
   assert.ok(/^R\$ -?[\d.]+,\d\d$/.test(livre[1]), 'dinheiro como R$ 1.234,56: ' + livre[1]);
   assert.ok(!corpo.itens.some((x) => x.partes && x.partes.some((p) => /Pergunta sugerida/.test(p.x))), 'sem a pergunta sugerida no documento');

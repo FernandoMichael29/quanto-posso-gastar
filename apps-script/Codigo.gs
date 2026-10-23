@@ -5203,7 +5203,14 @@ function dadosDaExportacao_(opcoes) {
     var data = normalizarData_(r[col.data]);
     validos.push({ r: r, data: data, ordem: ordemDe_(data, r[col.hora_registro], i) });
   });
-  validos.sort(function (a, b) { return a.ordem < b.ordem ? 1 : a.ordem > b.ordem ? -1 : 0; });
+  // A mesma ordem do extrato: do mais novo para o mais antigo, e o futuro no fim (o mais próximo primeiro).
+  validos.sort(function (a, b) {
+    for (var k = 0; k < 4; k++) {
+      if (a.ordem[k] < b.ordem[k]) return 1;
+      if (a.ordem[k] > b.ordem[k]) return -1;
+    }
+    return 0;
+  });
   var datas = validos.map(function (x) { return x.data; }).filter(Boolean).sort();
   var primeiro = datas[0] || hoje;
   var ultimoFeito = validos.filter(function (x) { return x.data <= hoje; }).map(function (x) { return x.data; }).sort().pop() || hoje;
@@ -5348,7 +5355,7 @@ function dadosDaExportacao_(opcoes) {
   var desdeLanc = opcoes.diasLancamentos ? diaISOMais_(hoje, -opcoes.diasLancamentos) : '';
   var listaLanc = desdeLanc ? validos.filter(function (x) { return x.data >= desdeLanc; }) : validos;
   secao(desdeLanc ? 'LANÇAMENTOS DOS ÚLTIMOS ' + opcoes.diasLancamentos + ' DIAS (e os futuros já marcados)' : 'TODOS OS LANÇAMENTOS',
-    'Do mais novo para o mais antigo. "previsto" = renda marcada que ainda não caiu; data futura = parcela ou conta já agendada.' +
+    'Do mais novo para o mais antigo; no fim, os de data futura (parcelas e contas já agendadas), do mais próximo ao mais distante. "previsto" = renda marcada que ainda não caiu.' +
     (desdeLanc ? ' O histórico mais antigo está nas seções de meses e categorias acima (e no CSV completo do app).' : ''),
     ['data', 'tipo', 'valor', 'categoria', 'grupo', 'descrição', 'conta', 'forma', 'pessoa', 'fonte da renda', 'parcela', 'fatura de', 'situação', 'origem'],
     listaLanc.map(function (x) {
@@ -5477,6 +5484,7 @@ function atualizarResumoIA_() {
       return cel.slice(0, largura);
     });
     var tabela = corpo.appendTable([sec.cabecalho.map(String)].concat(linhas));
+    tabela.editAsText().setItalic(false);   // a tabela herdava o itálico da explicação logo acima
     var cab = tabela.getRow(0);
     for (var c = 0; c < cab.getNumCells(); c++) cab.getCell(c).editAsText().setBold(true);
   });
