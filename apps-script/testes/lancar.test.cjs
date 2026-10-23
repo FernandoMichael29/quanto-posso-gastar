@@ -72,11 +72,11 @@ const col = indiceColunas_();
 const linhas = () => abas.lancamentos.dados.slice(1);
 
 // 1. lançamento simples — o caso que estava sumindo
-let r = lancar_({ lancamentos: [{ uuid: 'a1', data: '2026-09-10', valor: 814.38, categoria: 'Transporte', descricao: 'Consórcio do carro', conta: 'Nubank Fernando', pessoa: 'Fernando' }] });
+let r = lancar_({ lancamentos: [{ uuid: 'a1', data: '2026-09-10', valor: 799.90, categoria: 'Transporte', descricao: 'Consórcio do carro', conta: 'Nubank Fernando', pessoa: 'Fernando' }] });
 console.log('simples: gravados', r.gravados.length, '| linhas', linhas().length, '| valor', linhas()[0][col.valor]);
 
 // 2. reenviar o mesmo uuid não duplica
-r = lancar_({ lancamentos: [{ uuid: 'a1', valor: 814.38, descricao: 'Consórcio do carro' }] });
+r = lancar_({ lancamentos: [{ uuid: 'a1', valor: 799.90, descricao: 'Consórcio do carro' }] });
 console.log('reenvio: gravados', r.gravados.length, 'duplicados', r.duplicados.length, '| linhas', linhas().length);
 
 // 3. parcelado
@@ -95,9 +95,9 @@ r = excluirLancamento_({ uuid: 'b1-p3' });
 console.log('excluir grupo:', r.excluidos, 'linhas do b1 ainda ok:', linhas().filter(l => String(l[col.uuid]).startsWith('b1') && l[col.status] === 'ok').length);
 
 // 7. o caso do Fernando: pagar a conta fixa "Consórcio do carro"
-abas.recorrentes.dados.push(['Consórcio do carro','despesa','Transporte',814.38,10,'','','','2026-09','','padrao','','','consórcio do carro 814 38 mensal','2026-09-15']);
+abas.recorrentes.dados.push(['Consórcio do carro','despesa','Transporte',799.90,10,'','','','2026-09','','padrao','','','consórcio do carro 814 38 mensal','2026-09-15']);
 const antes = linhas().length;
-const pg = pagarFixa_({ nome: 'Consórcio do carro', mes: '2026-09', valor: 814.38, categoria: 'Transporte', descricao: 'Consórcio do carro', conta: 'Nubank Fernando', pessoa: 'Fernando', data: '2026-09-10', dia: 10, ajuste: 'excecao' });
+const pg = pagarFixa_({ nome: 'Consórcio do carro', mes: '2026-09', valor: 799.90, categoria: 'Transporte', descricao: 'Consórcio do carro', conta: 'Nubank Fernando', pessoa: 'Fernando', data: '2026-09-10', dia: 10, ajuste: 'excecao' });
 console.log('pagar fixa:', pg.ok, '| linhas novas', linhas().length - antes, '| valor', pg.lancamento && pg.lancamento.valor);
 
 // 8. e o painel passa a enxergar como lançada
