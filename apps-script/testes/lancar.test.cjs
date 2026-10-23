@@ -890,3 +890,31 @@ console.log('\ndinheiro nas contas: ok');
   assert.strictEqual(relatorioAno_({ ano: '2025' }).entrou, 0);
 }
 console.log('\nfogueira, marcos e relatório do ano: ok');
+
+// 36. exportar tudo em CSV, para perguntar a qualquer IA
+{
+  lancar_({ lancamentos: [{ uuid: 'exp-1', data: '2026-09-15', tipo: 'despesa', valor: 1234.5, categoria: 'Compras', descricao: 'tênis; "corrida"', conta: 'Nubank Fernando', pessoa: 'Fernando' }] });
+  const e = exportar_();
+  assert.ok(e.ok); assert.strictEqual(e.nome, 'quanto-posso-gastar-2026-09-16.csv');
+  const ls = e.csv.split('\r\n');
+  assert.strictEqual(ls[0], 'QUANTO POSSO GASTAR — meus dados financeiros');
+  const titulos = ls.filter((l) => l.startsWith('### ')).map((l) => l.replace(/^### \d+\. /, '').split(' (')[0]);
+  for (const t of ['O MÊS DE HOJE', 'PREVISÃO DOS PRÓXIMOS 12 MESES', 'MESES ANTERIORES', 'GASTOS POR CATEGORIA', 'CONTAS FIXAS E RENDAS DE SETEMBRO/2026',
+    'PARCELAMENTOS EM ANDAMENTO', 'FATURAS DE CARTÃO', 'DINHEIRO NAS CONTAS', 'BAÚS', 'O QUE EU CONTEI PARA O APP', 'TODOS OS LANÇAMENTOS']) {
+    assert.ok(titulos.includes(t), 'seção ' + t + ' em ' + titulos.join(' | '));
+  }
+  // todos os lançamentos válidos (sem os excluídos), um por linha
+  const i = ls.findIndex((l) => l.includes('TODOS OS LANÇAMENTOS'));
+  const corpo = ls.slice(i + 3).filter((l) => l.trim());
+  const esperados = linhas().filter((r) => r[col.uuid] && (r[col.status] === 'ok' || r[col.status] === 'agendado') && Number(r[col.valor])).length;
+  assert.strictEqual(corpo.length, esperados, `${corpo.length} linhas, ${esperados} lançamentos`);
+  assert.strictEqual(e.lancamentos, esperados);
+  // número com vírgula, data dd/mm/aaaa, ";" e aspas escapados
+  const tenis = corpo.find((l) => l.includes('tênis'));
+  assert.ok(tenis.startsWith('15/09/2026;Gasto;1234,50;Compras;'), tenis);
+  assert.ok(tenis.includes('"tênis; ""corrida"""'), tenis);
+  assert.ok(ls.some((l) => l.startsWith('LIVRE PARA GASTAR até o fim do mês;')), 'a conta do livre');
+  assert.ok(!/NaN|undefined|\[object/.test(e.csv), 'nada quebrado no arquivo');
+  assert.ok(e.pergunta.includes('quanto eu posso gastar'));
+}
+console.log('\nexportar CSV: ok');

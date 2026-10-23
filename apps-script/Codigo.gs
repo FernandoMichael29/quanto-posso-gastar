@@ -31,7 +31,7 @@
 
 // Suba junto com VERSAO_APP em src/lib/versao.js — o app compara as duas e
 // avisa na tela quando só uma das metades foi publicada.
-var VERSAO = '2.15.0';
+var VERSAO = '2.16.0';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -401,6 +401,7 @@ function doPost(e) {
       case 'acertar_conta': return json_(acertarConta_(pedido));
       case 'nao_gastei':    return json_(naoGastei_(pedido));
       case 'relatorio_ano': return json_(relatorioAno_(pedido));
+      case 'exportar':      return json_(exportar_());
       case 'salvar_bau':  return json_(salvarBau_(pedido));
       case 'excluir_bau': return json_(excluirBau_(pedido));
       default:            return json_({ ok: false, erro: 'acao_desconhecida' });
@@ -5119,5 +5120,252 @@ function relatorioAno_(pedido) {
       .filter(function (id) { return String(conquistas[id]).slice(0, 4) === ano; })
       .map(function (id) { return { id: id, dia: conquistas[id] }; })
       .sort(function (a, b) { return a.dia < b.dia ? -1 : 1; })
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Exportar tudo em CSV (para perguntar a qualquer IA)
+// ---------------------------------------------------------------------------
+//
+// Um arquivo só, em seções, feito para ser lido por gente (abre bonito no
+// Excel/Planilhas do Brasil: separador ";", decimal com vírgula, datas
+// dd/mm/aaaa) e por IA (cada seção diz o que é e como contar). Tudo o que o
+// app sabe: o mês de hoje e a previsão, os meses passados, as contas fixas,
+// parcelas, faturas, saldos, baús, o que você contou ao app e todos os
+// lançamentos. O app acrescenta o BOM do UTF-8 na hora de baixar.
+
+var NOMES_TIPO_EXPORT = {
+  despesa: 'Gasto', receita: 'Entrada', fatura: 'Pagamento de fatura',
+  guardar: 'Guardou no baú', resgatar: 'Tirou do baú', rendimento: 'Acerto de baú com o banco'
+};
+
+function numeroBR_(v) {
+  var n = Math.round((Number(v) || 0) * 100) / 100;
+  return (n < 0 ? '-' : '') + Math.abs(n).toFixed(2).replace('.', ',');
+}
+function dataBR_(iso) {
+  iso = String(iso || '');
+  return /^\d{4}-\d{2}-\d{2}/.test(iso) ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4) : '';
+}
+function mesBR_(mes) {
+  var nomes = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+  mes = String(mes || '');
+  return /^\d{4}-\d{2}/.test(mes) ? nomes[Number(mes.slice(5, 7)) - 1] + '/' + mes.slice(0, 4) : mes;
+}
+/** Número vira "1234,56"; texto ganha aspas quando precisa. */
+function celulaCsv_(v) {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'number') return numeroBR_(v);
+  var s = String(v).replace(/\r?\n/g, ' ').trim();
+  return /[;"]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function exportar_() {
+  var hoje = hojeISO_();
+  var mes = hoje.slice(0, 7);
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var aba = ss.getSheetByName('lancamentos');
+  var n = aba.getLastRow() - 1;
+  var col = indiceColunas_();
+  var linhas = n > 0 ? aba.getRange(2, 1, n, ABAS.lancamentos.length).getValues() : [];
+  var tentar = function (f, padrao) { try { return f(); } catch (e) { return padrao; } };
+
+  var p = painel_({ mes: mes });
+  var contasIdx = indiceContas_();
+  var grupoDe = {}, tetoDe = {};
+  categoriasTodas_().forEach(function (c) {
+    grupoDe[chaveNome_(c.categoria)] = c.grupo || '';
+    if (c.orcamento > 0) tetoDe[chaveNome_(c.categoria)] = c.orcamento;
+  });
+  var pessoas = lerCadastro_('pessoas').filter(function (x) { return x.ativo; }).map(function (x) { return x.nome; });
+
+  var saida = [];
+  var linha = function (celulas) { saida.push((celulas || []).map(celulaCsv_).join(';')); };
+  var numeroSecao = 0;
+  var secao = function (titulo, explicacao, cabecalho, dados) {
+    numeroSecao++;
+    linha([]);
+    linha(['### ' + numeroSecao + '. ' + titulo]);
+    if (explicacao) linha([explicacao]);
+    linha(cabecalho);
+    if (!dados.length) linha(['(nada aqui)']);
+    dados.forEach(linha);
+  };
+
+  // --- lançamentos válidos, do mais novo para o mais antigo ---
+  var validos = [];
+  linhas.forEach(function (r, i) {
+    if (!r[col.uuid] || r[col.status] === STATUS.EXCLUIDO) return;
+    if (r[col.status] !== STATUS.OK && r[col.status] !== STATUS.AGENDADO) return;
+    if (!(Number(r[col.valor]) || 0)) return;   // linha zerada (rendimento que deixou de contar) não diz nada
+    var data = normalizarData_(r[col.data]);
+    validos.push({ r: r, data: data, ordem: ordemDe_(data, r[col.hora_registro], i) });
+  });
+  validos.sort(function (a, b) { return a.ordem < b.ordem ? 1 : a.ordem > b.ordem ? -1 : 0; });
+  var datas = validos.map(function (x) { return x.data; }).filter(Boolean).sort();
+  var primeiro = datas[0] || hoje;
+  var ultimoFeito = validos.filter(function (x) { return x.data <= hoje; }).map(function (x) { return x.data; }).sort().pop() || hoje;
+
+  // --- cabeçalho ---
+  var pergunta = 'Este arquivo tem todas as minhas finanças, exportadas do meu app "Quanto Posso Gastar". ' +
+    'Leia as seções (o mês de hoje, a previsão, as contas fixas, parcelas, faturas, saldos, baús e todos os lançamentos) e me diga: ' +
+    'quanto eu posso gastar por dia até o fim do mês sem atrasar nenhuma conta e sem desistir da meta de guardar? ' +
+    'Depois: [escreva aqui o que você quer saber, por exemplo "dá para comprar algo de R$ 950 por mês?"].';
+  linha(['QUANTO POSSO GASTAR — meus dados financeiros']);
+  linha(['Gerado em', dataBR_(hoje) + ' ' + Utilities.formatDate(new Date(), fuso_(), 'HH:mm')]);
+  linha(['Pessoas da casa', pessoas.join(', ') || '—']);
+  linha(['Período dos lançamentos', dataBR_(primeiro) + ' a ' + dataBR_(datas[datas.length - 1] || hoje) + ' (' + validos.length + ' lançamentos; os com data futura são parcelas e rendas já marcadas)']);
+  linha(['Como ler', 'valores em reais (R$) com vírgula decimal; datas dd/mm/aaaa; separador ponto e vírgula; cada seção começa com ###']);
+  linha(['Regras do app', 'Compra no cartão de crédito conta como gasto no mês da compra; o "Pagamento de fatura" só tira o dinheiro da conta e NÃO é gasto novo. "Guardou no baú" sai do dinheiro livre mas não é gasto. Entrada "prevista" ainda não caiu.']);
+  linha(['Pergunta sugerida para a IA', pergunta]);
+
+  // --- 1. o mês de hoje ---
+  var prev = p.previsao || {};
+  var guardado = Number(prev.guardado) || 0;
+  var meta = 0;
+  (p.metas || []).forEach(function (m) { if (m.desde <= mes) meta = Number(m.valor) || 0; });
+  var livre = (Number(prev.sobra) || 0) - guardado - Math.max(0, meta - Math.max(0, guardado));
+  var ultimoDia = Number(ultimoDiaDoMes_(mes).slice(8, 10));
+  var diasFaltam = ultimoDia - Number(hoje.slice(8, 10)) + 1;
+  secao('O MÊS DE HOJE (' + mesBR_(mes) + ')', 'A conta que o app faz para dizer quanto dá para gastar.', ['item', 'valor', 'o que é'], [
+    ['Recebi até agora', p.receitas, 'entradas que já caíram neste mês'],
+    ['Gastei até agora', p.despesas, 'todos os gastos do mês (inclui compras no crédito)'],
+    ['Já saiu das contas', p.saiu_caixa, 'o que de fato deixou as contas (débito, Pix, faturas pagas, baús)'],
+    ['Vai sair na fatura', p.no_credito, 'compras no crédito deste mês que ainda vão ser cobradas'],
+    ['Sobrou até agora', prev.ja_sobrou, 'recebi − gastei'],
+    ['Ainda entra', prev.ainda_entra, 'rendas fixas e entradas marcadas que ainda não caíram'],
+    ['Ainda sai', prev.ainda_sai, 'contas fixas e parcelas que ainda vão vencer neste mês'],
+    ['Sobra prevista no fim do mês', prev.sobra, 'sobrou até agora + ainda entra − ainda sai'],
+    ['Já guardado nos baús este mês', guardado, 'faz parte da sobra, mas não está livre'],
+    ['Meta de guardar do mês (missão)', meta, meta ? 'o app separa esse valor antes de dizer quanto dá para gastar' : 'sem meta definida'],
+    ['LIVRE PARA GASTAR até o fim do mês', livre, 'sobra prevista − baús − o que falta para a meta'],
+    ['Dias que faltam (contando hoje)', String(diasFaltam), ''],
+    ['Média livre por dia', diasFaltam > 0 ? livre / diasFaltam : 0, 'livre ÷ dias que faltam'],
+    ['Total guardado em todos os baús', p.baus_total, 'com rendimento'],
+    ['Fogueira (dias seguidos registrando)', String((p.fogueira && p.fogueira.dias) || 0), 'recorde: ' + ((p.fogueira && p.fogueira.recorde) || 0)]
+  ]);
+
+  // --- 2. previsão ---
+  var p12 = tentar(function () { return previsao12_(); }, []);
+  secao('PREVISÃO DOS PRÓXIMOS 12 MESES', 'O que já está marcado no calendário: rendas e contas fixas (com as vigências), parcelas e lançamentos futuros. Gastos do dia a dia NÃO entram — use a média dos meses anteriores.',
+    ['mês', 'entra', 'sai', 'sobra', 'já lançado (entra)', 'já lançado (sai)', 'fixas a receber', 'fixas a pagar'],
+    p12.map(function (x) {
+      return [mesBR_(x.mes), x.entra, x.sai, x.sobra, x.ja_lancado_entra, x.ja_lancado_sai, x.fixas_a_receber, x.fixas_a_pagar];
+    }));
+
+  // --- 3. meses anteriores ---
+  var passados = (p.evolucao || []).filter(function (e) { return !e.futuro && e.mes <= mes && (e.receitas || e.despesas || e.guardado); });
+  secao('MESES ANTERIORES (até 12)', 'Quanto entrou e saiu em cada mês. "Saiu" aqui é o que saiu do bolso (fatura no mês em que foi paga).',
+    ['mês', 'entrou', 'saiu', 'sobrou', 'guardado nos baús'],
+    passados.map(function (e) { return [mesBR_(e.mes) + (e.mes === mes ? ' (até hoje)' : ''), e.receitas, e.despesas, Number(e.receitas) - Number(e.despesas), e.guardado]; }));
+
+  // --- 4. gastos por categoria ---
+  var mesesCat = [mesSomado_(mes, -3), mesSomado_(mes, -2), mesSomado_(mes, -1), mes];
+  var porCat = {};
+  validos.forEach(function (x) {
+    var r = x.r;
+    if (r[col.status] !== STATUS.OK || r[col.tipo] !== TIPO.DESPESA) return;
+    var i = mesesCat.indexOf(x.data.slice(0, 7));
+    if (i < 0) return;
+    var c = String(r[col.categoria] || 'Outros');
+    if (!porCat[c]) porCat[c] = [0, 0, 0, 0];
+    porCat[c][i] += Number(r[col.valor]) || 0;
+  });
+  var cats = Object.keys(porCat).map(function (c) {
+    var v = porCat[c];
+    return { c: c, v: v, media: (v[0] + v[1] + v[2]) / 3 };
+  }).sort(function (a, b) { return (b.media + b.v[3]) - (a.media + a.v[3]); });
+  secao('GASTOS POR CATEGORIA', 'Os 3 meses fechados mais recentes e o mês de hoje (até agora). Teto = limite por mês que eu defini para a categoria.',
+    ['categoria', 'grupo', mesBR_(mesesCat[0]), mesBR_(mesesCat[1]), mesBR_(mesesCat[2]), 'média dos 3 meses', mesBR_(mes) + ' (até hoje)', 'teto por mês'],
+    cats.map(function (x) {
+      var teto = tetoDe[chaveNome_(x.c)];
+      return [x.c, grupoDe[chaveNome_(x.c)] || '', x.v[0], x.v[1], x.v[2], x.media, x.v[3], teto ? teto : ''];
+    }));
+
+  // --- 5. contas fixas e rendas ---
+  var situacaoFixa = function (f) {
+    if (f.lancado) return 'paga' + (f.data_lancado ? ' em ' + dataBR_(f.data_lancado) : '');
+    if (Number(f.dia) > 0 && Number(f.dia) < Number(hoje.slice(8, 10))) return 'VENCEU e não foi lançada';
+    return Number(f.dia) > 0 ? 'vence dia ' + f.dia : 'a pagar';
+  };
+  var fixas = (p.fixas || []).map(function (f) {
+    return [f.nome, 'conta fixa', f.categoria, f.valor, f.dia ? String(f.dia) : '', f.conta || '', f.pessoa || '', situacaoFixa(f)];
+  }).concat((p.rendas || []).map(function (f) {
+    return [f.nome, 'renda fixa', f.categoria, f.valor, f.dia ? String(f.dia) : '', f.conta || '', f.pessoa || '',
+      f.lancado ? 'recebida' : (f.uuid_agendado ? 'marcada, ainda não caiu' : 'a receber')];
+  }));
+  secao('CONTAS FIXAS E RENDAS DE ' + mesBR_(mes).toUpperCase(), 'O que se repete todo mês (no valor que vale neste mês) e se já foi pago/recebido.',
+    ['nome', 'tipo', 'categoria', 'valor', 'dia', 'conta', 'pessoa', 'situação neste mês'], fixas);
+
+  // --- 6. parcelamentos ---
+  secao('PARCELAMENTOS EM ANDAMENTO', 'Compras parceladas com parcela neste mês.',
+    ['compra', 'categoria', 'conta', 'pessoa', 'valor da parcela', 'parcela', 'parcelas que faltam', 'falta pagar', 'última parcela'],
+    (p.parceladas || []).map(function (x) {
+      return [x.nome, x.categoria, x.conta, x.pessoa, x.valor, x.parcela_atual + ' de ' + x.parcelas_total,
+        String(x.parcelas_restantes), x.falta_pagar, mesBR_(String(x.ultima || '').slice(0, 7))];
+    }));
+
+  // --- 7. faturas ---
+  var faturas = (p.faturas || []).map(function (f) {
+    return [f.cartao, mesBR_(f.mes), f.total, f.dia ? String(f.dia) : '', f.pago ? 'paga' : f.aberta ? 'aberta (ainda recebe compras)' : 'fechada, a pagar'];
+  }).concat((p.faturas_em_formacao || []).map(function (f) {
+    return [f.cartao, mesBR_(f.mes), f.total, f.dia ? String(f.dia) : '', 'em formação (vence mês que vem)'];
+  }));
+  secao('FATURAS DE CARTÃO', 'O total de cada fatura já é a soma das compras no crédito (que já contam como gasto).',
+    ['cartão', 'fatura de', 'total', 'vence dia', 'situação'], faturas);
+
+  // --- 8. saldos das contas ---
+  var cs = tentar(function () { return contasSaldo_(); }, { contas: [] });
+  secao('DINHEIRO NAS CONTAS', 'Saldo = o último valor conferido com o banco + o que foi lançado depois (+ rendimento estimado). Conta sem saldo conferido aparece vazia.',
+    ['conta', 'tipo', 'pessoa', 'saldo', 'conferido em', 'rende', 'rende por mês (aprox., sem IR)'],
+    (cs.contas || []).map(function (c) {
+      return [c.nome, c.tipo, c.pessoa, c.saldo === null ? '' : c.saldo, c.conferido ? dataBR_(c.conferido.data) : 'nunca',
+        c.rende && c.rende.tipo === 'cdi' ? c.rende.pct + '% do CDI' : (c.rende && c.rende.tipo === 'extrato' ? 'pelo extrato' : 'não rende'),
+        c.rende && c.rende.tipo === 'cdi' ? c.rende_por_mes : ''];
+    }));
+
+  // --- 9. baús ---
+  var bs = ss.getSheetByName('baus') ? tentar(function () { return baus_(linhas); }, { baus: [] }) : { baus: [] };
+  secao('BAÚS (dinheiro guardado)', 'Caixinhas com meta. Guardar tira do dinheiro livre do mês, mas não é gasto.',
+    ['baú', 'saldo', 'meta', 'falta para a meta', 'até quando', 'pra que é', 'rende', 'rendeu até hoje'],
+    (bs.baus || []).filter(function (b) { return !b.sem_cadastro || b.saldo; }).map(function (b) {
+      var r = b.rende || {};
+      return [b.nome, b.saldo, b.meta || '', b.meta ? Math.max(0, b.meta - b.saldo) : '', b.prazo ? mesBR_(String(b.prazo).slice(0, 7)) : '',
+        b.objetivo || '', r.tipo === 'cdi' ? r.pct + '% do CDI' : r.tipo === 'fixo' ? r.pct + '% ao ano' : 'não rende',
+        r.tipo ? r.rendimento : ''];
+    }));
+
+  // --- 10. o que eu contei ao app ---
+  var memoria = tentar(function () { return lerMemoria_(); }, []);
+  secao('O QUE EU CONTEI PARA O APP', 'Fatos que a IA do app guarda sobre mim (planos, contexto).', ['fato'],
+    memoria.map(function (f) { return [f]; }));
+
+  // --- 11. todos os lançamentos ---
+  secao('TODOS OS LANÇAMENTOS', 'Do mais novo para o mais antigo. "previsto" = renda marcada que ainda não caiu; data futura = parcela ou conta já agendada.',
+    ['data', 'tipo', 'valor', 'categoria', 'grupo', 'descrição', 'conta', 'forma', 'pessoa', 'fonte da renda', 'parcela', 'fatura de', 'situação', 'origem'],
+    validos.map(function (x) {
+      var r = x.r, tipo = String(r[col.tipo] || 'despesa');
+      var conta = contasIdx[chaveNome_(String(r[col.conta] || ''))];
+      var credito = tipo === TIPO.DESPESA && ehCartao_(conta);
+      var pa = Number(r[col.parcela_atual]) || 0, pt = Number(r[col.parcelas_total]) || 0;
+      return [
+        dataBR_(x.data), NOMES_TIPO_EXPORT[tipo] || tipo, Number(r[col.valor]) || 0,
+        String(r[col.categoria] || ''), ehBau_(tipo) ? '' : (grupoDe[chaveNome_(r[col.categoria])] || ''),
+        String(r[col.descricao] || ''), String(r[col.conta] || ''),
+        credito ? 'crédito' : (String(r[col.metodo] || '') || ''),
+        String(r[col.pessoa] || ''), String(r[col.fonte] || ''),
+        pt > 1 ? pa + ' de ' + pt : '', normalizarMes_(r[col.fatura_mes]) ? mesBR_(normalizarMes_(r[col.fatura_mes])) : '',
+        r[col.status] === STATUS.AGENDADO ? 'previsto' : (x.data > hoje ? 'agendado' : 'feito'),
+        String(r[col.origem] || '')
+      ];
+    }));
+
+  return {
+    ok: true,
+    nome: 'quanto-posso-gastar-' + hoje + '.csv',
+    csv: saida.join('\r\n') + '\r\n',
+    lancamentos: validos.length,
+    ultimo: ultimoFeito,
+    pergunta: pergunta
   };
 }

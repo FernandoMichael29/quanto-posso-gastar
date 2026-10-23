@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import ExportarDados from '../componentes/ExportarDados.jsx';
 import Analise from '../componentes/Analise.jsx';
 import Personagem from '../componentes/Personagem.jsx';
 import { api, configurado } from '../lib/api.js';
@@ -208,6 +209,8 @@ export default function Perguntar({ aoVerHistorico, heroi }) {
               </div>
             </>
           )}
+
+          <ExportarDados />
         </>
       )}
 

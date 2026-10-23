@@ -131,6 +131,7 @@ export const api = {
   contasSaldo: () => chamar('contas_saldo', {}, { prazo: 30000 }),
   naoGastei: (pessoa) => chamar('nao_gastei', { pessoa }),
   relatorioAno: (ano) => chamar('relatorio_ano', { ano }, { prazo: 40000 }),
+  exportar: () => chamar('exportar', {}, { prazo: 60000 }),
   acertarConta: (conta, saldo, extra = {}) => chamar('acertar_conta', { conta, saldo, ...extra }, { prazo: 30000 }),
   extrato: (busca, inicio = 0, limite = 30, mes = '') =>
     chamar('extrato', { busca: busca || '', inicio, limite, mes: mes || '' }, { prazo: 30000 }),

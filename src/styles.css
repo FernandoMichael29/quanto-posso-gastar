@@ -2461,3 +2461,11 @@ select.chip { max-width: 100%; }
 .lista-dragoes b { font-size: 12px; font-weight: 400; color: #fff; }
 .relatorio-medalhas.ano { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .relatorio-medalhas.ano small { color: #9aa0b8; }
+
+/* Levar meus dados para outra IA (tela Perguntar) */
+.cartao.exportar { gap: var(--e3); margin-top: var(--e4); }
+.exportar-pronto { display: grid; gap: 8px; padding: 12px; border-radius: var(--raio-p); background: var(--accent-soft); font-size: 13px; line-height: 1.45; }
+.exportar-pronto .pergunta-pronta {
+  margin: 0; padding: 10px 12px; border: 1px dashed var(--line); border-radius: var(--raio-p);
+  background: var(--surface); color: var(--ink-2); font-size: 13px; line-height: 1.5;
+}
