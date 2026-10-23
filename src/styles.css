@@ -2469,3 +2469,13 @@ select.chip { max-width: 100%; }
   margin: 0; padding: 10px 12px; border: 1px dashed var(--line); border-radius: var(--raio-p);
   background: var(--surface); color: var(--ink-2); font-size: 13px; line-height: 1.5;
 }
+
+/* Resumo no Google Drive (tela Perguntar) */
+.cartao.resumo-drive { gap: var(--e3); }
+.resumo-drive-ok { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--ink); }
+.resumo-drive-ok .ponto { display: inline-block; margin-right: 6px; vertical-align: middle; }
+.resumo-drive .pergunta-pronta {
+  margin: 0; padding: 10px 12px; border: 1px dashed var(--line); border-radius: var(--raio-p);
+  background: var(--accent-soft); color: var(--ink-2); font-size: 13px; line-height: 1.5;
+}
+.resumo-drive a.btn { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }

@@ -31,7 +31,7 @@
 
 // Suba junto com VERSAO_APP em src/lib/versao.js — o app compara as duas e
 // avisa na tela quando só uma das metades foi publicada.
-var VERSAO = '2.16.0';
+var VERSAO = '2.17.0';
 
 var PROP = PropertiesService.getScriptProperties();
 
@@ -402,6 +402,7 @@ function doPost(e) {
       case 'nao_gastei':    return json_(naoGastei_(pedido));
       case 'relatorio_ano': return json_(relatorioAno_(pedido));
       case 'exportar':      return json_(exportar_());
+      case 'resumo_ia':     return json_(resumoIA_(pedido));
       case 'salvar_bau':  return json_(salvarBau_(pedido));
       case 'excluir_bau': return json_(excluirBau_(pedido));
       default:            return json_({ ok: false, erro: 'acao_desconhecida' });
@@ -5160,7 +5161,14 @@ function celulaCsv_(v) {
   return /[;"]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
-function exportar_() {
+/**
+ * Tudo o que vai para a IA, em seções prontas (título, explicação, cabeçalho,
+ * linhas). O CSV (`exportar_`) e o documento do Drive (`atualizarResumoIA_`)
+ * desenham a mesma coisa cada um do seu jeito. `diasLancamentos` corta a lista
+ * de lançamentos nos últimos N dias (o documento não pode ficar gigante).
+ */
+function dadosDaExportacao_(opcoes) {
+  opcoes = opcoes || {};
   var hoje = hojeISO_();
   var mes = hoje.slice(0, 7);
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -5179,17 +5187,11 @@ function exportar_() {
   });
   var pessoas = lerCadastro_('pessoas').filter(function (x) { return x.ativo; }).map(function (x) { return x.nome; });
 
-  var saida = [];
-  var linha = function (celulas) { saida.push((celulas || []).map(celulaCsv_).join(';')); };
-  var numeroSecao = 0;
+  var topo = [];
+  var secoes = [];
+  var linha = function (celulas) { topo.push(celulas); };
   var secao = function (titulo, explicacao, cabecalho, dados) {
-    numeroSecao++;
-    linha([]);
-    linha(['### ' + numeroSecao + '. ' + titulo]);
-    if (explicacao) linha([explicacao]);
-    linha(cabecalho);
-    if (!dados.length) linha(['(nada aqui)']);
-    dados.forEach(linha);
+    secoes.push({ titulo: titulo, explicacao: explicacao, cabecalho: cabecalho, linhas: dados });
   };
 
   // --- lançamentos válidos, do mais novo para o mais antigo ---
@@ -5215,7 +5217,9 @@ function exportar_() {
   linha(['Gerado em', dataBR_(hoje) + ' ' + Utilities.formatDate(new Date(), fuso_(), 'HH:mm')]);
   linha(['Pessoas da casa', pessoas.join(', ') || '—']);
   linha(['Período dos lançamentos', dataBR_(primeiro) + ' a ' + dataBR_(datas[datas.length - 1] || hoje) + ' (' + validos.length + ' lançamentos; os com data futura são parcelas e rendas já marcadas)']);
-  linha(['Como ler', 'valores em reais (R$) com vírgula decimal; datas dd/mm/aaaa; separador ponto e vírgula; cada seção começa com ###']);
+  linha(['Como ler', opcoes.doc
+    ? 'valores em reais (R$); datas dd/mm/aaaa; cada seção tem um título e uma tabela'
+    : 'valores em reais (R$) com vírgula decimal; datas dd/mm/aaaa; separador ponto e vírgula; cada seção começa com ###']);
   linha(['Regras do app', 'Compra no cartão de crédito conta como gasto no mês da compra; o "Pagamento de fatura" só tira o dinheiro da conta e NÃO é gasto novo. "Guardou no baú" sai do dinheiro livre mas não é gasto. Entrada "prevista" ainda não caiu.']);
   linha(['Pergunta sugerida para a IA', pergunta]);
 
@@ -5340,10 +5344,14 @@ function exportar_() {
   secao('O QUE EU CONTEI PARA O APP', 'Fatos que a IA do app guarda sobre mim (planos, contexto).', ['fato'],
     memoria.map(function (f) { return [f]; }));
 
-  // --- 11. todos os lançamentos ---
-  secao('TODOS OS LANÇAMENTOS', 'Do mais novo para o mais antigo. "previsto" = renda marcada que ainda não caiu; data futura = parcela ou conta já agendada.',
+  // --- 11. lançamentos ---
+  var desdeLanc = opcoes.diasLancamentos ? diaISOMais_(hoje, -opcoes.diasLancamentos) : '';
+  var listaLanc = desdeLanc ? validos.filter(function (x) { return x.data >= desdeLanc; }) : validos;
+  secao(desdeLanc ? 'LANÇAMENTOS DOS ÚLTIMOS ' + opcoes.diasLancamentos + ' DIAS (e os futuros já marcados)' : 'TODOS OS LANÇAMENTOS',
+    'Do mais novo para o mais antigo. "previsto" = renda marcada que ainda não caiu; data futura = parcela ou conta já agendada.' +
+    (desdeLanc ? ' O histórico mais antigo está nas seções de meses e categorias acima (e no CSV completo do app).' : ''),
     ['data', 'tipo', 'valor', 'categoria', 'grupo', 'descrição', 'conta', 'forma', 'pessoa', 'fonte da renda', 'parcela', 'fatura de', 'situação', 'origem'],
-    validos.map(function (x) {
+    listaLanc.map(function (x) {
       var r = x.r, tipo = String(r[col.tipo] || 'despesa');
       var conta = contasIdx[chaveNome_(String(r[col.conta] || ''))];
       var credito = tipo === TIPO.DESPESA && ehCartao_(conta);
@@ -5362,10 +5370,159 @@ function exportar_() {
 
   return {
     ok: true,
-    nome: 'quanto-posso-gastar-' + hoje + '.csv',
-    csv: saida.join('\r\n') + '\r\n',
+    hoje: hoje,
+    topo: topo,
+    secoes: secoes,
     lancamentos: validos.length,
     ultimo: ultimoFeito,
     pergunta: pergunta
   };
+}
+
+/** O CSV para baixar no app (botão em Perguntar). */
+function exportar_() {
+  var d = dadosDaExportacao_();
+  var saida = [];
+  var linha = function (celulas) { saida.push((celulas || []).map(celulaCsv_).join(';')); };
+  d.topo.forEach(linha);
+  d.secoes.forEach(function (sec, i) {
+    linha([]);
+    linha(['### ' + (i + 1) + '. ' + sec.titulo]);
+    if (sec.explicacao) linha([sec.explicacao]);
+    linha(sec.cabecalho);
+    if (!sec.linhas.length) linha(['(nada aqui)']);
+    sec.linhas.forEach(linha);
+  });
+  return {
+    ok: true,
+    nome: 'quanto-posso-gastar-' + d.hoje + '.csv',
+    csv: saida.join('\r\n') + '\r\n',
+    lancamentos: d.lancamentos,
+    ultimo: d.ultimo,
+    pergunta: d.pergunta
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Resumo para IA no Google Drive
+// ---------------------------------------------------------------------------
+//
+// Um Google Doc com o mesmo conteúdo do CSV (o mês de hoje, a previsão, contas
+// fixas, faturas, saldos, baús e os lançamentos recentes), reescrito de hora em
+// hora por um gatilho. Assim, em qualquer conversa com o Claude (ou outra IA
+// com acesso ao Drive), basta pedir para ler este documento — sem exportar
+// nada. A planilha crua não serve para isso: o conector do Drive só entrega
+// uma amostra de cada aba, e ela não tem as contas que o app faz.
+//
+// É opcional: só existe depois que você liga no app (Perguntar → Resumo no
+// Drive). Usa DocumentApp e DriveApp — por isso pede uma autorização a mais.
+
+var TITULO_DOC_IA = 'Quanto Posso Gastar — resumo para IA';
+var DIAS_LANC_DOC_IA = 120;
+
+/** 1234.5 → "1.234,50" */
+function numeroMilhar_(v) {
+  var n = Math.round((Number(v) || 0) * 100) / 100;
+  var partes = Math.abs(n).toFixed(2).split('.');
+  return (n < 0 ? '-' : '') + partes[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ',' + partes[1];
+}
+function celulaDoc_(v) {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'number') return 'R$ ' + numeroMilhar_(v);
+  return String(v);
+}
+
+/** O documento (o mesmo de sempre); se foi apagado ou nunca existiu, nasce outro na pasta da planilha. */
+function docIA_(criarSeFaltar) {
+  var id = PROP.getProperty('DOC_IA_ID');
+  if (id) {
+    try {
+      if (!DriveApp.getFileById(id).isTrashed()) return DocumentApp.openById(id);
+    } catch (e) { /* apagado de vez ou sem acesso: cria outro */ }
+  }
+  if (!criarSeFaltar) return null;
+  var doc = DocumentApp.create(TITULO_DOC_IA);
+  PROP.setProperty('DOC_IA_ID', doc.getId());
+  try {
+    var pastas = DriveApp.getFileById(SpreadsheetApp.getActiveSpreadsheet().getId()).getParents();
+    if (pastas.hasNext()) DriveApp.getFileById(doc.getId()).moveTo(pastas.next());
+  } catch (e) { /* fica na raiz do Drive: tudo bem */ }
+  return doc;
+}
+
+/** Reescreve o documento inteiro com os números de agora. */
+function atualizarResumoIA_() {
+  var doc = docIA_(true);
+  var d = dadosDaExportacao_({ doc: true, diasLancamentos: DIAS_LANC_DOC_IA });
+  var corpo = doc.getBody();
+  corpo.clear();
+  corpo.appendParagraph(TITULO_DOC_IA).setHeading(DocumentApp.ParagraphHeading.TITLE);
+  corpo.appendParagraph(
+    'Este documento é reescrito sozinho pelo app "Quanto Posso Gastar" de hora em hora. ' +
+    'Para a IA que estiver lendo: estes números são a verdade sobre as minhas finanças e já seguem as regras abaixo — ' +
+    'não some nada em dobro. Para saber quanto posso gastar, comece pela seção 1.');
+  d.topo.slice(1).forEach(function (l) {
+    if (/^Pergunta sugerida/.test(String(l[0]))) return;
+    var p = corpo.appendParagraph('');
+    p.appendText(String(l[0]) + ': ').setBold(true);
+    p.appendText(String(l[1] === undefined ? '' : l[1])).setBold(false);
+  });
+  d.secoes.forEach(function (sec, i) {
+    corpo.appendParagraph((i + 1) + '. ' + sec.titulo).setHeading(DocumentApp.ParagraphHeading.HEADING2);
+    if (sec.explicacao) corpo.appendParagraph(sec.explicacao).editAsText().setItalic(true);
+    var largura = sec.cabecalho.length;
+    var linhas = (sec.linhas.length ? sec.linhas : [['(nada aqui)']]).map(function (l) {
+      var cel = l.map(celulaDoc_);
+      while (cel.length < largura) cel.push('');
+      return cel.slice(0, largura);
+    });
+    var tabela = corpo.appendTable([sec.cabecalho.map(String)].concat(linhas));
+    var cab = tabela.getRow(0);
+    for (var c = 0; c < cab.getNumCells(); c++) cab.getCell(c).editAsText().setBold(true);
+  });
+  doc.saveAndClose();
+  var agora = new Date().toISOString();
+  PROP.setProperty('DOC_IA_EM', agora);
+  return { url: doc.getUrl(), atualizado_em: agora };
+}
+
+/** O gatilho de hora em hora. Nunca deixa erro escapar (o Google manda e-mail a cada falha). */
+function atualizarResumoIA() {
+  try { atualizarResumoIA_(); } catch (e) { /* tenta de novo na próxima hora */ }
+}
+
+function gatilhoResumoIA_() {
+  return ScriptApp.getProjectTriggers().filter(function (t) { return t.getHandlerFunction() === 'atualizarResumoIA'; });
+}
+
+/** Rode uma vez no editor do Apps Script depois de colar o código: é o que libera o Docs e o Drive. */
+function autorizar() {
+  Logger.log('Docs e Drive autorizados. Pasta raiz: ' + DriveApp.getRootFolder().getName() + ' · ' + typeof DocumentApp.create);
+}
+
+/** App → Perguntar → Resumo no Drive: estado, ligar, atualizar agora, desligar. */
+function resumoIA_(pedido) {
+  var o = String(pedido.operacao || 'estado');
+  if (['estado', 'ligar', 'atualizar', 'desligar'].indexOf(o) < 0) return { ok: false, erro: 'operacao_invalida' };
+  try {
+    if (o === 'ligar' || o === 'atualizar') {
+      atualizarResumoIA_();
+      if (o === 'ligar' && !gatilhoResumoIA_().length) {
+        ScriptApp.newTrigger('atualizarResumoIA').timeBased().everyHours(1).create();
+      }
+    }
+    if (o === 'desligar') gatilhoResumoIA_().forEach(function (t) { ScriptApp.deleteTrigger(t); });
+    var doc = docIA_(false);
+    return {
+      ok: true,
+      ligado: gatilhoResumoIA_().length > 0,
+      url: doc ? doc.getUrl() : '',
+      titulo: TITULO_DOC_IA,
+      atualizado_em: PROP.getProperty('DOC_IA_EM') || ''
+    };
+  } catch (e) {
+    var msg = String(e && e.message || e);
+    if (/permiss|authoriz|autoriza|scope/i.test(msg)) return { ok: false, erro: 'precisa_autorizar', detalhe: msg };
+    throw e;
+  }
 }

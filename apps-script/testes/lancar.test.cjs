@@ -918,3 +918,70 @@ console.log('\nfogueira, marcos e relatório do ano: ok');
   assert.ok(e.pergunta.includes('quanto eu posso gastar'));
 }
 console.log('\nexportar CSV: ok');
+
+// 37. resumo para IA no Google Drive: um Doc reescrito de hora em hora
+{
+  const docs = {}; let nDoc = 0; const lixeira = new Set(); const movidos = [];
+  const novoDoc = (titulo) => {
+    const id = 'doc' + (++nDoc);
+    const corpo = { itens: [],
+      clear() { this.itens = []; },
+      appendParagraph(t) { const p = { tipo: 'p', texto: t, partes: [], heading: null,
+        setHeading(h) { this.heading = h; return this; },
+        appendText(x) { const parte = { x, negrito: false, setBold(b) { this.negrito = b; return this; } }; this.partes.push(parte); return parte; },
+        editAsText() { return { setItalic: () => {}, setBold: () => {} }; } }; this.itens.push(p); return p; },
+      appendTable(linhas) { const negrito = []; const t = { tipo: 't', linhas, negrito,
+        getRow: (i) => ({ getNumCells: () => linhas[i].length, getCell: (c) => ({ editAsText: () => ({ setBold: (b) => { negrito[c] = b; } }) }) }) };
+        assert.ok(linhas.every((l) => l.length === linhas[0].length), 'tabela retangular'); this.itens.push(t); return t; } };
+    return (docs[id] = { id, titulo, corpo, getId: () => id, getUrl: () => 'https://docs/' + id, getBody: () => corpo, saveAndClose() {} });
+  };
+  global.DocumentApp = { create: (t) => novoDoc(t), openById: (id) => docs[id], ParagraphHeading: { TITLE: 'T', HEADING2: 'H2' } };
+  global.DriveApp = { getFileById: (id) => {
+    if (!docs[id] && id !== 'planilha') throw new Error('não achou');
+    return { isTrashed: () => lixeira.has(id), getParents: () => { let ok = true; return { hasNext: () => ok, next: () => { ok = false; return 'pasta'; } }; }, moveTo: (p) => movidos.push([id, p]) };
+  }, getRootFolder: () => ({ getName: () => 'Meu Drive' }) };
+  planilha.getId = () => 'planilha';
+  const gatilhos = [];
+  ScriptApp = { getProjectTriggers: () => gatilhos.map((h) => ({ getHandlerFunction: () => h })),
+    deleteTrigger: (t) => gatilhos.splice(gatilhos.indexOf(t.getHandlerFunction()), 1),
+    newTrigger: (h) => ({ timeBased: () => ({ everyHours: (n) => ({ create: () => { assert.strictEqual(n, 1); gatilhos.push(h); } }) }) }) };
+  delete props.DOC_IA_ID; delete props.DOC_IA_EM;
+
+  let e = resumoIA_({ operacao: 'estado' });
+  assert.deepStrictEqual([e.ok, e.ligado, e.url], [true, false, ''], 'desligado e sem documento');
+  assert.strictEqual(resumoIA_({ operacao: 'apagar_tudo' }).erro, 'operacao_invalida');
+
+  e = resumoIA_({ operacao: 'ligar' });
+  assert.ok(e.ok && e.ligado && e.url === 'https://docs/doc1' && e.atualizado_em);
+  assert.deepStrictEqual(movidos, [['doc1', 'pasta']], 'o documento vai para a pasta da planilha');
+  const corpo = docs.doc1.corpo;
+  assert.strictEqual(corpo.itens[0].texto, 'Quanto Posso Gastar — resumo para IA'); assert.strictEqual(corpo.itens[0].heading, 'T');
+  const tabelas = corpo.itens.filter((x) => x.tipo === 't');
+  const titulos = corpo.itens.filter((x) => x.heading === 'H2').map((x) => x.texto);
+  assert.strictEqual(tabelas.length, titulos.length, 'uma tabela por seção');
+  assert.ok(titulos[0].startsWith('1. O MÊS DE HOJE') && titulos.some((t) => t.includes('LANÇAMENTOS DOS ÚLTIMOS 120 DIAS')));
+  assert.ok(tabelas.every((t) => t.negrito.length === t.linhas[0].length && t.negrito.every(Boolean)), 'cabeçalho em negrito');
+  const livre = tabelas[0].linhas.find((l) => l[0].startsWith('LIVRE PARA GASTAR'));
+  assert.ok(/^R\$ -?[\d.]+,\d\d$/.test(livre[1]), 'dinheiro como R$ 1.234,56: ' + livre[1]);
+  assert.ok(!corpo.itens.some((x) => x.partes && x.partes.some((p) => /Pergunta sugerida/.test(p.x))), 'sem a pergunta sugerida no documento');
+  const lanc = tabelas[tabelas.length - 1].linhas.slice(1);
+  assert.ok(lanc.every((l) => { const [d, m, a] = l[0].split('/'); return `${a}-${m}-${d}` >= '2026-05-19'; }), 'só os últimos 120 dias');
+  assert.strictEqual(numeroMilhar_(1234567.891), '1.234.567,89'); assert.strictEqual(numeroMilhar_(-5), '-5,00');
+
+  // atualizar reescreve o mesmo documento; um só gatilho
+  e = resumoIA_({ operacao: 'atualizar' }); resumoIA_({ operacao: 'ligar' });
+  assert.strictEqual(nDoc, 1); assert.strictEqual(gatilhos.length, 1); assert.strictEqual(docs.doc1.corpo.itens[0].texto, 'Quanto Posso Gastar — resumo para IA');
+  // foi para a lixeira: nasce outro
+  lixeira.add('doc1'); atualizarResumoIA();
+  assert.strictEqual(nDoc, 2); assert.strictEqual(props.DOC_IA_ID, 'doc2');
+  // desligar tira o gatilho e mantém o documento
+  e = resumoIA_({ operacao: 'desligar' });
+  assert.deepStrictEqual([e.ligado, e.url], [false, 'https://docs/doc2']);
+  // sem autorização do Docs/Drive: o app recebe um erro que ele sabe explicar
+  const criar = DocumentApp.create; delete props.DOC_IA_ID;
+  DocumentApp.create = () => { throw new Error('You do not have permission to call DocumentApp.create. Required permissions: https://www.googleapis.com/auth/documents'); };
+  assert.strictEqual(resumoIA_({ operacao: 'ligar' }).erro, 'precisa_autorizar');
+  DocumentApp.create = criar;
+  autorizar();
+}
+console.log('\nresumo para IA no Drive: ok');
